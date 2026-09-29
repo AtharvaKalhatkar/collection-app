@@ -36,6 +36,8 @@ class PendingBillModel {
   double get balanceDue =>
       (totalAmount - collectedAmount) > 0 ? (totalAmount - collectedAmount) : 0.0;
 
+  String get firmName => businessName;
+
   bool get isPaid => balanceDue <= 0.001;
 
   bool get isPartial => collectedAmount > 0 && balanceDue > 0.001;

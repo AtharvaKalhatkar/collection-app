@@ -7,11 +7,11 @@ import '../providers/collection_provider.dart';
 import '../models/payment_mode.dart';
 import '../utils/currency_formatter.dart';
 import 'add_pending_bill_screen.dart';
+import 'pending_bills_list_screen.dart';
 import 'make_collection_screen.dart';
 import 'statement_screen.dart';
 import 'placeholder_screen.dart';
 import 'collection_details_dialog.dart';
-import 'collections_list_screen.dart';
 import 'add_shop_screen.dart';
 import 'firebase_config_dialog.dart';
 
@@ -944,72 +944,88 @@ class HomeDashboardScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'TOTAL INVOICED',
-                                style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 10, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                CurrencyFormatter.format(provider.totalBillAmount),
-                                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
-                              ),
-                            ],
-                          ),
-                          Container(width: 1, height: 26, color: Colors.white.withValues(alpha: 0.2)),
-                          InkWell(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const CollectionsListScreen(initialTabIndex: 1),
-                                ),
-                              );
-                            },
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'BALANCE PENDING',
-                                      style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 10, fontWeight: FontWeight.bold),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    const Icon(Icons.arrow_forward_ios, size: 10, color: Colors.white70),
-                                  ],
+                                Text(
+                                  'Invoiced',
+                                  style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  CurrencyFormatter.format(provider.totalBalanceDue),
-                                  style: TextStyle(
-                                    color: provider.totalBalanceDue > 0 ? const Color(0xFFFCA5A5) : Colors.greenAccent,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    CurrencyFormatter.format(provider.totalBillAmount),
+                                    style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          Container(width: 1, height: 26, color: Colors.white.withValues(alpha: 0.2)),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'STORES VISITED',
-                                style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 10, fontWeight: FontWeight.bold),
+                          Container(width: 1, height: 26, margin: const EdgeInsets.symmetric(horizontal: 6), color: Colors.white.withValues(alpha: 0.2)),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const PendingBillsListScreen(),
+                                  ),
+                                );
+                              },
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          'Pending Due',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      const Icon(Icons.arrow_forward_ios, size: 9, color: Colors.white70),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      CurrencyFormatter.format(provider.totalBalanceDue),
+                                      style: TextStyle(
+                                        color: provider.totalBalanceDue > 0 ? const Color(0xFFFCA5A5) : Colors.greenAccent,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${provider.uniqueShopsCount}',
-                                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
-                              ),
-                            ],
+                            ),
+                          ),
+                          Container(width: 1, height: 26, margin: const EdgeInsets.symmetric(horizontal: 6), color: Colors.white.withValues(alpha: 0.2)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Visited',
+                                  style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${provider.uniqueShopsCount}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -1163,7 +1179,7 @@ class HomeDashboardScreen extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const CollectionsListScreen(initialTabIndex: 1),
+                                builder: (_) => const PendingBillsListScreen(),
                               ),
                             );
                           },
@@ -1173,7 +1189,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
-                                  'View All ${pendingBills.length} Pending Invoices',
+                                  'View All ${pendingBills.length} Pending Bills (By Date)',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -1198,11 +1214,11 @@ class HomeDashboardScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Reconciliation by Payment Mode',
+                    'Payment Modes',
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                   ),
                   Text(
-                    'End of Day Tally',
+                    'Daily Tally',
                     style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                   ),
                 ],
@@ -1214,7 +1230,7 @@ class HomeDashboardScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _buildModeCard(
-                      label: 'Cash in Hand',
+                      label: 'Cash',
                       amount: provider.totalCash,
                       icon: Icons.payments_outlined,
                       accentColor: AppTheme.cashColor,
@@ -1225,7 +1241,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: _buildModeCard(
-                      label: 'UPI / Digital QR',
+                      label: 'UPI',
                       amount: provider.totalUpi,
                       icon: Icons.qr_code_2_rounded,
                       accentColor: AppTheme.upiColor,
@@ -1240,7 +1256,7 @@ class HomeDashboardScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _buildModeCard(
-                      label: 'Cheque Payment',
+                      label: 'Cheque',
                       amount: provider.totalCheque,
                       icon: Icons.fact_check_outlined,
                       accentColor: AppTheme.chequeColor,
@@ -1251,7 +1267,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: _buildModeCard(
-                      label: 'Net Banking (IMPS/NEFT)',
+                      label: 'Net Banking',
                       amount: provider.totalNetBanking,
                       icon: Icons.account_balance_outlined,
                       accentColor: AppTheme.netBankingColor,
@@ -1268,39 +1284,46 @@ class HomeDashboardScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Quick Operations',
+                    'Quick Actions',
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: Text(
-                      'FMCG Workflow',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                    icon: const Icon(Icons.add_photo_alternate_outlined, size: 15, color: AppTheme.primary),
+                    label: const Text(
+                      '+ Upload Bill',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
                     ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AddPendingBillScreen()),
+                      );
+                    },
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
-              // Row 1: Stage 1 (Pending Bill) and Stage 2 (Collection)
+              // Row 1: Stage 1 (Pending Bills) and Stage 2 (Collection)
               Row(
                 children: [
                   Expanded(
                     child: _buildActionTile(
-                      title: 'Pending Bill',
-                      subtitle: 'Upload delivered bills',
-                      icon: Icons.receipt_outlined,
+                      title: 'Pending Bills',
+                      subtitle: 'View by invoice date',
+                      icon: Icons.receipt_long_outlined,
                       badge: '${provider.pendingBills.where((b) => !b.isPaid).length} Active',
                       gradientColors: const [Color(0xFF0284C7), Color(0xFF0369A1)],
                       iconBg: Colors.white.withValues(alpha: 0.22),
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const AddPendingBillScreen()),
+                          MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
                         );
                       },
                     ),

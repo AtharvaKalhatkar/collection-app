@@ -10,15 +10,18 @@ import '../providers/collection_provider.dart';
 import '../utils/theme.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 import 'add_shop_screen.dart';
+import 'pending_bills_list_screen.dart';
 
 class AddPendingBillScreen extends StatefulWidget {
   final String? initialRouteId;
   final String? initialShopId;
+  final DateTime? initialInvoiceDate;
 
   const AddPendingBillScreen({
     super.key,
     this.initialRouteId,
     this.initialShopId,
+    this.initialInvoiceDate,
   });
 
   @override
@@ -49,6 +52,9 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     super.initState();
     _selectedRouteId = widget.initialRouteId;
     _selectedShopId = widget.initialShopId;
+    if (widget.initialInvoiceDate != null) {
+      _invoiceDate = widget.initialInvoiceDate;
+    }
   }
 
   @override
@@ -386,9 +392,19 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                 const Icon(Icons.check_circle, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('Pending Bill #$billNo (₹${amount.toStringAsFixed(0)}) uploaded successfully!'),
+                  child: Text('Bill #$billNo (₹${amount.toStringAsFixed(0)}) uploaded!'),
                 ),
               ],
+            ),
+            action: SnackBarAction(
+              label: 'View Bills',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
+                );
+              },
             ),
             backgroundColor: const Color(0xFF10B981),
             behavior: SnackBarBehavior.floating,
@@ -430,6 +446,18 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long_outlined),
+            tooltip: 'View Pending Bills',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -440,7 +468,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
             children: [
               // 1. FIRM SELECTOR (Purva Enterprises / Manas Sales)
               const Text(
-                '1. SELECT FIRM / COMPANY',
+                '1. SELECT FIRM',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
@@ -512,7 +540,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
 
               // 2. ROUTE SELECTOR
               const Text(
-                '2. SELECT ROUTE (BEAT)',
+                '2. SELECT ROUTE',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
@@ -541,7 +569,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${r.name} (Priority #${r.priority})',
+                              r.name,
                               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                             ),
                             Text(
@@ -900,7 +928,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               ] else ...[
                 OutlinedButton.icon(
                   icon: const Icon(Icons.add_a_photo_outlined, size: 18),
-                  label: const Text('Upload Delivery / Invoice Copy'),
+                  label: const Text('Upload Bill Photo'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     side: const BorderSide(color: AppTheme.primary, width: 1.2),

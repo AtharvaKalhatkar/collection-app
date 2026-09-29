@@ -32,9 +32,9 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
           return AlertDialog(
             title: const Row(
               children: [
-                Icon(Icons.low_priority_rounded, color: AppTheme.primary),
+                Icon(Icons.swap_vert_rounded, color: AppTheme.primary),
                 SizedBox(width: 8),
-                Text('Set Route Priorities', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                Text('Route Order', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
               ],
             ),
             content: SizedBox(
@@ -44,7 +44,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Order route beats by visit sequence (Priority 1 will be visited first on the field):',
+                    'Order route beats by visit sequence (#1 will be visited first on the field):',
                     style: TextStyle(fontSize: 12.5, color: Colors.blueGrey),
                   ),
                   const SizedBox(height: 12),
@@ -61,7 +61,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                             radius: 14,
                             backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
                             child: Text(
-                              'P${idx + 1}',
+                              '#${idx + 1}',
                               style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
@@ -76,7 +76,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.arrow_upward, size: 18),
-                                tooltip: 'Move Higher Priority',
+                                tooltip: 'Move Up',
                                 onPressed: idx > 0
                                     ? () {
                                         final currentPriority = idx + 1;
@@ -94,7 +94,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                               ),
                               IconButton(
                                 icon: const Icon(Icons.arrow_downward, size: 18),
-                                tooltip: 'Move Lower Priority',
+                                tooltip: 'Move Down',
                                 onPressed: idx < routes.length - 1
                                     ? () {
                                         final currentPriority = idx + 1;
@@ -253,7 +253,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                     Row(
                       children: [
                         const Text(
-                          'SALES ROUTES (BY PRIORITY)',
+                          'SALES ROUTES',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -275,7 +275,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                           Icon(Icons.sort_rounded, size: 14, color: AppTheme.primary),
                           SizedBox(width: 4),
                           Text(
-                            'Set Priority',
+                            'Reorder',
                             style: TextStyle(
                               color: AppTheme.primary,
                               fontWeight: FontWeight.w700,
@@ -306,25 +306,16 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: routes.asMap().entries.map((entry) {
-                        final idx = entry.key;
-                        final r = entry.value;
+                      children: routes.map((r) {
                         final isSelected = _selectedRouteId == r.id;
                         final count = provider.getShopsForRoute(r.id).length;
                         return Padding(
                           padding: const EdgeInsets.only(right: 8.0),
                           child: FilterChip(
-                            avatar: CircleAvatar(
-                              radius: 10,
-                              backgroundColor: isSelected ? Colors.white.withValues(alpha: 0.25) : AppTheme.primary.withValues(alpha: 0.15),
-                              child: Text(
-                                '${idx + 1}',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: isSelected ? Colors.white : AppTheme.primary,
-                                ),
-                              ),
+                            avatar: Icon(
+                              Icons.location_on_outlined,
+                              size: 14,
+                              color: isSelected ? Colors.white : AppTheme.primary,
                             ),
                             label: Text('${r.name} ($count)'),
                             selected: isSelected,

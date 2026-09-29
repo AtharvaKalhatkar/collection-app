@@ -503,7 +503,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${r.name} (Priority #${r.priority})',
+                              r.name,
                               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                             ),
                             Text(

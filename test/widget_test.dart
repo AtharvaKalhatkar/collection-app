@@ -18,11 +18,12 @@ void main() {
     expect(find.textContaining('Purva Enterprises • Manas Sales'), findsOneWidget);
     expect(find.textContaining('Akash'), findsOneWidget);
 
-    // Verify Add Store action is present on Dashboard
-    expect(find.text('Add Store'), findsWidgets);
+    // Verify Quick Actions buttons are present on Dashboard
+    expect(find.text('Pending Bills'), findsWidgets);
+    expect(find.text('Collection'), findsWidgets);
   });
 
-  testWidgets('Navigating to Add Store shows all required form fields',
+  testWidgets('Navigating to Pending Bills shows filter and list view',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -33,15 +34,13 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    // Tap Add Store button
-    await tester.tap(find.text('Add Store').first);
+    // Tap Pending Bills button
+    await tester.tap(find.text('Pending Bills').first);
     await tester.pumpAndSettle();
 
-    // Verify Add Store Screen fields: Store Name, Route, Contact Number, Address
-    expect(find.text('Add New Store'), findsOneWidget);
-    expect(find.text('Store / Business Name *'), findsOneWidget);
-    expect(find.text('Beat Route'), findsOneWidget);
-    expect(find.text('Contact / Mobile Number *'), findsOneWidget);
-    expect(find.text('Store Address / Location *'), findsOneWidget);
+    // Verify Pending Bills Screen fields
+    expect(find.text('Pending Bills by Date'), findsOneWidget);
+    expect(find.text('All Firms'), findsOneWidget);
+    expect(find.textContaining('Invoice Dates'), findsOneWidget);
   });
 }
