@@ -1,0 +1,124 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/route_model.dart';
+import '../models/shop_model.dart';
+import '../models/collection_model.dart';
+
+class StorageService {
+  static const String _keyRoutes = 'app_routes_v1';
+  static const String _keyShops = 'app_shops_v1';
+  static const String _keyCollections = 'app_collections_v1';
+  static const String _keyBusinesses = 'app_businesses_v1';
+  static const String _keySalesman = 'app_salesman_name_v1';
+  static const String _keyInitialized = 'app_sample_data_initialized_v1';
+
+  Future<bool> isFirstLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    return !(prefs.getBool(_keyInitialized) ?? false);
+  }
+
+  Future<void> markInitialized() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyInitialized, true);
+  }
+
+  // --- Businesses ---
+  Future<List<String>> loadBusinesses() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_keyBusinesses);
+    if (list != null && list.isNotEmpty) {
+      return list;
+    }
+    return ['Purva Enterprises', 'Manas Sales'];
+  }
+
+  Future<void> saveBusinesses(List<String> businesses) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyBusinesses, businesses);
+  }
+
+  // --- Salesman ---
+  Future<String> loadSalesmanName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keySalesman) ?? 'Akash';
+  }
+
+  Future<void> saveSalesmanName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keySalesman, name);
+  }
+
+  // --- Routes ---
+  Future<List<RouteModel>> loadRoutes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keyRoutes) ?? [];
+    return rawList
+        .map((s) => RouteModel.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> saveRoutes(List<RouteModel> routes) async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = routes.map((r) => jsonEncode(r.toJson())).toList();
+    await prefs.setStringList(_keyRoutes, rawList);
+  }
+
+  // --- Shops ---
+  Future<List<ShopModel>> loadShops() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keyShops) ?? [];
+    return rawList
+        .map((s) => ShopModel.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> saveShops(List<ShopModel> shops) async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = shops.map((s) => jsonEncode(s.toJson())).toList();
+    await prefs.setStringList(_keyShops, rawList);
+  }
+
+  // --- Collections ---
+  Future<List<CollectionModel>> loadCollections() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keyCollections) ?? [];
+    return rawList
+        .map((s) => CollectionModel.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> saveCollections(List<CollectionModel> collections) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      // Browser localStorage has a strict 5MB quota for the whole site.
+      // To guarantee the app never crashes with QuotaExceededError,
+      // we store collection transactions in localStorage without bulky base64 images.
+      // Full images are safely saved in memory and synced to Cloud Firestore.
+      final safeCollections = collections.map((c) {
+        if (c.photoBase64 != null && c.photoBase64!.length > 15000) {
+          return c.copyWith(photoBase64: null);
+        }
+        return c;
+      }).toList();
+
+      final rawList = safeCollections.map((c) => jsonEncode(c.toJson())).toList();
+      await prefs.setStringList(_keyCollections, rawList);
+    } catch (e) {
+      try {
+        await prefs.remove(_keyCollections);
+        final noPhotos = collections.map((c) => c.copyWith(photoBase64: null)).toList();
+        final rawList = noPhotos.map((c) => jsonEncode(c.toJson())).toList();
+        await prefs.setStringList(_keyCollections, rawList);
+      } catch (inner) {
+        // Safe failover: in-memory state is preserved even if localStorage is completely locked
+        // ignore: avoid_print
+        print('LocalStorage write fallback note: $inner');
+      }
+    }
+  }
+
+  Future<void> clearAll() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+  }
+}

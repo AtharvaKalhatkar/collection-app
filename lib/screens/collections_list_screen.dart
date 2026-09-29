@@ -1,0 +1,1120 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import '../providers/collection_provider.dart';
+import '../models/payment_mode.dart';
+import '../models/bill_summary.dart';
+import '../utils/currency_formatter.dart';
+import '../utils/theme.dart';
+import 'collection_details_dialog.dart';
+import 'record_collection_screen.dart';
+import 'send_reminder_dialog.dart';
+import 'add_shop_screen.dart';
+
+class CollectionsListScreen extends StatefulWidget {
+  final int initialTabIndex;
+
+  const CollectionsListScreen({super.key, this.initialTabIndex = 0});
+
+  @override
+  State<CollectionsListScreen> createState() => _CollectionsListScreenState();
+}
+
+enum InvoiceFilterStatus { pending, paid, all }
+
+class _CollectionsListScreenState extends State<CollectionsListScreen> {
+  PaymentMode? _selectedModeFilter;
+  InvoiceFilterStatus _invoiceStatusFilter = InvoiceFilterStatus.pending;
+  String _invoiceSearchQuery = '';
+
+  Color _getModeColor(PaymentMode mode) {
+    switch (mode) {
+      case PaymentMode.cash:
+        return AppTheme.cashColor;
+      case PaymentMode.upi:
+        return AppTheme.upiColor;
+      case PaymentMode.cheque:
+        return AppTheme.chequeColor;
+      case PaymentMode.netBanking:
+        return AppTheme.netBankingColor;
+    }
+  }
+
+  Future<void> _pickDate(BuildContext context) async {
+    final provider = context.read<CollectionProvider>();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: provider.selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (picked != null) {
+      provider.setSelectedDate(picked);
+    }
+  }
+
+  void _shareSummary(BuildContext context) {
+    final provider = context.read<CollectionProvider>();
+    final text = provider.generateWhatsAppReportText();
+
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Daily Report copied to clipboard'),
+        backgroundColor: AppTheme.secondary,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<CollectionProvider>();
+
+    return DefaultTabController(
+      initialIndex: widget.initialTabIndex,
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Collections & Invoices'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.add_business_outlined, size: 21),
+              tooltip: 'Add Store / Customer',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AddShopScreen()),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.share_outlined, size: 20),
+              tooltip: 'Copy Report',
+              onPressed: () => _shareSummary(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.calendar_month_outlined, size: 20),
+              tooltip: 'Change Date',
+              onPressed: () => _pickDate(context),
+            ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(44),
+            child: Container(
+              color: AppTheme.primary,
+              child: TabBar(
+                indicatorColor: Colors.white,
+                indicatorWeight: 3,
+                indicatorSize: TabBarIndicatorSize.tab,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white60,
+                labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                tabs: const [
+                  Tab(
+                    height: 44,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.receipt_long_outlined, size: 16),
+                        SizedBox(width: 6),
+                        Text('Daily Ledger'),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    height: 44,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.pending_actions_outlined, size: 16),
+                        SizedBox(width: 6),
+                        Text('Invoice Status'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _buildDailyLedgerTab(context, provider),
+            _buildInvoiceStatusTab(context, provider),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- DUAL-FIRM QUICK SWITCHER (PURVA VS MANAS) ---
+  Widget _buildFirmFilterBar(CollectionProvider provider) {
+    final purvaTotal = provider.getTotalCollectionForBusiness('Purva Enterprises');
+    final manasTotal = provider.getTotalCollectionForBusiness('Manas Sales');
+    final combinedTotal = purvaTotal + manasTotal;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          // ALL FIRMS
+          Expanded(
+            child: InkWell(
+              onTap: () => provider.setFilterBusiness(null),
+              borderRadius: BorderRadius.circular(7),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: provider.filterBusiness == null ? AppTheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'ALL FIRMS',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: provider.filterBusiness == null ? Colors.white : Colors.blueGrey.shade800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      CurrencyFormatter.format(combinedTotal),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: provider.filterBusiness == null ? Colors.white : AppTheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+
+          // PURVA
+          Expanded(
+            child: InkWell(
+              onTap: () => provider.setFilterBusiness('Purva Enterprises'),
+              borderRadius: BorderRadius.circular(7),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: provider.filterBusiness == 'Purva Enterprises'
+                      ? AppTheme.purvaPrimary
+                      : AppTheme.purvaLight,
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: provider.filterBusiness == 'Purva Enterprises'
+                        ? AppTheme.purvaPrimary
+                        : AppTheme.purvaBorder,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'PURVA',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: provider.filterBusiness == 'Purva Enterprises'
+                            ? Colors.white
+                            : AppTheme.purvaText,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      CurrencyFormatter.format(purvaTotal),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: provider.filterBusiness == 'Purva Enterprises'
+                            ? Colors.white
+                            : AppTheme.purvaPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+
+          // MANAS
+          Expanded(
+            child: InkWell(
+              onTap: () => provider.setFilterBusiness('Manas Sales'),
+              borderRadius: BorderRadius.circular(7),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: provider.filterBusiness == 'Manas Sales'
+                      ? AppTheme.manasPrimary
+                      : AppTheme.manasLight,
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: provider.filterBusiness == 'Manas Sales'
+                        ? AppTheme.manasPrimary
+                        : AppTheme.manasBorder,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'MANAS',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: provider.filterBusiness == 'Manas Sales'
+                            ? Colors.white
+                            : AppTheme.manasText,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      CurrencyFormatter.format(manasTotal),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: provider.filterBusiness == 'Manas Sales'
+                            ? Colors.white
+                            : AppTheme.manasPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB 1: DAILY TRANSACTION LEDGER ---
+  Widget _buildDailyLedgerTab(BuildContext context, CollectionProvider provider) {
+    final allForDay = provider.getFilteredCollections();
+    final filteredList = _selectedModeFilter == null
+        ? allForDay
+        : allForDay.where((c) => c.paymentMode == _selectedModeFilter).toList();
+
+    final dateStr = DateFormat('dd MMM yyyy').format(provider.selectedDate);
+    final isToday = DateFormat('yyyy-MM-dd').format(provider.selectedDate) ==
+        DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final subtotalCollected = filteredList.fold(0.0, (s, c) => s + c.collectedAmount);
+    final subtotalBalance = filteredList.fold(0.0, (s, c) => s + c.balanceAmount);
+
+    return Column(
+      children: [
+        // Filter Bar
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          color: Colors.white,
+          child: Column(
+            children: [
+              _buildFirmFilterBar(provider),
+              // Date & Business Filter Row
+              Row(
+                children: [
+                  InkWell(
+                    onTap: () => _pickDate(context),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.event, size: 15, color: AppTheme.primary),
+                          const SizedBox(width: 6),
+                          Text(
+                            isToday ? 'Today ($dateStr)' : dateStr,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: AppTheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (!isToday)
+                    TextButton(
+                      onPressed: () => provider.setSelectedDate(DateTime.now()),
+                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                      child: const Text('Today', style: TextStyle(fontSize: 12)),
+                    ),
+                  const Spacer(),
+                  if (provider.filterBusiness != null)
+                    InkWell(
+                      onTap: () => provider.setFilterBusiness(null),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.getBusinessLightColor(provider.filterBusiness!),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppTheme.getBusinessBorderColor(provider.filterBusiness!)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              provider.filterBusiness == 'Purva Enterprises' ? 'PURVA ACTIVE' : 'MANAS ACTIVE',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.getBusinessTextColor(provider.filterBusiness!),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.close, size: 12, color: AppTheme.getBusinessTextColor(provider.filterBusiness!)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Search Bar
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search by store name, invoice number, route...',
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  suffixIcon: provider.searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 16),
+                          onPressed: () => provider.setSearchQuery(''),
+                        )
+                      : null,
+                ),
+                onChanged: (val) => provider.setSearchQuery(val),
+              ),
+              const SizedBox(height: 8),
+
+              // Mode Filter Chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6.0),
+                      child: FilterChip(
+                        label: Text('All Modes (${allForDay.length})'),
+                        selected: _selectedModeFilter == null,
+                        selectedColor: AppTheme.primary,
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          color: _selectedModeFilter == null ? Colors.white : Colors.blueGrey.shade800,
+                          fontWeight: _selectedModeFilter == null ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                        onSelected: (val) => setState(() => _selectedModeFilter = null),
+                      ),
+                    ),
+                    ...PaymentMode.values.map((mode) {
+                      final count = allForDay.where((c) => c.paymentMode == mode).length;
+                      final isSelected = _selectedModeFilter == mode;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6.0),
+                        child: FilterChip(
+                          avatar: Icon(mode.icon, size: 14, color: isSelected ? Colors.white : Colors.blueGrey.shade700),
+                          label: Text('${mode.label} ($count)'),
+                          selected: isSelected,
+                          selectedColor: _getModeColor(mode),
+                          labelStyle: TextStyle(
+                            color: isSelected ? Colors.white : Colors.blueGrey.shade800,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            fontSize: 12,
+                          ),
+                          onSelected: (val) {
+                            setState(() {
+                              _selectedModeFilter = val ? mode : null;
+                            });
+                          },
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+
+        // Subtotal Bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Colors.grey.shade50,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${filteredList.length} Entries',
+                style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, fontWeight: FontWeight.w600),
+              ),
+              Row(
+                children: [
+                  if (subtotalBalance > 0) ...[
+                    Text(
+                      'Due: ${CurrencyFormatter.format(subtotalBalance)}  |  ',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.partialBadgeColor),
+                    ),
+                  ],
+                  Text(
+                    'Collected: ${CurrencyFormatter.format(subtotalCollected)}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // List of Collections
+        Expanded(
+          child: filteredList.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.receipt_long_outlined, size: 48, color: Colors.blueGrey.shade200),
+                      const SizedBox(height: 10),
+                      Text(
+                        'No collections found for this selection',
+                        style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Record New Payment'),
+                        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const RecordCollectionScreen()),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  itemCount: filteredList.length,
+                  itemBuilder: (context, index) {
+                    final item = filteredList[index];
+                    final modeColor = _getModeColor(item.paymentMode);
+                    final timeStr = DateFormat('hh:mm a').format(item.collectedAt);
+                    final isPartial = item.isPartial;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => CollectionDetailsDialog(collection: item),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: modeColor.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    item.paymentMode.icon,
+                                    size: 20,
+                                    color: modeColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+
+                              // Details
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item.shopName,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (item.photoBase64 != null)
+                                          const Padding(
+                                            padding: EdgeInsets.only(left: 4.0),
+                                            child: Icon(Icons.attach_file, size: 14, color: Colors.blueGrey),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          'Bill: ${item.billNumber}',
+                                          style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Total: ${CurrencyFormatter.format(item.billAmount)}',
+                                          style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade500),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.getBusinessLightColor(item.businessName),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: AppTheme.getBusinessBorderColor(item.businessName), width: 0.8),
+                                          ),
+                                          child: Text(
+                                            item.businessName == 'Purva Enterprises' ? 'PURVA' : (item.businessName == 'Manas Sales' ? 'MANAS' : item.businessName),
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppTheme.getBusinessTextColor(item.businessName),
+                                              letterSpacing: 0.3,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '${item.routeName} • $timeStr',
+                                          style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade400),
+                                        ),
+                                        if (isPartial) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.chequeColor.withValues(alpha: 0.1),
+                                              borderRadius: BorderRadius.circular(3),
+                                            ),
+                                            child: Text(
+                                              'Due: ${CurrencyFormatter.format(item.balanceAmount)}',
+                                              style: const TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.partialBadgeColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // Amount & Mode Badge
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    CurrencyFormatter.format(item.collectedAmount),
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: modeColor,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: modeColor.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      item.paymentMode.label,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: modeColor,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  // --- TAB 2: INVOICE STATUS TRACKER (PENDING VS PAID) ---
+  Widget _buildInvoiceStatusTab(BuildContext context, CollectionProvider provider) {
+    final allSummaries = provider.getAllBillSummaries(forBusiness: provider.filterBusiness);
+
+    final pendingBills = allSummaries.where((b) => b.isPending).toList();
+    final paidBills = allSummaries.where((b) => b.isPaid).toList();
+
+    List<BillSummary> displayedList;
+    switch (_invoiceStatusFilter) {
+      case InvoiceFilterStatus.pending:
+        displayedList = pendingBills;
+        break;
+      case InvoiceFilterStatus.paid:
+        displayedList = paidBills;
+        break;
+      case InvoiceFilterStatus.all:
+        displayedList = allSummaries;
+        break;
+    }
+
+    if (_invoiceSearchQuery.trim().isNotEmpty) {
+      final q = _invoiceSearchQuery.toLowerCase().trim();
+      displayedList = displayedList.where((b) {
+        return b.shopName.toLowerCase().contains(q) ||
+            b.billNumber.toLowerCase().contains(q) ||
+            b.routeName.toLowerCase().contains(q);
+      }).toList();
+    }
+
+    final totalPendingDue = pendingBills.fold(0.0, (s, b) => s + b.balanceDue);
+    final totalInvoiced = allSummaries.fold(0.0, (s, b) => s + b.billTotal);
+
+    return Column(
+      children: [
+        // Filter bar for invoices
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          color: Colors.white,
+          child: Column(
+            children: [
+              _buildFirmFilterBar(provider),
+              // Active Firm & Pending Balance Badge Row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    provider.filterBusiness == null
+                        ? 'All Firms'
+                        : '${provider.filterBusiness}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: provider.filterBusiness == null
+                          ? Colors.blueGrey.shade700
+                          : AppTheme.getBusinessColor(provider.filterBusiness!),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.chequeColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.chequeColor.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      'Total Pending: ${CurrencyFormatter.format(totalPendingDue)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.balanceDueColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Search Bar
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search invoices by store name, bill number...',
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  suffixIcon: _invoiceSearchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 16),
+                          onPressed: () => setState(() => _invoiceSearchQuery = ''),
+                        )
+                      : null,
+                ),
+                onChanged: (val) => setState(() => _invoiceSearchQuery = val),
+              ),
+              const SizedBox(height: 8),
+
+              // Status Filter Chips
+              Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: Center(child: Text('Pending (${pendingBills.length})')),
+                      selected: _invoiceStatusFilter == InvoiceFilterStatus.pending,
+                      selectedColor: const Color(0xFFD97706),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _invoiceStatusFilter == InvoiceFilterStatus.pending
+                            ? Colors.white
+                            : Colors.blueGrey.shade800,
+                      ),
+                      onSelected: (val) {
+                        if (val) setState(() => _invoiceStatusFilter = InvoiceFilterStatus.pending);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: Center(child: Text('Paid (${paidBills.length})')),
+                      selected: _invoiceStatusFilter == InvoiceFilterStatus.paid,
+                      selectedColor: AppTheme.cashColor,
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _invoiceStatusFilter == InvoiceFilterStatus.paid
+                            ? Colors.white
+                            : Colors.blueGrey.shade800,
+                      ),
+                      onSelected: (val) {
+                        if (val) setState(() => _invoiceStatusFilter = InvoiceFilterStatus.paid);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: Center(child: Text('All (${allSummaries.length})')),
+                      selected: _invoiceStatusFilter == InvoiceFilterStatus.all,
+                      selectedColor: AppTheme.primary,
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _invoiceStatusFilter == InvoiceFilterStatus.all
+                            ? Colors.white
+                            : Colors.blueGrey.shade800,
+                      ),
+                      onSelected: (val) {
+                        if (val) setState(() => _invoiceStatusFilter = InvoiceFilterStatus.all);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+
+        // Subtotal overview
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Colors.grey.shade50,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${displayedList.length} Invoices',
+                style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, fontWeight: FontWeight.w600),
+              ),
+              Text(
+                'Total Invoiced: ${CurrencyFormatter.format(totalInvoiced)}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primary),
+              ),
+            ],
+          ),
+        ),
+
+        // Invoices List
+        Expanded(
+          child: displayedList.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline, size: 48, color: Colors.blueGrey.shade200),
+                      const SizedBox(height: 10),
+                      Text(
+                        _invoiceStatusFilter == InvoiceFilterStatus.pending
+                            ? 'No pending invoices! All bills are fully paid.'
+                            : 'No invoices found matching criteria',
+                        style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  itemCount: displayedList.length,
+                  itemBuilder: (context, index) {
+                    final bill = displayedList[index];
+                    final isPending = bill.isPending;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header Row: Shop Name & Status Badge
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        bill.shopName,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'Invoice #${bill.billNumber}',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade800),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.getBusinessLightColor(bill.businessName),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: AppTheme.getBusinessBorderColor(bill.businessName), width: 0.8),
+                                            ),
+                                            child: Text(
+                                              bill.businessName == 'Purva Enterprises' ? 'PURVA' : (bill.businessName == 'Manas Sales' ? 'MANAS' : bill.businessName),
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w800,
+                                                color: AppTheme.getBusinessTextColor(bill.businessName),
+                                                letterSpacing: 0.3,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isPending
+                                        ? const Color(0xFFFEF3C7)
+                                        : const Color(0xFFDCFCE7),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: isPending
+                                          ? const Color(0xFFD97706)
+                                          : const Color(0xFF16A34A),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        isPending ? Icons.pending_outlined : Icons.check_circle,
+                                        size: 13,
+                                        color: isPending ? const Color(0xFFD97706) : const Color(0xFF16A34A),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        isPending ? 'PENDING' : 'PAID (100%)',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: isPending ? const Color(0xFF92400E) : const Color(0xFF166534),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+
+                            // Progress Bar
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: bill.percentPaid / 100,
+                                minHeight: 6,
+                                backgroundColor: Colors.grey.shade200,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  isPending ? const Color(0xFFD97706) : AppTheme.cashColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Amounts Breakdown
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Total: ${CurrencyFormatter.format(bill.billTotal)}',
+                                  style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                                ),
+                                Text(
+                                  'Collected: ${CurrencyFormatter.format(bill.totalCollected)} (${bill.percentPaid.toStringAsFixed(0)}%)',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: isPending ? Colors.blueGrey.shade800 : AppTheme.cashColor,
+                                  ),
+                                ),
+                                Text(
+                                  isPending
+                                      ? 'Due: ${CurrencyFormatter.format(bill.balanceDue)}'
+                                      : 'Settled',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: isPending ? AppTheme.balanceDueColor : AppTheme.cashColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Action Buttons
+                            if (isPending) ...[
+                              const Divider(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(Icons.payments_outlined, size: 15),
+                                      label: Text(
+                                        'Collect Balance (${CurrencyFormatter.format(bill.balanceDue)})',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primary,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => RecordCollectionScreen(
+                                              initialShopId: bill.shopId,
+                                              initialBillNumber: bill.billNumber,
+                                              initialBillTotal: bill.billTotal,
+                                              initialBalanceDue: bill.balanceDue,
+                                              initialBusiness: bill.businessName,
+                                              isFollowUp: true,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    flex: 2,
+                                    child: OutlinedButton.icon(
+                                      icon: const Icon(Icons.notifications_active_outlined, size: 14, color: AppTheme.chequeColor),
+                                      label: const Text(
+                                        'Remind',
+                                        style: TextStyle(color: AppTheme.chequeColor, fontSize: 12, fontWeight: FontWeight.bold),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        side: const BorderSide(color: AppTheme.chequeColor),
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      onPressed: () {
+                                        final shop = provider.getShopById(bill.shopId);
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx) => SendReminderDialog(
+                                            shopName: bill.shopName,
+                                            mobileNumber: shop?.mobileNumber ?? '',
+                                            businessName: bill.businessName,
+                                            salesmanName: provider.salesmanName,
+                                            balanceAmount: bill.balanceDue,
+                                            billNumber: bill.billNumber,
+                                            billTotal: bill.billTotal,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
