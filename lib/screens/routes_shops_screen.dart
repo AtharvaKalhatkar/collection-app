@@ -7,7 +7,6 @@ import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import 'add_route_dialog.dart';
 import 'add_shop_screen.dart';
-import 'record_collection_screen.dart';
 import 'send_reminder_dialog.dart';
 
 class RoutesShopsScreen extends StatefulWidget {
@@ -19,7 +18,118 @@ class RoutesShopsScreen extends StatefulWidget {
 
 class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
   String? _selectedRouteId;
+  String? _selectedShopId;
   String _shopSearch = '';
+
+  void _showPriorityDialog(BuildContext context, CollectionProvider provider) {
+    final routes = List<RouteModel>.from(provider.routes);
+    routes.sort((a, b) => a.priority.compareTo(b.priority));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.low_priority_rounded, color: AppTheme.primary),
+                SizedBox(width: 8),
+                Text('Set Route Priorities', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Order route beats by visit sequence (Priority 1 will be visited first on the field):',
+                    style: TextStyle(fontSize: 12.5, color: Colors.blueGrey),
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: routes.length,
+                      separatorBuilder: (_, index) => const Divider(height: 1),
+                      itemBuilder: (context, idx) {
+                        final r = routes[idx];
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          leading: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                            child: Text(
+                              'P${idx + 1}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.primary,
+                              ),
+                            ),
+                          ),
+                          title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                          subtitle: Text('${provider.getShopsForRoute(r.id).length} outlets', style: const TextStyle(fontSize: 11.5)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.arrow_upward, size: 18),
+                                tooltip: 'Move Higher Priority',
+                                onPressed: idx > 0
+                                    ? () {
+                                        final currentPriority = idx + 1;
+                                        final prevRoute = routes[idx - 1];
+                                        final prevPriority = idx;
+                                        provider.updateRoutePriority(r.id, prevPriority);
+                                        provider.updateRoutePriority(prevRoute.id, currentPriority);
+                                        setDialogState(() {
+                                          routes[idx] = r.copyWith(priority: prevPriority);
+                                          routes[idx - 1] = prevRoute.copyWith(priority: currentPriority);
+                                          routes.sort((a, b) => a.priority.compareTo(b.priority));
+                                        });
+                                      }
+                                    : null,
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.arrow_downward, size: 18),
+                                tooltip: 'Move Lower Priority',
+                                onPressed: idx < routes.length - 1
+                                    ? () {
+                                        final currentPriority = idx + 1;
+                                        final nextRoute = routes[idx + 1];
+                                        final nextPriority = idx + 2;
+                                        provider.updateRoutePriority(r.id, nextPriority);
+                                        provider.updateRoutePriority(nextRoute.id, currentPriority);
+                                        setDialogState(() {
+                                          routes[idx] = r.copyWith(priority: nextPriority);
+                                          routes[idx + 1] = nextRoute.copyWith(priority: currentPriority);
+                                          routes.sort((a, b) => a.priority.compareTo(b.priority));
+                                        });
+                                      }
+                                    : null,
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   Future<void> _confirmAndDeleteShop(ShopModel shop) async {
     final confirmed = await showDialog<bool>(
@@ -69,9 +179,16 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
           : RouteModel(id: '', name: 'No Beat Selected'),
     );
 
+    final outletsInSelectedRoute = _selectedRouteId != null && _selectedRouteId!.isNotEmpty
+        ? provider.getShopsForRoute(_selectedRouteId!)
+        : provider.shops;
+
     final shopsInRoute = provider.shops.where((s) {
       if (_selectedRouteId != null && _selectedRouteId!.isNotEmpty) {
         if (s.routeId != _selectedRouteId) return false;
+      }
+      if (_selectedShopId != null && _selectedShopId!.isNotEmpty) {
+        if (s.id != _selectedShopId) return false;
       }
       if (_shopSearch.isNotEmpty) {
         final q = _shopSearch.toLowerCase();
@@ -84,19 +201,12 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Routes & Customers'),
+        title: const Text('Routes & Outlets'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_business_outlined, size: 20),
-            tooltip: 'Add Store',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AddShopScreen(initialRouteId: _selectedRouteId),
-                ),
-              );
-            },
+            icon: const Icon(Icons.low_priority_rounded, size: 21),
+            tooltip: 'Set Route Priorities',
+            onPressed: () => _showPriorityDialog(context, provider),
           ),
           IconButton(
             icon: const Icon(Icons.add_location_alt_outlined, size: 20),
@@ -107,15 +217,30 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                 builder: (ctx) => const AddRouteDialog(),
               );
               if (newRoute != null) {
-                setState(() => _selectedRouteId = newRoute.id);
+                setState(() {
+                  _selectedRouteId = newRoute.id;
+                  _selectedShopId = null;
+                });
               }
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_business_outlined, size: 20),
+            tooltip: 'Add Outlet',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AddShopScreen(initialRouteId: _selectedRouteId),
+                ),
+              );
             },
           ),
         ],
       ),
       body: Column(
         children: [
-          // Route Horizontal Selector Bar
+          // Route Horizontal Selector Bar with Priority Badges
           Container(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
             color: Colors.white,
@@ -125,33 +250,34 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'SALES ROUTES',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                        color: Colors.blueGrey,
-                      ),
+                    Row(
+                      children: [
+                        const Text(
+                          'SALES ROUTES (BY PRIORITY)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: Colors.blueGrey,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        InkWell(
+                          onTap: () => _showPriorityDialog(context, provider),
+                          child: const Icon(Icons.edit_note, size: 16, color: AppTheme.primary),
+                        ),
+                      ],
                     ),
                     InkWell(
-                      onTap: () async {
-                        final newRoute = await showDialog<RouteModel>(
-                          context: context,
-                          builder: (ctx) => const AddRouteDialog(),
-                        );
-                        if (newRoute != null) {
-                          setState(() => _selectedRouteId = newRoute.id);
-                        }
-                      },
-                      child: Row(
-                        children: const [
-                          Icon(Icons.add, size: 14, color: AppTheme.secondary),
+                      onTap: () => _showPriorityDialog(context, provider),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.sort_rounded, size: 14, color: AppTheme.primary),
                           SizedBox(width: 4),
                           Text(
-                            'Add Beat',
+                            'Set Priority',
                             style: TextStyle(
-                              color: AppTheme.secondary,
+                              color: AppTheme.primary,
                               fontWeight: FontWeight.w700,
                               fontSize: 12,
                             ),
@@ -180,16 +306,25 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: routes.map((r) {
+                      children: routes.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final r = entry.value;
                         final isSelected = _selectedRouteId == r.id;
                         final count = provider.getShopsForRoute(r.id).length;
                         return Padding(
                           padding: const EdgeInsets.only(right: 8.0),
                           child: FilterChip(
-                            avatar: Icon(
-                              Icons.location_on_outlined,
-                              size: 14,
-                              color: isSelected ? Colors.white : AppTheme.primary,
+                            avatar: CircleAvatar(
+                              radius: 10,
+                              backgroundColor: isSelected ? Colors.white.withValues(alpha: 0.25) : AppTheme.primary.withValues(alpha: 0.15),
+                              child: Text(
+                                '${idx + 1}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: isSelected ? Colors.white : AppTheme.primary,
+                                ),
+                              ),
                             ),
                             label: Text('${r.name} ($count)'),
                             selected: isSelected,
@@ -201,7 +336,12 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                             ),
                             backgroundColor: Colors.grey.shade100,
                             onSelected: (val) {
-                              if (val) setState(() => _selectedRouteId = r.id);
+                              if (val) {
+                                setState(() {
+                                  _selectedRouteId = r.id;
+                                  _selectedShopId = null;
+                                });
+                              }
                             },
                           ),
                         );
@@ -213,7 +353,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
           ),
           const Divider(height: 1),
 
-          // Route Details Banner & Search
+          // Route Details Banner, Outlet Dropdown, & Search
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(
@@ -244,7 +384,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
-                                    '${shopsInRoute.length} stores',
+                                    '${outletsInSelectedRoute.length} outlets',
                                     style: const TextStyle(
                                       fontSize: 11,
                                       color: AppTheme.primary,
@@ -279,20 +419,58 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                             builder: (ctx) => AddRouteDialog(existingRoute: selectedRoute),
                           );
                           if (result == 'deleted') {
-                            setState(() => _selectedRouteId = null);
+                            setState(() {
+                              _selectedRouteId = null;
+                              _selectedShopId = null;
+                            });
                           }
                         },
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
+
+                  // Outlet Dropdown Selector for this Route
+                  DropdownButtonFormField<String?>(
+                    key: ValueKey('outlet_dd_${_selectedRouteId}_$_selectedShopId'),
+                    initialValue: _selectedShopId,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Select Outlet / Shop',
+                      prefixIcon: const Icon(Icons.storefront, size: 18),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    items: [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text(
+                          'All Outlets in ${selectedRoute.name} (${outletsInSelectedRoute.length})',
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                      ),
+                      ...outletsInSelectedRoute.map(
+                        (s) => DropdownMenuItem<String?>(
+                          value: s.id,
+                          child: Text('${s.name} (${s.mobileNumber})', style: const TextStyle(fontSize: 13)),
+                        ),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      setState(() => _selectedShopId = val);
+                    },
+                  ),
+                  const SizedBox(height: 8),
                 ],
+
+                // Search Box
                 TextField(
                   decoration: InputDecoration(
-                    hintText: 'Search stores in ${selectedRoute.name}...',
+                    hintText: 'Search outlet name, phone, or address...',
                     prefixIcon: const Icon(Icons.search, size: 18),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     suffixIcon: _shopSearch.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear, size: 16),
@@ -306,7 +484,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
             ),
           ),
 
-          // Shops List
+          // Outlets List
           Expanded(
             child: shopsInRoute.isEmpty
                 ? Center(
@@ -317,14 +495,14 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                         const SizedBox(height: 10),
                         Text(
                           _shopSearch.isNotEmpty
-                              ? 'No stores matching "$_shopSearch"'
-                              : 'No stores registered under "${selectedRoute.name}" yet',
+                              ? 'No outlets matching "$_shopSearch"'
+                              : 'No outlets registered under "${selectedRoute.name}" yet',
                           style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13),
                         ),
                         const SizedBox(height: 12),
                         ElevatedButton.icon(
                           icon: const Icon(Icons.add, size: 16),
-                          label: Text('Add Store to ${selectedRoute.name}'),
+                          label: Text('Add Outlet to ${selectedRoute.name}'),
                           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                           onPressed: () {
                             Navigator.push(
@@ -343,8 +521,6 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                     itemCount: shopsInRoute.length,
                     itemBuilder: (context, index) {
                       final shop = shopsInRoute[index];
-                      final collections = provider.getCollectionsForShop(shop.id);
-                      final totalPaid = collections.fold(0.0, (sum, c) => sum + c.collectedAmount);
                       final balanceDue = provider.getTotalBalanceForShop(shop.id);
 
                       return Card(
@@ -467,67 +643,55 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        'Collected: ${CurrencyFormatter.format(totalPaid)} (${collections.length} bills)',
-                                        style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, fontWeight: FontWeight.w600),
-                                      ),
                                       if (balanceDue > 0)
                                         Text(
                                           'Pending Balance: ${CurrencyFormatter.format(balanceDue)}',
                                           style: const TextStyle(
-                                            fontSize: 11,
+                                            fontSize: 13,
                                             color: AppTheme.partialBadgeColor,
-                                            fontWeight: FontWeight.bold,
+                                            fontWeight: FontWeight.w800,
                                           ),
-                                        ),
-                                    ],
-                                  ),
-                                  Row(
-                                    children: [
-                                      if (balanceDue > 0) ...[
-                                        OutlinedButton.icon(
-                                          icon: const Icon(Icons.notifications_active_outlined, size: 13, color: AppTheme.chequeColor),
-                                          label: const Text('Remind', style: TextStyle(color: AppTheme.chequeColor, fontSize: 12, fontWeight: FontWeight.bold)),
-                                          style: OutlinedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            side: const BorderSide(color: AppTheme.chequeColor),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                        )
+                                      else
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.cashColor.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(4),
                                           ),
-                                          onPressed: () {
-                                            showDialog(
-                                              context: context,
-                                              builder: (ctx) => SendReminderDialog(
-                                                shopName: shop.name,
-                                                mobileNumber: shop.mobileNumber,
-                                                businessName: provider.businesses.first,
-                                                salesmanName: provider.salesmanName,
-                                                balanceAmount: balanceDue,
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                        const SizedBox(width: 8),
-                                      ],
-                                      ElevatedButton.icon(
-                                        icon: const Icon(Icons.add, size: 14),
-                                        label: const Text('Record'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppTheme.primary,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                                          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                        ),
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => RecordCollectionScreen(initialShopId: shop.id),
+                                          child: const Text(
+                                            'No Outstanding Dues',
+                                            style: TextStyle(
+                                              fontSize: 11.5,
+                                              color: AppTheme.cashColor,
+                                              fontWeight: FontWeight.w700,
                                             ),
-                                          );
-                                        },
-                                      ),
+                                          ),
+                                        ),
                                     ],
                                   ),
+                                  if (balanceDue > 0)
+                                    OutlinedButton.icon(
+                                      icon: const Icon(Icons.notifications_active_outlined, size: 13, color: AppTheme.chequeColor),
+                                      label: const Text('Remind', style: TextStyle(color: AppTheme.chequeColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        side: const BorderSide(color: AppTheme.chequeColor),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx) => SendReminderDialog(
+                                            shopName: shop.name,
+                                            mobileNumber: shop.mobileNumber,
+                                            businessName: provider.businesses.first,
+                                            salesmanName: provider.salesmanName,
+                                            balanceAmount: balanceDue,
+                                          ),
+                                        );
+                                      },
+                                    ),
                                 ],
                               ),
                             ],
@@ -540,9 +704,10 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'routes_fab_add_store',
         backgroundColor: AppTheme.primary,
-        icon: const Icon(Icons.add_business, color: Colors.white),
-        label: const Text('Add Store', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        icon: const Icon(Icons.add_business_outlined, color: Colors.white),
+        label: const Text('Add Outlet', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         onPressed: () {
           Navigator.push(
             context,

@@ -3,8 +3,6 @@ import '../utils/theme.dart';
 import 'home_dashboard_screen.dart';
 import 'collections_list_screen.dart';
 import 'routes_shops_screen.dart';
-import 'record_collection_screen.dart';
-import 'add_shop_screen.dart';
 
 class MainNavigationShell extends StatefulWidget {
   const MainNavigationShell({super.key});
@@ -60,35 +58,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           ),
         ],
       ),
-      floatingActionButton: _currentIndex == 2
-          ? FloatingActionButton.extended(
-              heroTag: 'main_shell_fab_store',
-              backgroundColor: AppTheme.secondary,
-              foregroundColor: Colors.white,
-              elevation: 2,
-              icon: const Icon(Icons.add_business_outlined, size: 20),
-              label: const Text('Add Store', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AddShopScreen()),
-                );
-              },
-            )
-          : FloatingActionButton.extended(
-              heroTag: 'main_shell_fab_record',
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              elevation: 2,
-              icon: const Icon(Icons.add_circle_outline, size: 20),
-              label: const Text('Record Payment', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const RecordCollectionScreen()),
-                );
-              },
-            ),
     );
   }
 }

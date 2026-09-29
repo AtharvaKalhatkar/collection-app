@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/route_model.dart';
 import '../models/shop_model.dart';
 import '../models/collection_model.dart';
+import '../models/pending_bill_model.dart';
 import '../models/bill_summary.dart';
 import '../models/payment_mode.dart';
 import '../services/storage_service.dart';
@@ -19,6 +20,7 @@ class CollectionProvider extends ChangeNotifier {
   List<RouteModel> _routes = [];
   List<ShopModel> _shops = [];
   List<CollectionModel> _collections = [];
+  List<PendingBillModel> _pendingBills = [];
   List<String> _businesses = ['Purva Enterprises', 'Manas Sales'];
   String _salesmanName = 'Akash';
   bool _isLoading = true;
@@ -32,6 +34,7 @@ class CollectionProvider extends ChangeNotifier {
   List<RouteModel> get routes => _routes;
   List<ShopModel> get shops => _shops;
   List<CollectionModel> get collections => _collections;
+  List<PendingBillModel> get pendingBills => _pendingBills;
   List<String> get businesses => _businesses;
   String get salesmanName => _salesmanName;
   bool get isLoading => _isLoading;
@@ -56,12 +59,14 @@ class CollectionProvider extends ChangeNotifier {
       _routes = SampleDataService.getInitialRoutes();
       _shops = SampleDataService.getInitialShops();
       _collections = SampleDataService.getInitialCollections();
+      _pendingBills = SampleDataService.getInitialPendingBills();
       _businesses = ['Purva Enterprises', 'Manas Sales'];
       _salesmanName = 'Akash';
 
       await _storage.saveRoutes(_routes);
       await _storage.saveShops(_shops);
       await _storage.saveCollections(_collections);
+      await _storage.savePendingBills(_pendingBills);
       await _storage.saveBusinesses(_businesses);
       await _storage.saveSalesmanName(_salesmanName);
       await _storage.markInitialized();
@@ -69,9 +74,16 @@ class CollectionProvider extends ChangeNotifier {
       _routes = await _storage.loadRoutes();
       _shops = await _storage.loadShops();
       _collections = await _storage.loadCollections();
+      _pendingBills = await _storage.loadPendingBills();
+      if (_pendingBills.isEmpty) {
+        _pendingBills = SampleDataService.getInitialPendingBills();
+        await _storage.savePendingBills(_pendingBills);
+      }
       _businesses = await _storage.loadBusinesses();
       _salesmanName = await _storage.loadSalesmanName();
     }
+
+    _routes.sort((a, b) => a.priority.compareTo(b.priority));
 
     // Instant UI load from local cache
     _isLoading = false;
@@ -377,14 +389,17 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   // --- Route Operations ---
-  Future<RouteModel> addRoute({required String name, String? description}) async {
+  Future<RouteModel> addRoute({required String name, String? description, int? priority}) async {
+    final newPriority = priority ?? (_routes.isEmpty ? 1 : (_routes.map((r) => r.priority).reduce((a, b) => a > b ? a : b) + 1));
     final newRoute = RouteModel(
       id: _uuid.v4(),
       name: name.trim(),
       description: description?.trim(),
+      priority: newPriority,
       createdAt: DateTime.now(),
     );
-    _routes.insert(0, newRoute);
+    _routes.add(newRoute);
+    _routes.sort((a, b) => a.priority.compareTo(b.priority));
     await _storage.saveRoutes(_routes);
     notifyListeners();
     if (_firebase.isInitialized) {
@@ -406,6 +421,7 @@ class CollectionProvider extends ChangeNotifier {
           }
         }
       }
+      _routes.sort((a, b) => a.priority.compareTo(b.priority));
       await _storage.saveRoutes(_routes);
       await _storage.saveShops(_shops);
       notifyListeners();
@@ -414,6 +430,35 @@ class CollectionProvider extends ChangeNotifier {
       }
     }
     return updatedRoute;
+  }
+
+  Future<void> updateRoutePriority(String routeId, int newPriority) async {
+    final idx = _routes.indexWhere((r) => r.id == routeId);
+    if (idx != -1) {
+      _routes[idx] = _routes[idx].copyWith(priority: newPriority);
+      _routes.sort((a, b) => a.priority.compareTo(b.priority));
+      await _storage.saveRoutes(_routes);
+      notifyListeners();
+      if (_firebase.isInitialized) {
+        _firebase.saveRoute(_routes[idx]);
+      }
+    }
+  }
+
+  Future<void> reorderRoutes(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final item = _routes.removeAt(oldIndex);
+    _routes.insert(newIndex, item);
+    for (int i = 0; i < _routes.length; i++) {
+      _routes[i] = _routes[i].copyWith(priority: i + 1);
+      if (_firebase.isInitialized) {
+        _firebase.saveRoute(_routes[i]);
+      }
+    }
+    await _storage.saveRoutes(_routes);
+    notifyListeners();
   }
 
   Future<void> deleteRoute(String routeId) async {
@@ -539,6 +584,103 @@ class CollectionProvider extends ChangeNotifier {
   double getTotalBalanceForShop(String shopId) {
     final pending = getPendingBills(forShopId: shopId);
     return pending.fold(0.0, (sum, b) => sum + b.balanceDue);
+  }
+
+  // --- Pending Bill Operations ---
+  Future<PendingBillModel> addPendingBill(PendingBillModel bill) async {
+    _pendingBills.insert(0, bill);
+    await _storage.savePendingBills(_pendingBills);
+    notifyListeners();
+    return bill;
+  }
+
+  Future<void> updatePendingBill(PendingBillModel updatedBill) async {
+    final idx = _pendingBills.indexWhere((b) => b.id == updatedBill.id);
+    if (idx != -1) {
+      _pendingBills[idx] = updatedBill;
+      await _storage.savePendingBills(_pendingBills);
+      notifyListeners();
+    }
+  }
+
+  Future<void> deletePendingBill(String id) async {
+    _pendingBills.removeWhere((b) => b.id == id);
+    await _storage.savePendingBills(_pendingBills);
+    notifyListeners();
+  }
+
+  List<PendingBillModel> getPendingBillsForRoute(String routeId, {String? businessName}) {
+    return _pendingBills.where((b) {
+      if (b.routeId != routeId) return false;
+      if (businessName != null && businessName.isNotEmpty && businessName != 'All') {
+        if (b.businessName != businessName) return false;
+      }
+      return !b.isPaid;
+    }).toList()
+      ..sort((a, b) => b.invoiceDate.compareTo(a.invoiceDate));
+  }
+
+  PendingBillModel? getPendingBillById(String id) {
+    try {
+      return _pendingBills.firstWhere((b) => b.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> recordCollectionForPendingBill({
+    required PendingBillModel pendingBill,
+    required double collectedAmount,
+    required PaymentMode paymentMode,
+    required DateTime collectionDate,
+    String? chequeNumber,
+    String? bankName,
+    String? referenceNumber,
+  }) async {
+    final remainingAfter = pendingBill.balanceDue - collectedAmount;
+    final newCollection = CollectionModel(
+      id: _uuid.v4(),
+      businessName: pendingBill.businessName,
+      shopId: pendingBill.shopId,
+      shopName: pendingBill.shopName,
+      routeId: pendingBill.routeId,
+      routeName: pendingBill.routeName,
+      billNumber: pendingBill.billNumber,
+      billAmount: pendingBill.totalAmount,
+      collectedAmount: collectedAmount,
+      balanceRemaining: remainingAfter > 0 ? remainingAfter : 0.0,
+      paymentMode: paymentMode,
+      chequeNumber: chequeNumber,
+      bankName: bankName,
+      referenceNumber: referenceNumber,
+      salesmanName: _salesmanName,
+      collectedAt: collectionDate,
+      billDate: pendingBill.invoiceDate,
+    );
+    await addCollection(newCollection);
+
+    final newCollectedTotal = pendingBill.collectedAmount + collectedAmount;
+    final newStatus = (pendingBill.totalAmount - newCollectedTotal) <= 0.001 ? 'paid' : 'partial';
+    final updatedBill = pendingBill.copyWith(
+      collectedAmount: newCollectedTotal,
+      status: newStatus,
+    );
+    await updatePendingBill(updatedBill);
+  }
+
+  List<CollectionModel> getCollectionsForMode(PaymentMode mode, {DateTime? forDate, String? business}) {
+    final date = forDate ?? _selectedDate;
+    return _collections.where((c) {
+      final sameDay = c.collectedAt.year == date.year &&
+          c.collectedAt.month == date.month &&
+          c.collectedAt.day == date.day;
+      if (!sameDay) return false;
+      if (business != null && business.isNotEmpty && business != 'All') {
+        if (c.businessName != business) return false;
+      }
+      return c.paymentMode == mode;
+    }).toList()
+      ..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
   }
 
   // --- Professional Report Formatter ---

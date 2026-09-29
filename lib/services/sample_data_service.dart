@@ -2,6 +2,7 @@ import '../models/route_model.dart';
 import '../models/shop_model.dart';
 import '../models/collection_model.dart';
 import '../models/payment_mode.dart';
+import '../models/pending_bill_model.dart';
 
 class SampleDataService {
   static List<RouteModel> getInitialRoutes() {
@@ -10,18 +11,21 @@ class SampleDataService {
         id: 'route-chakan',
         name: 'Chakan',
         description: 'Main Bazaar, Market Yard & Talegaon Chowk',
+        priority: 1,
         createdAt: DateTime.now().subtract(const Duration(days: 1)),
       ),
       RouteModel(
         id: 'route-bhosari',
         name: 'Bhosari',
         description: 'MIDC, Dighi Road & Gaonthan',
+        priority: 2,
         createdAt: DateTime.now().subtract(const Duration(days: 2)),
       ),
       RouteModel(
         id: 'route-hadapsar',
         name: 'Hadapsar',
         description: 'Gadital, Pune-Solapur Highway',
+        priority: 3,
         createdAt: DateTime.now().subtract(const Duration(days: 3)),
       ),
     ];
@@ -185,6 +189,72 @@ class SampleDataService {
         remarks: 'NEFT transfer verified',
         salesmanName: 'Akash',
         collectedAt: DateTime(now.year, now.month, now.day, 18, 05),
+      ),
+    ];
+  }
+
+  static List<PendingBillModel> getInitialPendingBills() {
+    final now = DateTime.now();
+    return [
+      PendingBillModel(
+        id: 'pb-1',
+        businessName: 'Purva Enterprises',
+        routeId: 'route-chakan',
+        routeName: 'Chakan',
+        shopId: 'shop-ata-kirana',
+        shopName: 'ATA Kirana',
+        invoiceDate: DateTime(now.year, now.month, 12),
+        deliveryDate: DateTime(now.year, now.month, 12),
+        billNumber: 'PE-5012',
+        totalAmount: 18500.0,
+        collectedAmount: 0.0,
+        status: 'pending',
+        createdAt: DateTime(now.year, now.month, 13, 9, 30),
+      ),
+      PendingBillModel(
+        id: 'pb-2',
+        businessName: 'Manas Sales',
+        routeId: 'route-chakan',
+        routeName: 'Chakan',
+        shopId: 'shop-ganesh-traders',
+        shopName: 'Shree Ganesh Traders',
+        invoiceDate: DateTime(now.year, now.month, 14),
+        deliveryDate: DateTime(now.year, now.month, 15),
+        billNumber: 'MS-3104',
+        totalAmount: 24000.0,
+        collectedAmount: 0.0,
+        status: 'pending',
+        createdAt: DateTime(now.year, now.month, 15, 11, 00),
+      ),
+      PendingBillModel(
+        id: 'pb-3',
+        businessName: 'Purva Enterprises',
+        routeId: 'route-bhosari',
+        routeName: 'Bhosari',
+        shopId: 'shop-om-traders',
+        shopName: 'Om Traders',
+        invoiceDate: DateTime(now.year, now.month, 16),
+        deliveryDate: DateTime(now.year, now.month, 16),
+        billNumber: 'PE-5020',
+        totalAmount: 12000.0,
+        collectedAmount: 0.0,
+        status: 'pending',
+        createdAt: DateTime(now.year, now.month, 17, 10, 15),
+      ),
+      PendingBillModel(
+        id: 'pb-4',
+        businessName: 'Manas Sales',
+        routeId: 'route-chakan',
+        routeName: 'Chakan',
+        shopId: 'shop-mahesh-provision',
+        shopName: 'Mahesh Provision Store',
+        invoiceDate: DateTime(now.year, now.month, 17),
+        deliveryDate: DateTime(now.year, now.month, 18),
+        billNumber: 'MS-3110',
+        totalAmount: 9500.0,
+        collectedAmount: 0.0,
+        status: 'pending',
+        createdAt: DateTime(now.year, now.month, 18, 14, 00),
       ),
     ];
   }

@@ -8,7 +8,7 @@ import '../models/bill_summary.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import 'collection_details_dialog.dart';
-import 'record_collection_screen.dart';
+import 'make_collection_screen.dart';
 import 'send_reminder_dialog.dart';
 import 'add_shop_screen.dart';
 
@@ -27,6 +27,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
   PaymentMode? _selectedModeFilter;
   InvoiceFilterStatus _invoiceStatusFilter = InvoiceFilterStatus.pending;
   String _invoiceSearchQuery = '';
+  DateTime? _invoiceDateFilter;
 
   Color _getModeColor(PaymentMode mode) {
     switch (mode) {
@@ -419,50 +420,54 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
               ),
               const SizedBox(height: 8),
 
-              // Mode Filter Chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6.0),
-                      child: FilterChip(
-                        label: Text('All Modes (${allForDay.length})'),
-                        selected: _selectedModeFilter == null,
-                        selectedColor: AppTheme.primary,
-                        labelStyle: TextStyle(
-                          fontSize: 12,
-                          color: _selectedModeFilter == null ? Colors.white : Colors.blueGrey.shade800,
-                          fontWeight: _selectedModeFilter == null ? FontWeight.w700 : FontWeight.w500,
-                        ),
-                        onSelected: (val) => setState(() => _selectedModeFilter = null),
-                      ),
-                    ),
-                    ...PaymentMode.values.map((mode) {
-                      final count = allForDay.where((c) => c.paymentMode == mode).length;
-                      final isSelected = _selectedModeFilter == mode;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
-                        child: FilterChip(
-                          avatar: Icon(mode.icon, size: 14, color: isSelected ? Colors.white : Colors.blueGrey.shade700),
-                          label: Text('${mode.label} ($count)'),
-                          selected: isSelected,
-                          selectedColor: _getModeColor(mode),
-                          labelStyle: TextStyle(
-                            color: isSelected ? Colors.white : Colors.blueGrey.shade800,
-                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                          onSelected: (val) {
-                            setState(() {
-                              _selectedModeFilter = val ? mode : null;
-                            });
-                          },
-                        ),
-                      );
-                    }),
-                  ],
+              // Mode Filter Dropdown
+              DropdownButtonFormField<PaymentMode?>(
+                key: ValueKey('ledger_mode_dd_$_selectedModeFilter'),
+                initialValue: _selectedModeFilter,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Payment Mode Filter',
+                  prefixIcon: Icon(
+                    _selectedModeFilter?.icon ?? Icons.payments_outlined,
+                    size: 18,
+                    color: _selectedModeFilter != null ? _getModeColor(_selectedModeFilter!) : AppTheme.primary,
+                  ),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 ),
+                items: [
+                  DropdownMenuItem<PaymentMode?>(
+                    value: null,
+                    child: Text(
+                      'All Modes (${allForDay.length} collections)',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
+                  ...PaymentMode.values.map((mode) {
+                    final count = allForDay.where((c) => c.paymentMode == mode).length;
+                    return DropdownMenuItem<PaymentMode?>(
+                      value: mode,
+                      child: Row(
+                        children: [
+                          Icon(mode.icon, size: 16, color: _getModeColor(mode)),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${mode.label} ($count)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: _getModeColor(mode),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+                onChanged: (val) {
+                  setState(() => _selectedModeFilter = val);
+                },
               ),
             ],
           ),
@@ -518,12 +523,12 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       const SizedBox(height: 12),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.add, size: 16),
-                        label: const Text('Record New Payment'),
+                        label: const Text('Make Collection'),
                         style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                         onPressed: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const RecordCollectionScreen()),
+                            MaterialPageRoute(builder: (_) => const MakeCollectionScreen()),
                           );
                         },
                       ),
@@ -703,7 +708,15 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
 
   // --- TAB 2: INVOICE STATUS TRACKER (PENDING VS PAID) ---
   Widget _buildInvoiceStatusTab(BuildContext context, CollectionProvider provider) {
-    final allSummaries = provider.getAllBillSummaries(forBusiness: provider.filterBusiness);
+    var allSummaries = provider.getAllBillSummaries(forBusiness: provider.filterBusiness);
+
+    if (_invoiceDateFilter != null) {
+      final filterDateStr = DateFormat('yyyy-MM-dd').format(_invoiceDateFilter!);
+      allSummaries = allSummaries.where((b) {
+        final bDateStr = DateFormat('yyyy-MM-dd').format(b.billDate);
+        return bDateStr == filterDateStr;
+      }).toList();
+    }
 
     final pendingBills = allSummaries.where((b) => b.isPending).toList();
     final paidBills = allSummaries.where((b) => b.isPaid).toList();
@@ -742,6 +755,73 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
           child: Column(
             children: [
               _buildFirmFilterBar(provider),
+              // Date Filter Row for Invoices
+              Row(
+                children: [
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _invoiceDateFilter ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (picked != null) {
+                        setState(() => _invoiceDateFilter = picked);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _invoiceDateFilter != null
+                            ? AppTheme.primary.withValues(alpha: 0.1)
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: _invoiceDateFilter != null ? AppTheme.primary : AppTheme.border,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.calendar_month_outlined,
+                            size: 15,
+                            color: _invoiceDateFilter != null ? AppTheme.primary : Colors.blueGrey,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _invoiceDateFilter != null
+                                ? 'Date: ${DateFormat('dd MMM yyyy').format(_invoiceDateFilter!)}'
+                                : 'Filter by Date: All Dates',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: _invoiceDateFilter != null ? AppTheme.primary : Colors.blueGrey.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_invoiceDateFilter != null) ...[
+                    const SizedBox(width: 6),
+                    InkWell(
+                      onTap: () => setState(() => _invoiceDateFilter = null),
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.close, size: 14, color: Colors.blueGrey),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
               // Active Firm & Pending Balance Badge Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1060,13 +1140,8 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
-                                            builder: (_) => RecordCollectionScreen(
-                                              initialShopId: bill.shopId,
-                                              initialBillNumber: bill.billNumber,
-                                              initialBillTotal: bill.billTotal,
-                                              initialBalanceDue: bill.balanceDue,
+                                            builder: (_) => MakeCollectionScreen(
                                               initialBusiness: bill.businessName,
-                                              isFollowUp: true,
                                             ),
                                           ),
                                         );

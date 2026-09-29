@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../utils/theme.dart';
 import '../providers/collection_provider.dart';
 import '../models/payment_mode.dart';
 import '../utils/currency_formatter.dart';
-import '../utils/theme.dart';
-import 'record_collection_screen.dart';
+import 'add_pending_bill_screen.dart';
+import 'make_collection_screen.dart';
+import 'statement_screen.dart';
+import 'placeholder_screen.dart';
 import 'collection_details_dialog.dart';
 import 'collections_list_screen.dart';
 import 'add_shop_screen.dart';
@@ -33,6 +36,153 @@ class HomeDashboardScreen extends StatelessWidget {
       case PaymentMode.netBanking:
         return AppTheme.netBankingColor;
     }
+  }
+
+  void _showModeBillsSheet(BuildContext context, CollectionProvider provider, PaymentMode mode) {
+    final modeBills = provider.getCollectionsForMode(
+      mode,
+      forDate: provider.selectedDate,
+      business: provider.filterBusiness,
+    );
+    final totalAmount = modeBills.fold(0.0, (s, c) => s + c.collectedAmount);
+    final modeColor = _getModeColor(mode);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.65,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: modeColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(mode.icon, color: modeColor, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${mode.label} Collections',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            'Total: ${CurrencyFormatter.format(totalAmount)} (${modeBills.length} receipts)',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: modeColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: modeBills.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(mode.icon, size: 44, color: Colors.blueGrey.shade200),
+                              const SizedBox(height: 8),
+                              Text(
+                                'No ${mode.label} collections recorded for this date',
+                                style: TextStyle(color: Colors.blueGrey.shade600),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: modeBills.length,
+                          separatorBuilder: (_, index) => const Divider(height: 1),
+                          itemBuilder: (context, idx) {
+                            final item = modeBills[idx];
+                            final timeStr = DateFormat('hh:mm a').format(item.collectedAt);
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.shopName,
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                    ),
+                                  ),
+                                  Text(
+                                    CurrencyFormatter.format(item.collectedAmount),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 15,
+                                      color: modeColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 2.0),
+                                child: Text(
+                                  'Bill #${item.billNumber} • ${item.routeName} • $timeStr',
+                                  style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => CollectionDetailsDialog(collection: item),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.assessment_outlined, size: 16),
+                    label: const Text('View Full Statement'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      side: BorderSide(color: modeColor),
+                      foregroundColor: modeColor,
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => StatementScreen(initialMode: mode),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _copyReport(BuildContext context) {
@@ -997,13 +1147,8 @@ class HomeDashboardScreen extends StatelessWidget {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => RecordCollectionScreen(
-                                          initialShopId: bill.shopId,
-                                          initialBillNumber: bill.billNumber,
-                                          initialBillTotal: bill.billTotal,
-                                          initialBalanceDue: bill.balanceDue,
+                                        builder: (_) => MakeCollectionScreen(
                                           initialBusiness: bill.businessName,
-                                          isFollowUp: true,
                                         ),
                                       ),
                                     );
@@ -1064,7 +1209,7 @@ class HomeDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
 
-              // 2x2 Grid for the 4 modes with professional vector icons
+              // 2x2 Grid for the 4 modes with professional vector icons (clickable for breakdown)
               Row(
                 children: [
                   Expanded(
@@ -1074,6 +1219,7 @@ class HomeDashboardScreen extends StatelessWidget {
                       icon: Icons.payments_outlined,
                       accentColor: AppTheme.cashColor,
                       billsCount: todayCollections.where((c) => c.paymentMode == PaymentMode.cash).length,
+                      onTap: () => _showModeBillsSheet(context, provider, PaymentMode.cash),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1084,6 +1230,7 @@ class HomeDashboardScreen extends StatelessWidget {
                       icon: Icons.qr_code_2_rounded,
                       accentColor: AppTheme.upiColor,
                       billsCount: todayCollections.where((c) => c.paymentMode == PaymentMode.upi).length,
+                      onTap: () => _showModeBillsSheet(context, provider, PaymentMode.upi),
                     ),
                   ),
                 ],
@@ -1098,6 +1245,7 @@ class HomeDashboardScreen extends StatelessWidget {
                       icon: Icons.fact_check_outlined,
                       accentColor: AppTheme.chequeColor,
                       billsCount: todayCollections.where((c) => c.paymentMode == PaymentMode.cheque).length,
+                      onTap: () => _showModeBillsSheet(context, provider, PaymentMode.cheque),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1108,312 +1256,271 @@ class HomeDashboardScreen extends StatelessWidget {
                       icon: Icons.account_balance_outlined,
                       accentColor: AppTheme.netBankingColor,
                       billsCount: todayCollections.where((c) => c.paymentMode == PaymentMode.netBanking).length,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Quick Action Buttons (Balanced 50/50 Prominent Actions)
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.add_circle_outline, size: 18),
-                      label: const Text(
-                        'Record Payment',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        elevation: 1.5,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const RecordCollectionScreen()),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.add_business_outlined, size: 18),
-                      label: const Text(
-                        'Add Store',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.secondary,
-                        foregroundColor: Colors.white,
-                        elevation: 1.5,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const AddShopScreen()),
-                        );
-                      },
+                      onTap: () => _showModeBillsSheet(context, provider, PaymentMode.netBanking),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
 
-              // Today's Collections Section Header
+              // Primary FMCG Operations Grid
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Recorded Collections (${todayCollections.length})',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                  const Text(
+                    'Quick Operations',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.share_outlined, size: 14, color: AppTheme.secondary),
-                        label: const Text(
-                          'Share',
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.secondary),
-                        ),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        ),
-                        onPressed: () => _copyReport(context),
-                      ),
-                      const SizedBox(width: 2),
-                      TextButton(
-                        onPressed: onNavigateToCollections,
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        ),
-                        child: const Text('View All', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                      ),
-                    ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'FMCG Workflow',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 12),
 
-              if (todayCollections.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Icon(Icons.receipt_long_outlined, size: 40, color: Colors.blueGrey.shade300),
-                        const SizedBox(height: 10),
-                        Text(
-                          'No payment collections recorded for this date',
-                          style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text('Record First Payment'),
-                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const RecordCollectionScreen()),
-                            );
-                          },
-                        ),
-                      ],
+              // Row 1: Stage 1 (Pending Bill) and Stage 2 (Collection)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildActionTile(
+                      title: 'Pending Bill',
+                      subtitle: 'Upload delivered bills',
+                      icon: Icons.receipt_outlined,
+                      badge: '${provider.pendingBills.where((b) => !b.isPaid).length} Active',
+                      gradientColors: const [Color(0xFF0284C7), Color(0xFF0369A1)],
+                      iconBg: Colors.white.withValues(alpha: 0.22),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const AddPendingBillScreen()),
+                        );
+                      },
                     ),
                   ),
-                )
-              else
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: todayCollections.length > 5 ? 5 : todayCollections.length,
-                  itemBuilder: (context, index) {
-                    final item = todayCollections[index];
-                    final modeColor = _getModeColor(item.paymentMode);
-                    final time = DateFormat('hh:mm a').format(item.collectedAt);
-                    final isPartial = item.isPartial;
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () {
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => CollectionDetailsDialog(collection: item),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: modeColor.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    item.paymentMode.icon,
-                                    size: 20,
-                                    color: modeColor,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            item.shopName,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 14,
-                                              color: Color(0xFF0F172A),
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        if (item.photoBase64 != null)
-                                          const Padding(
-                                            padding: EdgeInsets.only(left: 4.0),
-                                            child: Icon(Icons.attach_file, size: 14, color: Colors.blueGrey),
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.getBusinessLightColor(item.businessName),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(
-                                              color: AppTheme.getBusinessBorderColor(item.businessName),
-                                              width: 0.8,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            item.businessName == 'Purva Enterprises' ? 'PURVA' : (item.businessName == 'Manas Sales' ? 'MANAS' : item.businessName),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800,
-                                              color: AppTheme.getBusinessTextColor(item.businessName),
-                                              letterSpacing: 0.3,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Bill: ${item.billNumber}',
-                                          style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, fontWeight: FontWeight.w500),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          '${item.routeName} • $time',
-                                          style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade400),
-                                        ),
-                                        if (isPartial) ...[
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.chequeColor.withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(3),
-                                            ),
-                                            child: Text(
-                                              'Due: ${CurrencyFormatter.format(item.balanceAmount)}',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppTheme.partialBadgeColor,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    CurrencyFormatter.format(item.collectedAmount),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 15,
-                                      color: modeColor,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: modeColor.withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      item.paymentMode.label,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: modeColor,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-              if (todayCollections.length > 5) ...[
-                const SizedBox(height: 8),
-                Center(
-                  child: TextButton(
-                    onPressed: onNavigateToCollections,
-                    child: Text('View remaining ${todayCollections.length - 5} records'),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildActionTile(
+                      title: 'Collection',
+                      subtitle: 'Collect against bills',
+                      icon: Icons.payments_outlined,
+                      badge: 'Stage 2',
+                      gradientColors: const [Color(0xFF0D9488), Color(0xFF0F766E)],
+                      iconBg: Colors.white.withValues(alpha: 0.22),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const MakeCollectionScreen()),
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Row 2: Secondary Operations (Statement, Orders, Company)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildSecondaryActionCard(
+                      title: 'Statement',
+                      subtitle: 'Excel & PDF',
+                      icon: Icons.receipt_long_outlined,
+                      color: const Color(0xFF6366F1),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const StatementScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildSecondaryActionCard(
+                      title: 'Orders',
+                      subtitle: 'Sales orders',
+                      icon: Icons.shopping_bag_outlined,
+                      color: const Color(0xFFF59E0B),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const OrdersScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildSecondaryActionCard(
+                      title: 'Company',
+                      subtitle: 'Purva & Manas',
+                      icon: Icons.business_outlined,
+                      color: const Color(0xFF8B5CF6),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CompanyScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required String badge,
+    required List<Color> gradientColors,
+    required Color iconBg,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: gradientColors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: gradientColors.first.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 22),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      badge,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSecondaryActionCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                  color: Color(0xFF0F172A),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.blueGrey.shade600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
         ),
@@ -1427,64 +1534,79 @@ class HomeDashboardScreen extends StatelessWidget {
     required IconData icon,
     required Color accentColor,
     required int billsCount,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Icon(icon, size: 18, color: accentColor),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '$billsCount',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.blueGrey.shade800,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(icon, size: 18, color: accentColor),
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$billsCount',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.blueGrey.shade800,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(Icons.chevron_right, size: 12, color: Colors.blueGrey.shade400),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.blueGrey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                CurrencyFormatter.format(amount),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: accentColor,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.blueGrey.shade600,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            CurrencyFormatter.format(amount),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: accentColor,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

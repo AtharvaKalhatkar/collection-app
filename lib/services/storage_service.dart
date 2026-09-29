@@ -3,11 +3,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/route_model.dart';
 import '../models/shop_model.dart';
 import '../models/collection_model.dart';
+import '../models/pending_bill_model.dart';
 
 class StorageService {
   static const String _keyRoutes = 'app_routes_v1';
   static const String _keyShops = 'app_shops_v1';
   static const String _keyCollections = 'app_collections_v1';
+  static const String _keyPendingBills = 'app_pending_bills_v1';
   static const String _keyBusinesses = 'app_businesses_v1';
   static const String _keySalesman = 'app_salesman_name_v1';
   static const String _keyInitialized = 'app_sample_data_initialized_v1';
@@ -113,6 +115,40 @@ class StorageService {
         // Safe failover: in-memory state is preserved even if localStorage is completely locked
         // ignore: avoid_print
         print('LocalStorage write fallback note: $inner');
+      }
+    }
+  }
+
+  // --- Pending Bills ---
+  Future<List<PendingBillModel>> loadPendingBills() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keyPendingBills) ?? [];
+    return rawList
+        .map((s) => PendingBillModel.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> savePendingBills(List<PendingBillModel> bills) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final safeBills = bills.map((b) {
+        if (b.photoBase64 != null && b.photoBase64!.length > 15000) {
+          return b.copyWith(photoBase64: null);
+        }
+        return b;
+      }).toList();
+
+      final rawList = safeBills.map((b) => jsonEncode(b.toJson())).toList();
+      await prefs.setStringList(_keyPendingBills, rawList);
+    } catch (e) {
+      try {
+        await prefs.remove(_keyPendingBills);
+        final noPhotos = bills.map((b) => b.copyWith(photoBase64: null)).toList();
+        final rawList = noPhotos.map((b) => jsonEncode(b.toJson())).toList();
+        await prefs.setStringList(_keyPendingBills, rawList);
+      } catch (inner) {
+        // ignore: avoid_print
+        print('LocalStorage pending bills save notice: $inner');
       }
     }
   }
