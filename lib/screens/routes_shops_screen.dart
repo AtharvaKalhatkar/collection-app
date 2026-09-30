@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/collection_provider.dart';
 import '../models/route_model.dart';
 import '../models/shop_model.dart';
@@ -638,6 +639,50 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                             Text(
                                               shop.mobileNumber,
                                               style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade800),
+                                            ),
+                                            const Spacer(),
+                                            // Call button
+                                            InkWell(
+                                              onTap: () => launchUrl(Uri.parse('tel:${shop.mobileNumber}')),
+                                              borderRadius: BorderRadius.circular(6),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.call, size: 14, color: Color(0xFF10B981)),
+                                                    SizedBox(width: 4),
+                                                    Text('Call', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF10B981))),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            // SMS button
+                                            InkWell(
+                                              onTap: () => launchUrl(Uri.parse('sms:${shop.mobileNumber}')),
+                                              borderRadius: BorderRadius.circular(6),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: AppTheme.primary.withValues(alpha: 0.1),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.message_outlined, size: 14, color: AppTheme.primary),
+                                                    SizedBox(width: 4),
+                                                    Text('SMS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                                                  ],
+                                                ),
+                                              ),
                                             ),
                                           ],
                                         ),

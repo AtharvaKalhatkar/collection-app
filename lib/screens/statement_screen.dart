@@ -189,6 +189,12 @@ class _StatementScreenState extends State<StatementScreen> {
   Future<void> _exportToPdf(List<CollectionModel> records, CollectionProvider provider) async {
     setState(() => _isExporting = true);
     try {
+      final devanagariFont = await PdfGoogleFonts.notoSansDevanagariRegular();
+      final devanagariBoldFont = await PdfGoogleFonts.notoSansDevanagariBold();
+      final baseStyle = pw.TextStyle(font: devanagariFont, fontSize: 8.5);
+
+      final headerTextStyle = pw.TextStyle(font: devanagariBoldFont, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white);
+
       final doc = pw.Document();
       final dateStr = _filterByDate ? DateFormat('dd MMM yyyy').format(_selectedDate) : 'All Dates';
       final totalCollected = records.fold(0.0, (s, c) => s + c.collectedAmount);
@@ -213,21 +219,21 @@ class _StatementScreenState extends State<StatementScreen> {
                     children: [
                       pw.Text(
                         firmTitle.toUpperCase(),
-                        style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900),
+                        style: pw.TextStyle(font: devanagariBoldFont, fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo900),
                       ),
                       pw.SizedBox(height: 2),
                       pw.Text(
                         'DAILY COLLECTION STATEMENT',
-                        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700),
+                        style: pw.TextStyle(font: devanagariBoldFont, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700),
                       ),
                     ],
                   ),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text('Date: $dateStr', style: const pw.TextStyle(fontSize: 11)),
-                      pw.Text('Mode: $modeTitle', style: const pw.TextStyle(fontSize: 11)),
-                      pw.Text('Officer: ${provider.salesmanName}', style: const pw.TextStyle(fontSize: 11)),
+                      pw.Text('Date: $dateStr', style: pw.TextStyle(font: devanagariFont, fontSize: 11)),
+                      pw.Text('Mode: $modeTitle', style: pw.TextStyle(font: devanagariFont, fontSize: 11)),
+                      pw.Text('Officer: ${provider.salesmanName}', style: pw.TextStyle(font: devanagariFont, fontSize: 11)),
                     ],
                   ),
                 ],
@@ -247,30 +253,30 @@ class _StatementScreenState extends State<StatementScreen> {
                   children: [
                     pw.Column(
                       children: [
-                        pw.Text('TOTAL COLLECTED', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+                        pw.Text('TOTAL COLLECTED', style: pw.TextStyle(font: devanagariBoldFont, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
                         pw.SizedBox(height: 2),
-                        pw.Text('INR ${totalCollected.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
+                        pw.Text('INR ${totalCollected.toStringAsFixed(2)}', style: pw.TextStyle(font: devanagariBoldFont, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
                       ],
                     ),
                     pw.Column(
                       children: [
-                        pw.Text('TOTAL INVOICED', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+                        pw.Text('TOTAL INVOICED', style: pw.TextStyle(font: devanagariBoldFont, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
                         pw.SizedBox(height: 2),
-                        pw.Text('INR ${totalBilled.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('INR ${totalBilled.toStringAsFixed(2)}', style: pw.TextStyle(font: devanagariBoldFont, fontSize: 12, fontWeight: pw.FontWeight.bold)),
                       ],
                     ),
                     pw.Column(
                       children: [
-                        pw.Text('BALANCE DUE', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+                        pw.Text('BALANCE DUE', style: pw.TextStyle(font: devanagariBoldFont, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
                         pw.SizedBox(height: 2),
-                        pw.Text('INR ${totalDue.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
+                        pw.Text('INR ${totalDue.toStringAsFixed(2)}', style: pw.TextStyle(font: devanagariBoldFont, fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
                       ],
                     ),
                     pw.Column(
                       children: [
-                        pw.Text('RECEIPTS', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+                        pw.Text('RECEIPTS', style: pw.TextStyle(font: devanagariBoldFont, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
                         pw.SizedBox(height: 2),
-                        pw.Text('${records.length}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                        pw.Text('${records.length}', style: pw.TextStyle(font: devanagariBoldFont, fontSize: 12, fontWeight: pw.FontWeight.bold)),
                       ],
                     ),
                   ],
@@ -281,9 +287,9 @@ class _StatementScreenState extends State<StatementScreen> {
               // Table
               pw.TableHelper.fromTextArray(
                 headers: ['#', 'Outlet / Shop', 'Firm', 'Route', 'Bill #', 'Mode', 'Collected', 'Balance'],
-                headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerStyle: headerTextStyle,
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo900),
-                cellStyle: const pw.TextStyle(fontSize: 8.5),
+                cellStyle: baseStyle,
                 cellAlignment: pw.Alignment.centerLeft,
                 headerAlignment: pw.Alignment.centerLeft,
                 cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -306,7 +312,7 @@ class _StatementScreenState extends State<StatementScreen> {
                 alignment: pw.Alignment.centerRight,
                 child: pw.Text(
                   'Generated via Daily Collection Pro on ${DateFormat('dd-MM-yyyy hh:mm a').format(DateTime.now())}',
-                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+                  style: pw.TextStyle(font: devanagariFont, fontSize: 8, color: PdfColors.grey600),
                 ),
               ),
             ];
@@ -329,6 +335,175 @@ class _StatementScreenState extends State<StatementScreen> {
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
+  }
+
+  void _showStatementPreview(List<CollectionModel> records, CollectionProvider provider) {
+    final dateStr = _filterByDate ? DateFormat('dd MMM yyyy').format(_selectedDate) : 'All Dates';
+    final totalCollected = records.fold(0.0, (s, c) => s + c.collectedAmount);
+    final totalBilled = records.fold(0.0, (s, c) => s + c.billAmount);
+    final totalDue = records.fold(0.0, (s, c) => s + c.balanceAmount);
+
+    final firmTitle = _selectedBusiness ?? 'Purva Enterprises & Manas Sales';
+    final modeTitle = _selectedMode?.label ?? 'All Payment Modes';
+
+    showDialog(
+      context: context,
+      useSafeArea: false,
+      builder: (ctx) => Dialog.fullscreen(
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Statement Preview'),
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ),
+          body: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                firmTitle.toUpperCase(),
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.indigo.shade900),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'DAILY COLLECTION STATEMENT',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('Date: $dateStr', style: const TextStyle(fontSize: 11)),
+                            Text('Mode: $modeTitle', style: const TextStyle(fontSize: 11)),
+                            Text('Officer: ${provider.salesmanName}', style: const TextStyle(fontSize: 11)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const Divider(thickness: 1.5, color: Colors.indigo),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          Column(
+                            children: [
+                              Text('TOTAL COLLECTED', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                              const SizedBox(height: 2),
+                              Text('INR ${totalCollected.toStringAsFixed(2)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+                            ],
+                          ),
+                          Column(
+                            children: [
+                              Text('TOTAL INVOICED', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                              const SizedBox(height: 2),
+                              Text('INR ${totalBilled.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          Column(
+                            children: [
+                              Text('BALANCE DUE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                              const SizedBox(height: 2),
+                              Text('INR ${totalDue.toStringAsFixed(2)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red.shade800)),
+                            ],
+                          ),
+                          Column(
+                            children: [
+                              Text('RECEIPTS', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                              const SizedBox(height: 2),
+                              Text('${records.length}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: records.length,
+                  itemBuilder: (context, index) {
+                    final c = records[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(c.shopName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Text('${c.businessName == 'Purva Enterprises' ? 'Purva' : 'Manas'} • ${c.routeName}', style: const TextStyle(fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Bill: ${c.billNumber}', style: const TextStyle(fontSize: 12)),
+                                  Text(c.paymentMode.label, style: const TextStyle(fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text('INR ${c.collectedAmount.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Text(
+                                    c.balanceAmount > 0 ? 'Due: INR ${c.balanceAmount.toStringAsFixed(0)}' : 'Settled',
+                                    style: TextStyle(fontSize: 11, color: c.balanceAmount > 0 ? Colors.red : Colors.green),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Generated via Daily Collection Pro on ${DateFormat('dd-MM-yyyy hh:mm a').format(DateTime.now())}',
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -594,12 +769,31 @@ class _StatementScreenState extends State<StatementScreen> {
           ),
           const Divider(height: 1),
 
-          // Download Action Buttons Bar (Excel & PDF)
+          // Download Action Buttons Bar (Preview, Excel, PDF)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             color: Colors.white,
             child: Row(
               children: [
+                // Preview Button
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.image_outlined, size: 16),
+                    label: const Text('Preview', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 1,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: filteredRecords.isEmpty
+                        ? null
+                        : () => _showStatementPreview(filteredRecords, provider),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
                 // Excel Export Button
                 Expanded(
                   child: ElevatedButton.icon(

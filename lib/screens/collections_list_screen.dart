@@ -25,7 +25,7 @@ enum InvoiceFilterStatus { pending, paid, all }
 
 class _CollectionsListScreenState extends State<CollectionsListScreen> {
   PaymentMode? _selectedModeFilter;
-  InvoiceFilterStatus _invoiceStatusFilter = InvoiceFilterStatus.pending;
+  InvoiceFilterStatus _invoiceStatusFilter = InvoiceFilterStatus.all;
   String _invoiceSearchQuery = '';
   DateTime? _invoiceDateFilter;
 
@@ -881,6 +881,24 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                 children: [
                   Expanded(
                     child: ChoiceChip(
+                      label: Center(child: Text('All (${allSummaries.length})')),
+                      selected: _invoiceStatusFilter == InvoiceFilterStatus.all,
+                      selectedColor: AppTheme.primary,
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _invoiceStatusFilter == InvoiceFilterStatus.all
+                            ? Colors.white
+                            : Colors.blueGrey.shade800,
+                      ),
+                      onSelected: (val) {
+                        if (val) setState(() => _invoiceStatusFilter = InvoiceFilterStatus.all);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
                       label: Center(child: Text('Pending (${pendingBills.length})')),
                       selected: _invoiceStatusFilter == InvoiceFilterStatus.pending,
                       selectedColor: const Color(0xFFD97706),
@@ -911,24 +929,6 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       ),
                       onSelected: (val) {
                         if (val) setState(() => _invoiceStatusFilter = InvoiceFilterStatus.paid);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ChoiceChip(
-                      label: Center(child: Text('All (${allSummaries.length})')),
-                      selected: _invoiceStatusFilter == InvoiceFilterStatus.all,
-                      selectedColor: AppTheme.primary,
-                      labelStyle: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: _invoiceStatusFilter == InvoiceFilterStatus.all
-                            ? Colors.white
-                            : Colors.blueGrey.shade800,
-                      ),
-                      onSelected: (val) {
-                        if (val) setState(() => _invoiceStatusFilter = InvoiceFilterStatus.all);
                       },
                     ),
                   ),
