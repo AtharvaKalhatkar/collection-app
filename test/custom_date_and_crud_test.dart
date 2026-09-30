@@ -160,5 +160,35 @@ void main() {
       await provider.deleteShop(shop.id);
       expect(provider.shops.any((s) => s.id == shop.id), isFalse);
     });
+
+    test('Route priority ordering is strictly maintained everywhere', () async {
+      final provider = CollectionProvider();
+      await provider.initialize();
+
+      // Ensure routes are returned in strict priority sequence
+      final initialRoutes = provider.routes;
+      for (int i = 0; i < initialRoutes.length - 1; i++) {
+        expect(initialRoutes[i].priority <= initialRoutes[i + 1].priority, isTrue);
+      }
+
+      // Add 2 new routes
+      final rA = await provider.addRoute(name: 'Route Alpha');
+      final rB = await provider.addRoute(name: 'Route Beta');
+
+      // Move Route Beta up
+      await provider.moveRouteUp(rB.id);
+
+      final current = provider.routes;
+      final betaIndex = current.indexWhere((r) => r.id == rB.id);
+      final alphaIndex = current.indexWhere((r) => r.id == rA.id);
+
+      expect(betaIndex < alphaIndex, isTrue);
+      expect(current[betaIndex].priority < current[alphaIndex].priority, isTrue);
+
+      // Verify priorities are sequential 1..N
+      for (int i = 0; i < current.length; i++) {
+        expect(current[i].priority, i + 1);
+      }
+    });
   });
 }

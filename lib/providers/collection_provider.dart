@@ -31,7 +31,11 @@ class CollectionProvider extends ChangeNotifier {
   String? _filterRouteId; // null means 'All'
   String _searchQuery = '';
 
-  List<RouteModel> get routes => _routes;
+  List<RouteModel> get routes {
+    final list = List<RouteModel>.from(_routes);
+    list.sort((a, b) => a.priority.compareTo(b.priority));
+    return list;
+  }
   List<ShopModel> get shops => _shops;
   List<CollectionModel> get collections => _collections;
   List<PendingBillModel> get pendingBills => _pendingBills;
@@ -84,6 +88,16 @@ class CollectionProvider extends ChangeNotifier {
     }
 
     _routes.sort((a, b) => a.priority.compareTo(b.priority));
+    bool routesResave = false;
+    for (int i = 0; i < _routes.length; i++) {
+      if (_routes[i].priority != i + 1) {
+        _routes[i] = _routes[i].copyWith(priority: i + 1);
+        routesResave = true;
+      }
+    }
+    if (routesResave) {
+      await _storage.saveRoutes(_routes);
+    }
 
     // Instant UI load from local cache
     _isLoading = false;
@@ -437,11 +451,52 @@ class CollectionProvider extends ChangeNotifier {
     if (idx != -1) {
       _routes[idx] = _routes[idx].copyWith(priority: newPriority);
       _routes.sort((a, b) => a.priority.compareTo(b.priority));
+      for (int i = 0; i < _routes.length; i++) {
+        _routes[i] = _routes[i].copyWith(priority: i + 1);
+        if (_firebase.isInitialized) {
+          _firebase.saveRoute(_routes[i]);
+        }
+      }
       await _storage.saveRoutes(_routes);
       notifyListeners();
-      if (_firebase.isInitialized) {
-        _firebase.saveRoute(_routes[idx]);
+    }
+  }
+
+  Future<void> setRouteOrder(List<String> orderedRouteIds) async {
+    for (int i = 0; i < orderedRouteIds.length; i++) {
+      final id = orderedRouteIds[i];
+      final idx = _routes.indexWhere((r) => r.id == id);
+      if (idx != -1) {
+        _routes[idx] = _routes[idx].copyWith(priority: i + 1);
+        if (_firebase.isInitialized) {
+          _firebase.saveRoute(_routes[idx]);
+        }
       }
+    }
+    _routes.sort((a, b) => a.priority.compareTo(b.priority));
+    await _storage.saveRoutes(_routes);
+    notifyListeners();
+  }
+
+  Future<void> moveRouteUp(String routeId) async {
+    final currentRoutes = routes;
+    final idx = currentRoutes.indexWhere((r) => r.id == routeId);
+    if (idx > 0) {
+      final temp = currentRoutes[idx];
+      currentRoutes[idx] = currentRoutes[idx - 1];
+      currentRoutes[idx - 1] = temp;
+      await setRouteOrder(currentRoutes.map((r) => r.id).toList());
+    }
+  }
+
+  Future<void> moveRouteDown(String routeId) async {
+    final currentRoutes = routes;
+    final idx = currentRoutes.indexWhere((r) => r.id == routeId);
+    if (idx != -1 && idx < currentRoutes.length - 1) {
+      final temp = currentRoutes[idx];
+      currentRoutes[idx] = currentRoutes[idx + 1];
+      currentRoutes[idx + 1] = temp;
+      await setRouteOrder(currentRoutes.map((r) => r.id).toList());
     }
   }
 

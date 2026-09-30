@@ -78,16 +78,11 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                 icon: const Icon(Icons.arrow_upward, size: 18),
                                 tooltip: 'Move Up',
                                 onPressed: idx > 0
-                                    ? () {
-                                        final currentPriority = idx + 1;
-                                        final prevRoute = routes[idx - 1];
-                                        final prevPriority = idx;
-                                        provider.updateRoutePriority(r.id, prevPriority);
-                                        provider.updateRoutePriority(prevRoute.id, currentPriority);
+                                    ? () async {
+                                        await provider.moveRouteUp(r.id);
                                         setDialogState(() {
-                                          routes[idx] = r.copyWith(priority: prevPriority);
-                                          routes[idx - 1] = prevRoute.copyWith(priority: currentPriority);
-                                          routes.sort((a, b) => a.priority.compareTo(b.priority));
+                                          routes.clear();
+                                          routes.addAll(provider.routes);
                                         });
                                       }
                                     : null,
@@ -96,16 +91,11 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                 icon: const Icon(Icons.arrow_downward, size: 18),
                                 tooltip: 'Move Down',
                                 onPressed: idx < routes.length - 1
-                                    ? () {
-                                        final currentPriority = idx + 1;
-                                        final nextRoute = routes[idx + 1];
-                                        final nextPriority = idx + 2;
-                                        provider.updateRoutePriority(r.id, nextPriority);
-                                        provider.updateRoutePriority(nextRoute.id, currentPriority);
+                                    ? () async {
+                                        await provider.moveRouteDown(r.id);
                                         setDialogState(() {
-                                          routes[idx] = r.copyWith(priority: nextPriority);
-                                          routes[idx + 1] = nextRoute.copyWith(priority: currentPriority);
-                                          routes.sort((a, b) => a.priority.compareTo(b.priority));
+                                          routes.clear();
+                                          routes.addAll(provider.routes);
                                         });
                                       }
                                     : null,
@@ -240,9 +230,9 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
       ),
       body: Column(
         children: [
-          // Route Horizontal Selector Bar with Priority Badges
+          // Route Dropdown Selector Bar
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
             color: Colors.white,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -250,39 +240,34 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'SALES ROUTES',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: Colors.blueGrey,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        InkWell(
-                          onTap: () => _showPriorityDialog(context, provider),
-                          child: const Icon(Icons.edit_note, size: 16, color: AppTheme.primary),
-                        ),
-                      ],
+                    const Text(
+                      'SALES ROUTE',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: Colors.blueGrey,
+                      ),
                     ),
                     InkWell(
                       onTap: () => _showPriorityDialog(context, provider),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.sort_rounded, size: 14, color: AppTheme.primary),
-                          SizedBox(width: 4),
-                          Text(
-                            'Reorder',
-                            style: TextStyle(
-                              color: AppTheme.primary,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: Row(
+                          children: const [
+                            Icon(Icons.sort_rounded, size: 15, color: AppTheme.primary),
+                            SizedBox(width: 4),
+                            Text(
+                              'Reorder Priority',
+                              style: TextStyle(
+                                color: AppTheme.primary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -303,40 +288,59 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                     ),
                   )
                 else
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: routes.map((r) {
-                        final isSelected = _selectedRouteId == r.id;
-                        final count = provider.getShopsForRoute(r.id).length;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: FilterChip(
-                            avatar: Icon(
-                              Icons.location_on_outlined,
-                              size: 14,
-                              color: isSelected ? Colors.white : AppTheme.primary,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.border, width: 1.2),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: routes.any((r) => r.id == _selectedRouteId)
+                            ? _selectedRouteId
+                            : routes.first.id,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary, size: 24),
+                        items: routes.map((r) {
+                          final count = provider.getShopsForRoute(r.id).length;
+                          return DropdownMenuItem<String>(
+                            value: r.id,
+                            child: Row(
+                              children: [
+                                const Icon(Icons.location_on_outlined, size: 18, color: AppTheme.primary),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    r.name,
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF0F172A)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '$count outlets',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                                  ),
+                                ),
+                              ],
                             ),
-                            label: Text('${r.name} ($count)'),
-                            selected: isSelected,
-                            selectedColor: AppTheme.primary,
-                            labelStyle: TextStyle(
-                              color: isSelected ? Colors.white : Colors.blueGrey.shade800,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              fontSize: 12,
-                            ),
-                            backgroundColor: Colors.grey.shade100,
-                            onSelected: (val) {
-                              if (val) {
-                                setState(() {
-                                  _selectedRouteId = r.id;
-                                  _selectedShopId = null;
-                                });
-                              }
-                            },
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              _selectedRouteId = val;
+                              _selectedShopId = null;
+                            });
+                          }
+                        },
+                      ),
                     ),
                   ),
               ],
@@ -422,34 +426,90 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                   const SizedBox(height: 10),
 
                   // Outlet Dropdown Selector for this Route
-                  DropdownButtonFormField<String?>(
-                    key: ValueKey('outlet_dd_${_selectedRouteId}_$_selectedShopId'),
-                    initialValue: _selectedShopId,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: 'Select Outlet / Shop',
-                      prefixIcon: const Icon(Icons.storefront, size: 18),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.border, width: 1.2),
                     ),
-                    items: [
-                      DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text(
-                          'All Outlets in ${selectedRoute.name} (${outletsInSelectedRoute.length})',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: _selectedShopId,
+                        isExpanded: true,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary, size: 22),
+                        hint: Row(
+                          children: [
+                            const Icon(Icons.storefront_outlined, size: 18, color: AppTheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                outletsInSelectedRoute.isEmpty
+                                    ? 'No outlets in ${selectedRoute.name}'
+                                    : 'All Outlets in ${selectedRoute.name} (${outletsInSelectedRoute.length})',
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF0F172A)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
+                        items: outletsInSelectedRoute.isEmpty
+                            ? [
+                                DropdownMenuItem<String?>(
+                                  value: null,
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.storefront_outlined, size: 18, color: Colors.blueGrey),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'No outlets in ${selectedRoute.name}',
+                                        style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ]
+                            : [
+                                DropdownMenuItem<String?>(
+                                  value: null,
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.storefront_outlined, size: 18, color: AppTheme.primary),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'All Outlets in ${selectedRoute.name} (${outletsInSelectedRoute.length})',
+                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF0F172A)),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ...outletsInSelectedRoute.map(
+                                  (s) => DropdownMenuItem<String?>(
+                                    value: s.id,
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.store_outlined, size: 18, color: AppTheme.primary),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '${s.name} (${s.mobileNumber})',
+                                            style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                        onChanged: (val) {
+                          setState(() => _selectedShopId = val);
+                        },
                       ),
-                      ...outletsInSelectedRoute.map(
-                        (s) => DropdownMenuItem<String?>(
-                          value: s.id,
-                          child: Text('${s.name} (${s.mobileNumber})', style: const TextStyle(fontSize: 13)),
-                        ),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      setState(() => _selectedShopId = val);
-                    },
+                    ),
                   ),
                   const SizedBox(height: 8),
                 ],
@@ -460,8 +520,21 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                     hintText: 'Search outlet name, phone, or address...',
                     prefixIcon: const Icon(Icons.search, size: 18),
                     isDense: true,
+                    filled: true,
+                    fillColor: Colors.white,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppTheme.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppTheme.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppTheme.secondary, width: 1.5),
+                    ),
                     suffixIcon: _shopSearch.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear, size: 16),
