@@ -15,7 +15,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     // Verify title and salesman name render
-    expect(find.textContaining('Purva Enterprises • Manas Sales'), findsOneWidget);
+    expect(find.textContaining('Purva • Manas'), findsOneWidget);
     expect(find.textContaining('Akash'), findsOneWidget);
 
     // Verify Quick Actions buttons are present on Dashboard
@@ -39,8 +39,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify Pending Bills Screen fields
-    expect(find.text('Pending Bills by Date'), findsOneWidget);
+    expect(find.text('Pending Bills'), findsWidgets);
     expect(find.text('All Firms'), findsOneWidget);
-    expect(find.textContaining('Invoice Dates'), findsOneWidget);
+    expect(find.textContaining('Dates'), findsWidgets);
   });
 }

@@ -137,7 +137,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            overallPending ? 'Invoice Status: PENDING' : 'Invoice Status: PAID (100%)',
+                            overallPending ? 'Status: PENDING' : 'Status: PAID',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
@@ -177,7 +177,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('This Entry Received', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
+                              const Text('Received', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
                               const SizedBox(height: 2),
                               Text(
                                 CurrencyFormatter.format(collection.collectedAmount),
@@ -220,7 +220,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                         children: [
                           Row(
                             children: [
-                              const Text('Invoice Total: ', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+                              const Text('Bill Total: ', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
                               Text(
                                 CurrencyFormatter.format(totalBill),
                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
@@ -229,7 +229,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                           ),
                           Row(
                             children: [
-                              const Text('Total Collected: ', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+                              const Text('Collected: ', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
                               Text(
                                 CurrencyFormatter.format(totalCollectedOnBill),
                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.primary),
@@ -512,8 +512,8 @@ class CollectionDetailsDialog extends StatelessWidget {
                           final confirm = await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
-                              title: const Text('Delete Collection Record?'),
-                              content: const Text('Are you sure you want to remove this transaction record?'),
+                              title: const Text('Delete Record?'),
+                              content: const Text('This cannot be undone.'),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, false),

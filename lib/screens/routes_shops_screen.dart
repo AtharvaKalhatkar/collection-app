@@ -126,7 +126,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Store?'),
+        title: const Text('Delete Outlet?'),
         content: Text('Are you sure you want to delete "${shop.name}"?\nThis cannot be undone.'),
         actions: [
           TextButton(
@@ -196,12 +196,12 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.low_priority_rounded, size: 21),
-            tooltip: 'Set Route Priorities',
+            tooltip: 'Priorities',
             onPressed: () => _showPriorityDialog(context, provider),
           ),
           IconButton(
             icon: const Icon(Icons.add_location_alt_outlined, size: 20),
-            tooltip: 'Add Beat Route',
+            tooltip: 'Add Route',
             onPressed: () async {
               final newRoute = await showDialog<RouteModel>(
                 context: context,
@@ -242,7 +242,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'SALES ROUTE',
+                      'ROUTE',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
@@ -260,7 +260,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                             Icon(Icons.sort_rounded, size: 15, color: AppTheme.primary),
                             SizedBox(width: 4),
                             Text(
-                              'Reorder Priority',
+                              'Reorder',
                               style: TextStyle(
                                 color: AppTheme.primary,
                                 fontWeight: FontWeight.w700,
@@ -518,7 +518,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                 // Search Box
                 TextField(
                   decoration: InputDecoration(
-                    hintText: 'Search outlet name, phone, or address...',
+                    hintText: 'Search outlet...',
                     prefixIcon: const Icon(Icons.search, size: 18),
                     isDense: true,
                     filled: true,
@@ -707,7 +707,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                   PopupMenuButton<String>(
                                     icon: const Icon(Icons.more_vert, size: 20, color: Colors.blueGrey),
                                     padding: EdgeInsets.zero,
-                                    tooltip: 'Store options',
+                                    tooltip: 'Options',
                                     onSelected: (val) async {
                                       if (val == 'edit') {
                                         Navigator.push(
@@ -727,7 +727,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                           children: [
                                             Icon(Icons.edit_outlined, size: 18, color: AppTheme.primary),
                                             SizedBox(width: 8),
-                                            Text('Edit Store'),
+                                            Text('Edit'),
                                           ],
                                         ),
                                       ),
@@ -737,7 +737,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                           children: const [
                                             Icon(Icons.delete_outline, size: 18, color: AppTheme.error),
                                             SizedBox(width: 8),
-                                            Text('Delete Store', style: TextStyle(color: AppTheme.error)),
+                                            Text('Delete', style: TextStyle(color: AppTheme.error)),
                                           ],
                                         ),
                                       ),
@@ -754,7 +754,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                     children: [
                                       if (balanceDue > 0)
                                         Text(
-                                          'Pending Balance: ${CurrencyFormatter.format(balanceDue)}',
+                                          'Due: ${CurrencyFormatter.format(balanceDue)}',
                                           style: const TextStyle(
                                             fontSize: 13,
                                             color: AppTheme.partialBadgeColor,
@@ -769,7 +769,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                             borderRadius: BorderRadius.circular(4),
                                           ),
                                           child: const Text(
-                                            'No Outstanding Dues',
+                                            'All Clear',
                                             style: TextStyle(
                                               fontSize: 11.5,
                                               color: AppTheme.cashColor,

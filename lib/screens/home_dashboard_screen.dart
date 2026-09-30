@@ -160,7 +160,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.assessment_outlined, size: 16),
-                    label: const Text('View Full Statement'),
+                    label: const Text('Full Statement'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 11),
                       side: BorderSide(color: modeColor),
@@ -196,7 +196,7 @@ class HomeDashboardScreen extends StatelessWidget {
           children: [
             Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
             SizedBox(width: 8),
-            Expanded(child: Text('Collection summary copied to clipboard!')),
+            Expanded(child: Text('Report copied!')),
           ],
         ),
         backgroundColor: AppTheme.secondary,
@@ -309,7 +309,7 @@ class HomeDashboardScreen extends StatelessWidget {
                     ],
                   ),
                   const Text(
-                    'Purva Enterprises • Manas Sales',
+                    'Purva • Manas',
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.white70,
@@ -341,7 +341,7 @@ class HomeDashboardScreen extends StatelessWidget {
                 _copyReport(context);
               } else if (val == 'sync_cloud') {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Syncing all records to Firebase Cloud Firestore...')),
+                  const SnackBar(content: Text('Syncing to cloud...')),
                 );
                 final ok = await provider.syncAllToCloud();
                 if (context.mounted) {
@@ -362,7 +362,7 @@ class HomeDashboardScreen extends StatelessWidget {
               } else if (val == 'reset') {
                 provider.resetToSample();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Sample demo data reloaded')),
+                  const SnackBar(content: Text('Data reset done')),
                 );
               }
             },
@@ -373,7 +373,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.cloud_upload_outlined, size: 18, color: Color(0xFF10B981)),
                     SizedBox(width: 10),
-                    Text('Sync All to Firebase'),
+                    Text('Sync to Cloud'),
                   ],
                 ),
               ),
@@ -383,7 +383,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.add_business_outlined, size: 18, color: AppTheme.secondary),
                     SizedBox(width: 10),
-                    Text('Add Store / Customer'),
+                    Text('Add Outlet'),
                   ],
                 ),
               ),
@@ -393,7 +393,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.share_outlined, size: 18, color: AppTheme.primary),
                     SizedBox(width: 10),
-                    Text('Share Daily Summary'),
+                    Text('Share Report'),
                   ],
                 ),
               ),
@@ -407,7 +407,7 @@ class HomeDashboardScreen extends StatelessWidget {
                       color: provider.isFirebaseConnected ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
                     ),
                     const SizedBox(width: 10),
-                    Text(provider.isFirebaseConnected ? 'Firebase (Connected)' : 'Firebase Cloud Sync'),
+                    Text(provider.isFirebaseConnected ? 'Cloud (On)' : 'Cloud Sync'),
                   ],
                 ),
               ),
@@ -418,7 +418,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.refresh, size: 18, color: Colors.blueGrey),
                     SizedBox(width: 10),
-                    Text('Reload Sample Data'),
+                    Text('Reset Data'),
                   ],
                 ),
               ),
@@ -514,7 +514,7 @@ class HomeDashboardScreen extends StatelessWidget {
                     TextButton(
                       style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
                       onPressed: () => provider.setSelectedDate(DateTime.now()),
-                      child: const Text('Return to Today', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      child: const Text('Today', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                     ),
                 ],
               ),
@@ -711,7 +711,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'Purva Enterprises',
+                                'Purva',
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -789,7 +789,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'Manas Sales',
+                                'Manas',
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,

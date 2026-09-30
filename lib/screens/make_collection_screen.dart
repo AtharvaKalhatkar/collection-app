@@ -112,7 +112,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Select Pending Bill',
+                          'Select Bill',
                           style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                         ),
                         IconButton(
@@ -125,7 +125,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                     TextField(
                       autofocus: true,
                       decoration: InputDecoration(
-                        hintText: 'Search by bill #, outlet name...',
+                        hintText: 'Search bill, outlet...',
                         prefixIcon: const Icon(Icons.search, size: 20),
                         isDense: true,
                         filled: true,
@@ -157,7 +157,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                   const SizedBox(height: 12),
                                   ElevatedButton.icon(
                                     icon: const Icon(Icons.add, size: 16),
-                                    label: const Text('Upload New Pending Bill'),
+                                    label: const Text('Add New Bill'),
                                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                                     onPressed: () {
                                       Navigator.pop(ctx);
@@ -375,7 +375,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Record Collection'),
+        title: const Text('Collect'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -426,7 +426,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                           ),
                           child: Center(
                             child: Text(
-                              'Purva Enterprises',
+                              'Purva',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
@@ -456,7 +456,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                           ),
                           child: Center(
                             child: Text(
-                              'Manas Sales',
+                              'Manas',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
@@ -494,7 +494,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                   child: DropdownButton<String>(
                     isExpanded: true,
                     value: _selectedRouteId,
-                    hint: const Text('Choose Beat Route'),
+                    hint: const Text('Select Route'),
                     items: routes.map((r) {
                       final billsCount = provider.getPendingBillsForRoute(r.id, businessName: _selectedBusiness).length;
                       return DropdownMenuItem<String>(

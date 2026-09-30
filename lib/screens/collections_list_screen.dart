@@ -78,11 +78,11 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Collections & Invoices'),
+          title: const Text('Ledger'),
           actions: [
             IconButton(
               icon: const Icon(Icons.add_business_outlined, size: 21),
-              tooltip: 'Add Store / Customer',
+              tooltip: 'Add Outlet',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -92,12 +92,12 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
             ),
             IconButton(
               icon: const Icon(Icons.share_outlined, size: 20),
-              tooltip: 'Copy Report',
+              tooltip: 'Copy',
               onPressed: () => _shareSummary(context),
             ),
             IconButton(
               icon: const Icon(Icons.calendar_month_outlined, size: 20),
-              tooltip: 'Change Date',
+              tooltip: 'Date',
               onPressed: () => _pickDate(context),
             ),
           ],
@@ -122,7 +122,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       children: [
                         Icon(Icons.receipt_long_outlined, size: 16),
                         SizedBox(width: 6),
-                        Text('Daily Ledger'),
+                        Text('Daily'),
                       ],
                     ),
                   ),
@@ -134,7 +134,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       children: [
                         Icon(Icons.pending_actions_outlined, size: 16),
                         SizedBox(width: 6),
-                        Text('Invoice Status'),
+                        Text('Invoices'),
                       ],
                     ),
                   ),
@@ -385,7 +385,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              provider.filterBusiness == 'Purva Enterprises' ? 'PURVA ACTIVE' : 'MANAS ACTIVE',
+                              provider.filterBusiness == 'Purva Enterprises' ? 'PURVA ✓' : 'MANAS ✓',
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
@@ -405,7 +405,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
               // Search Bar
               TextField(
                 decoration: InputDecoration(
-                  hintText: 'Search by store name, invoice number, route...',
+                  hintText: 'Search store, bill, route...',
                   prefixIcon: const Icon(Icons.search, size: 18),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -426,7 +426,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                 initialValue: _selectedModeFilter,
                 isExpanded: true,
                 decoration: InputDecoration(
-                  labelText: 'Payment Mode Filter',
+                  labelText: 'Mode',
                   prefixIcon: Icon(
                     _selectedModeFilter?.icon ?? Icons.payments_outlined,
                     size: 18,
@@ -517,13 +517,13 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       Icon(Icons.receipt_long_outlined, size: 48, color: Colors.blueGrey.shade200),
                       const SizedBox(height: 10),
                       Text(
-                        'No collections found for this selection',
+                        'No collections found',
                         style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13),
                       ),
                       const SizedBox(height: 12),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.add, size: 16),
-                        label: const Text('Make Collection'),
+                        label: const Text('Collect'),
                         style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                         onPressed: () {
                           Navigator.push(
@@ -794,7 +794,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                           Text(
                             _invoiceDateFilter != null
                                 ? 'Date: ${DateFormat('dd MMM yyyy').format(_invoiceDateFilter!)}'
-                                : 'Filter by Date: All Dates',
+                                : 'All Dates',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 12,
@@ -846,7 +846,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       border: Border.all(color: AppTheme.chequeColor.withValues(alpha: 0.3)),
                     ),
                     child: Text(
-                      'Total Pending: ${CurrencyFormatter.format(totalPendingDue)}',
+                      'Due: ${CurrencyFormatter.format(totalPendingDue)}',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -861,7 +861,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
               // Search Bar
               TextField(
                 decoration: InputDecoration(
-                  hintText: 'Search invoices by store name, bill number...',
+                  hintText: 'Search bill, store...',
                   prefixIcon: const Icon(Icons.search, size: 18),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -951,7 +951,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                 style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, fontWeight: FontWeight.w600),
               ),
               Text(
-                'Total Invoiced: ${CurrencyFormatter.format(totalInvoiced)}',
+                'Billed: ${CurrencyFormatter.format(totalInvoiced)}',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primary),
               ),
             ],
@@ -969,8 +969,8 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       const SizedBox(height: 10),
                       Text(
                         _invoiceStatusFilter == InvoiceFilterStatus.pending
-                            ? 'No pending invoices! All bills are fully paid.'
-                            : 'No invoices found matching criteria',
+                            ? 'All bills paid!'
+                            : 'No invoices found',
                         style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13),
                       ),
                     ],
@@ -1126,7 +1126,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                     child: ElevatedButton.icon(
                                       icon: const Icon(Icons.payments_outlined, size: 15),
                                       label: Text(
-                                        'Collect Balance (${CurrencyFormatter.format(bill.balanceDue)})',
+                                        'Collect (${CurrencyFormatter.format(bill.balanceDue)})',
                                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                                       ),
                                       style: ElevatedButton.styleFrom(

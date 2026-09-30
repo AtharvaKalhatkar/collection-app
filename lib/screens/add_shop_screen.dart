@@ -170,7 +170,7 @@ class _AddShopScreenState extends State<AddShopScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEdit ? 'Edit Store Details' : 'Add New Store'),
+        title: Text(isEdit ? 'Edit Outlet' : 'Add Outlet'),
         actions: [
           if (isEdit)
             IconButton(

@@ -132,7 +132,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               const SizedBox(height: 12),
               ListTile(
                 leading: const Icon(Icons.camera_alt, color: AppTheme.primary),
-                title: const Text('Take Photo via Camera'),
+                title: const Text('Camera'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _pickImage(ImageSource.camera);
@@ -140,7 +140,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library, color: AppTheme.secondary),
-                title: const Text('Choose from Gallery'),
+                title: const Text('Gallery'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _pickImage(ImageSource.gallery);
@@ -441,7 +441,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Upload Pending Bill'),
+        title: const Text('Add Bill'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),

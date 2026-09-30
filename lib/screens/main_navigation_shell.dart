@@ -54,7 +54,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           NavigationDestination(
             icon: Icon(Icons.storefront_outlined),
             selectedIcon: Icon(Icons.storefront, color: AppTheme.primary),
-            label: 'Shops & Routes',
+            label: 'Outlets',
           ),
         ],
       ),

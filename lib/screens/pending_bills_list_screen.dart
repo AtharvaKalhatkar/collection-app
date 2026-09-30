@@ -61,7 +61,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Pending Bill?'),
+        title: const Text('Delete Bill?'),
         content: Text('Delete Bill #${bill.billNumber} for "${bill.shopName}"?\nThis cannot be undone.'),
         actions: [
           TextButton(
@@ -139,7 +139,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pending Bills by Date'),
+        title: const Text('Pending Bills'),
         actions: [
           IconButton(
             icon: const Icon(Icons.note_add_outlined, size: 22),
@@ -284,7 +284,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                 child: Text(
                                   _selectedInvoiceDate != null
                                       ? 'Invoice Date: ${DateFormat('dd MMM yyyy').format(_selectedInvoiceDate!)}'
-                                      : 'All Invoice Dates (Tap to filter)',
+                                      : 'All Dates',
                                   style: TextStyle(
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w700,
@@ -355,7 +355,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                         initialValue: _selectedRouteId,
                         isExpanded: true,
                         decoration: InputDecoration(
-                          hintText: 'All Beat Routes',
+                          hintText: 'All Routes',
                           prefixIcon: const Icon(Icons.location_on_outlined, size: 16),
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -408,7 +408,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                 // Search Box
                 TextField(
                   decoration: InputDecoration(
-                    hintText: 'Search by bill number, store name...',
+                    hintText: 'Search bill, store...',
                     prefixIcon: const Icon(Icons.search, size: 18),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -435,7 +435,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${filteredBills.length} Pending Bills Found',
+                  '${filteredBills.length} Bills',
                   style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade800, fontWeight: FontWeight.w700),
                 ),
                 Row(
@@ -485,7 +485,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                           const SizedBox(height: 16),
                           ElevatedButton.icon(
                             icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Upload Pending Bill'),
+                            label: const Text('Add Bill'),
                             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
                             onPressed: () {
                               Navigator.push(
@@ -757,7 +757,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                         Text(
                                           isPaid
                                               ? 'Balance: Cleared'
-                                              : 'Balance Due: ${CurrencyFormatter.format(bill.balanceDue)}',
+                                              : 'Due: ${CurrencyFormatter.format(bill.balanceDue)}',
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w800,
@@ -818,7 +818,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
         heroTag: 'pending_bills_list_fab',
         backgroundColor: AppTheme.primary,
         icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Upload Bill', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('Add Bill', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         onPressed: () {
           Navigator.push(
             context,

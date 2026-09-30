@@ -202,7 +202,7 @@ class _StatementScreenState extends State<StatementScreen> {
       final totalDue = records.fold(0.0, (s, c) => s + c.balanceAmount);
 
       final firmTitle = _selectedBusiness ?? 'Purva Enterprises & Manas Sales';
-      final modeTitle = _selectedMode?.label ?? 'All Payment Modes';
+      final modeTitle = _selectedMode?.label ?? 'All Modes';
 
       doc.addPage(
         pw.MultiPage(
@@ -344,7 +344,7 @@ class _StatementScreenState extends State<StatementScreen> {
     final totalDue = records.fold(0.0, (s, c) => s + c.balanceAmount);
 
     final firmTitle = _selectedBusiness ?? 'Purva Enterprises & Manas Sales';
-    final modeTitle = _selectedMode?.label ?? 'All Payment Modes';
+    final modeTitle = _selectedMode?.label ?? 'All Modes';
 
     showDialog(
       context: context,
@@ -690,7 +690,7 @@ class _StatementScreenState extends State<StatementScreen> {
                             items: [
                               const DropdownMenuItem<PaymentMode?>(
                                 value: null,
-                                child: Text('All Payment Modes', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                child: Text('All Modes', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                               ),
                               ...PaymentMode.values.map((mode) {
                                 return DropdownMenuItem<PaymentMode?>(
@@ -845,7 +845,7 @@ class _StatementScreenState extends State<StatementScreen> {
                         Icon(Icons.description_outlined, size: 48, color: Colors.blueGrey.shade300),
                         const SizedBox(height: 12),
                         Text(
-                          'No collections recorded for this selection',
+                          'No records found',
                           style: TextStyle(fontSize: 14, color: Colors.blueGrey.shade600),
                         ),
                       ],
