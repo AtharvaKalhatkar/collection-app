@@ -22,106 +22,6 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
   String? _selectedShopId;
   String _shopSearch = '';
 
-  void _showPriorityDialog(BuildContext context, CollectionProvider provider) {
-    final routes = List<RouteModel>.from(provider.routes);
-    routes.sort((a, b) => a.priority.compareTo(b.priority));
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.swap_vert_rounded, color: AppTheme.primary),
-                SizedBox(width: 8),
-                Text('Route Order', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Order route beats by visit sequence (#1 will be visited first on the field):',
-                    style: TextStyle(fontSize: 12.5, color: Colors.blueGrey),
-                  ),
-                  const SizedBox(height: 12),
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: routes.length,
-                      separatorBuilder: (_, index) => const Divider(height: 1),
-                      itemBuilder: (context, idx) {
-                        final r = routes[idx];
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          leading: CircleAvatar(
-                            radius: 14,
-                            backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
-                            child: Text(
-                              '#${idx + 1}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.primary,
-                              ),
-                            ),
-                          ),
-                          title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                          subtitle: Text('${provider.getShopsForRoute(r.id).length} outlets', style: const TextStyle(fontSize: 11.5)),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.arrow_upward, size: 18),
-                                tooltip: 'Move Up',
-                                onPressed: idx > 0
-                                    ? () async {
-                                        await provider.moveRouteUp(r.id);
-                                        setDialogState(() {
-                                          routes.clear();
-                                          routes.addAll(provider.routes);
-                                        });
-                                      }
-                                    : null,
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.arrow_downward, size: 18),
-                                tooltip: 'Move Down',
-                                onPressed: idx < routes.length - 1
-                                    ? () async {
-                                        await provider.moveRouteDown(r.id);
-                                        setDialogState(() {
-                                          routes.clear();
-                                          routes.addAll(provider.routes);
-                                        });
-                                      }
-                                    : null,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   Future<void> _confirmAndDeleteShop(ShopModel shop) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -195,11 +95,6 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
         title: const Text('Routes & Outlets'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.low_priority_rounded, size: 21),
-            tooltip: 'Priorities',
-            onPressed: () => _showPriorityDialog(context, provider),
-          ),
-          IconButton(
             icon: const Icon(Icons.add_location_alt_outlined, size: 20),
             tooltip: 'Add Route',
             onPressed: () async {
@@ -238,40 +133,14 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'ROUTE',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                        color: Colors.blueGrey,
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () => _showPriorityDialog(context, provider),
-                      borderRadius: BorderRadius.circular(6),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        child: Row(
-                          children: const [
-                            Icon(Icons.sort_rounded, size: 15, color: AppTheme.primary),
-                            SizedBox(width: 4),
-                            Text(
-                              'Reorder',
-                              style: TextStyle(
-                                color: AppTheme.primary,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                const Text(
+                  'ROUTE',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: Colors.blueGrey,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 if (routes.isEmpty)

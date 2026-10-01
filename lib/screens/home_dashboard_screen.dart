@@ -14,6 +14,7 @@ import 'placeholder_screen.dart';
 import 'collection_details_dialog.dart';
 import 'add_shop_screen.dart';
 import 'firebase_config_dialog.dart';
+import '../widgets/payment_qr_dialog.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
   final VoidCallback onNavigateToRoutes;
@@ -324,6 +325,11 @@ class HomeDashboardScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.qr_code_2_rounded, size: 22),
+            tooltip: 'Payment QR',
+            onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
+          ),
+          IconButton(
             icon: const Icon(Icons.calendar_month_outlined, size: 20),
             tooltip: 'Select Date',
             onPressed: () => _pickDate(context),
@@ -332,7 +338,9 @@ class HomeDashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.more_vert, size: 20),
             tooltip: 'More Options',
             onSelected: (val) async {
-              if (val == 'add_store') {
+              if (val == 'qr') {
+                PaymentQrDialog.show(context, initialFirm: provider.filterBusiness);
+              } else if (val == 'add_store') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const AddShopScreen()),
@@ -367,6 +375,16 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'qr',
+                child: Row(
+                  children: [
+                    Icon(Icons.qr_code_2_rounded, size: 18, color: AppTheme.primary),
+                    SizedBox(width: 10),
+                    Text('Payment QR Code'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'sync_cloud',
                 child: Row(
@@ -1034,180 +1052,7 @@ class HomeDashboardScreen extends StatelessWidget {
                 ),
               ),
 
-              // Pending Invoices Alert Section (if any bills pending)
-              Builder(
-                builder: (context) {
-                  final pendingBills = provider.getPendingBills(forBusiness: provider.filterBusiness);
-                  if (pendingBills.isEmpty) return const SizedBox.shrink();
 
-                  final totalDue = pendingBills.fold(0.0, (s, b) => s + b.balanceDue);
-
-                  return Container(
-                    margin: const EdgeInsets.only(top: 14),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFFDE68A)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.pending_actions_outlined, size: 18, color: Color(0xFFD97706)),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'PENDING INVOICES (${pendingBills.length})',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF92400E),
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFD97706),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                'Due: ${CurrencyFormatter.format(totalDue)}',
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        ...pendingBills.take(2).map((bill) {
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: const Color(0xFFFDE68A)),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        bill.shopName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                          color: Color(0xFF0F172A),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            'Invoice #${bill.billNumber}',
-                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade800),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.getBusinessLightColor(bill.businessName),
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(color: AppTheme.getBusinessBorderColor(bill.businessName), width: 0.8),
-                                            ),
-                                            child: Text(
-                                              bill.businessName == 'Purva Enterprises' ? 'PURVA' : (bill.businessName == 'Manas Sales' ? 'MANAS' : bill.businessName),
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w800,
-                                                color: AppTheme.getBusinessTextColor(bill.businessName),
-                                                letterSpacing: 0.3,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 1),
-                                      Text(
-                                        'Billed: ${CurrencyFormatter.format(bill.billTotal)} • Due: ${CurrencyFormatter.format(bill.balanceDue)}',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.balanceDueColor,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                ElevatedButton.icon(
-                                  icon: const Icon(Icons.add, size: 13),
-                                  label: const Text('Collect'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFD97706),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    elevation: 0,
-                                    textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => MakeCollectionScreen(
-                                          initialBusiness: bill.businessName,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                        InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const PendingBillsListScreen(),
-                              ),
-                            );
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 4.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'View All ${pendingBills.length} Pending Bills (By Date)',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF92400E),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.arrow_forward, size: 14, color: Color(0xFF92400E)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
 
               // End-of-Day 4 Payment Method Breakdown
               Row(
@@ -1277,7 +1122,76 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // UPI Payment QR Quick Banner
+              InkWell(
+                onTap: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.qr_code_2_rounded, color: Colors.white, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Show Payment QR (Scan & Pay)',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Tap to show Purva or Manas QR to customer',
+                              style: TextStyle(fontSize: 11, color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'OPEN QR',
+                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
 
               // Primary FMCG Operations Grid
               Row(

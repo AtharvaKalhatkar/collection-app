@@ -7,6 +7,7 @@ import '../providers/collection_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import 'add_pending_bill_screen.dart';
+import '../widgets/payment_qr_dialog.dart';
 
 class MakeCollectionScreen extends StatefulWidget {
   final String? initialPendingBillId;
@@ -42,6 +43,33 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
   final _bankNameController = TextEditingController();
   final _refNoController = TextEditingController();
 
+  String? _selectedBank;
+
+  List<String> _getBanksForSelection(String firm, PaymentMode mode) {
+    final isPurva = firm == 'Purva Enterprises';
+    switch (mode) {
+      case PaymentMode.upi:
+        return isPurva ? ['Union Bank'] : ['Central Bank'];
+      case PaymentMode.netBanking:
+        return isPurva ? ['Union Bank', 'RSBL'] : ['Central Bank'];
+      case PaymentMode.cheque:
+        return isPurva ? ['RSBL', 'Union Bank'] : ['Central Bank'];
+      case PaymentMode.cash:
+        return [];
+    }
+  }
+
+  void _syncDefaultBank() {
+    final available = _getBanksForSelection(_selectedBusiness, _selectedMode);
+    if (available.isNotEmpty) {
+      if (_selectedBank == null || !available.contains(_selectedBank)) {
+        _selectedBank = available.first;
+      }
+    } else {
+      _selectedBank = null;
+    }
+  }
+
   bool _isSaving = false;
 
   @override
@@ -52,6 +80,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
     }
     _selectedRouteId = widget.initialRouteId;
     _selectedPendingBillId = widget.initialPendingBillId;
+    _syncDefaultBank();
   }
 
   @override
@@ -315,7 +344,9 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
         paymentMode: _selectedMode,
         collectionDate: _collectionDate,
         chequeNumber: _selectedMode == PaymentMode.cheque ? _chequeNoController.text.trim() : null,
-        bankName: _selectedMode == PaymentMode.cheque ? _bankNameController.text.trim() : null,
+        bankName: _selectedMode != PaymentMode.cash
+            ? (_selectedBank ?? (_getBanksForSelection(_selectedBusiness, _selectedMode).isNotEmpty ? _getBanksForSelection(_selectedBusiness, _selectedMode).first : null))
+            : null,
         referenceNumber: _selectedMode == PaymentMode.upi || _selectedMode == PaymentMode.netBanking
             ? _refNoController.text.trim()
             : null,
@@ -415,6 +446,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                             _selectedBusiness = 'Purva Enterprises';
                             _selectedPendingBillId = null;
                             _collectedAmountController.clear();
+                            _syncDefaultBank();
                           });
                         },
                         borderRadius: BorderRadius.circular(8),
@@ -445,6 +477,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                             _selectedBusiness = 'Manas Sales';
                             _selectedPendingBillId = null;
                             _collectedAmountController.clear();
+                            _syncDefaultBank();
                           });
                         },
                         borderRadius: BorderRadius.circular(8),
@@ -849,7 +882,12 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 3),
                       child: InkWell(
-                        onTap: () => setState(() => _selectedMode = mode),
+                        onTap: () {
+                          setState(() {
+                            _selectedMode = mode;
+                            _syncDefaultBank();
+                          });
+                        },
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -888,47 +926,207 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                 }).toList(),
               ),
 
-              // Optional details if Cheque or UPI
-              if (_selectedMode == PaymentMode.cheque) ...[
-                const SizedBox(height: 12),
+              // Bank Selection & Specific Details for Non-Cash Modes
+              if (_selectedMode != PaymentMode.cash) ...[
+                const SizedBox(height: 14),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _chequeNoController,
-                        decoration: InputDecoration(
-                          labelText: 'Cheque Number (Optional)',
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
+                    Text(
+                      'DEPOSIT BANK (${_selectedMode.label.toUpperCase()})',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: Colors.blueGrey,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _bankNameController,
-                        decoration: InputDecoration(
-                          labelText: 'Bank Name (Optional)',
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
+                    Text(
+                      _selectedBusiness == 'Purva Enterprises' ? 'PURVA ACCOUNT' : 'MANAS ACCOUNT',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: firmPrimaryColor,
                       ),
                     ),
                   ],
                 ),
-              ] else if (_selectedMode == PaymentMode.upi || _selectedMode == PaymentMode.netBanking) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _refNoController,
-                  decoration: InputDecoration(
-                    labelText: 'UTR / Transaction Reference (Optional)',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
+                const SizedBox(height: 6),
+                Builder(
+                  builder: (context) {
+                    final banks = _getBanksForSelection(_selectedBusiness, _selectedMode);
+                    if (banks.length > 1) {
+                      return Row(
+                        children: banks.map((bank) {
+                          final isSelected = _selectedBank == bank;
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 3),
+                              child: InkWell(
+                                onTap: () => setState(() => _selectedBank = bank),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 9),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? firmPrimaryColor : Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: isSelected ? firmPrimaryColor : AppTheme.border,
+                                      width: isSelected ? 1.5 : 1.0,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.account_balance,
+                                        size: 15,
+                                        color: isSelected ? Colors.white : firmPrimaryColor,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        bank,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: isSelected ? Colors.white : Colors.blueGrey.shade800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    } else if (banks.isNotEmpty) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.account_balance, size: 18, color: firmPrimaryColor),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Bank: ',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade600),
+                            ),
+                            Text(
+                              banks.first,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'LINKED',
+                                style: TextStyle(color: Color(0xFF10B981), fontSize: 9.5, fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
                 ),
+
+                // UPI Specific: Direct Show QR Card
+                if (_selectedMode == PaymentMode.upi) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.asset(
+                            _selectedBusiness == 'Purva Enterprises'
+                                ? 'assets/images/qr_purva.png'
+                                : 'assets/images/qr_manas.png',
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${_selectedBusiness == 'Purva Enterprises' ? 'Purva' : 'Manas'} UPI QR',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                              ),
+                              Text(
+                                _selectedBusiness == 'Purva Enterprises'
+                                    ? '8459671694@okbizaxis'
+                                    : '9309862465@okbizaxis',
+                                style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.qr_code_2_rounded, size: 16),
+                          label: const Text('Show QR'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            elevation: 0,
+                            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: () => PaymentQrDialog.show(context, initialFirm: _selectedBusiness),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // Cheque Specific: Cheque Number
+                if (_selectedMode == PaymentMode.cheque) ...[
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _chequeNoController,
+                    decoration: InputDecoration(
+                      labelText: 'Cheque Number (Optional)',
+                      hintText: 'e.g. 123456',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ],
+
+                // UPI / NEFT Specific: UTR Reference
+                if (_selectedMode == PaymentMode.upi || _selectedMode == PaymentMode.netBanking) ...[
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _refNoController,
+                    decoration: InputDecoration(
+                      labelText: 'UTR / Transaction Reference (Optional)',
+                      hintText: 'e.g. UPI Ref / NEFT Ref',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ],
               ],
               const SizedBox(height: 28),
 
