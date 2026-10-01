@@ -7,6 +7,7 @@ import '../models/collection_model.dart';
 import '../models/pending_bill_model.dart';
 import '../models/bill_summary.dart';
 import '../models/payment_mode.dart';
+import '../models/order_model.dart';
 import '../services/storage_service.dart';
 import '../services/sample_data_service.dart';
 import '../services/firebase_service.dart';
@@ -21,6 +22,7 @@ class CollectionProvider extends ChangeNotifier {
   List<ShopModel> _shops = [];
   List<CollectionModel> _collections = [];
   List<PendingBillModel> _pendingBills = [];
+  List<SalesOrderModel> _salesOrders = [];
   List<String> _businesses = ['Purva Enterprises', 'Manas Sales'];
   String _salesmanName = 'Akash';
   bool _isLoading = true;
@@ -39,6 +41,7 @@ class CollectionProvider extends ChangeNotifier {
   List<ShopModel> get shops => _shops;
   List<CollectionModel> get collections => _collections;
   List<PendingBillModel> get pendingBills => _pendingBills;
+  List<SalesOrderModel> get salesOrders => _salesOrders;
   List<String> get businesses => _businesses;
   String get salesmanName => _salesmanName;
   bool get isLoading => _isLoading;
@@ -85,6 +88,7 @@ class CollectionProvider extends ChangeNotifier {
       }
       _businesses = await _storage.loadBusinesses();
       _salesmanName = await _storage.loadSalesmanName();
+      _salesOrders = await _storage.loadSalesOrders();
     }
 
     _routes.sort((a, b) => a.priority.compareTo(b.priority));
@@ -788,6 +792,19 @@ Net Banking:       ${CurrencyFormatter.format(netBanking)} ($netBills receipts)
 --------------------------------------------------
 _Generated via Daily Collection Pro_
 '''.trim();
+  }
+
+  // --- Sales Order Operations ---
+  Future<void> addSalesOrder(SalesOrderModel order) async {
+    _salesOrders.insert(0, order);
+    await _storage.saveSalesOrders(_salesOrders);
+    notifyListeners();
+  }
+
+  Future<void> deleteSalesOrder(String orderId) async {
+    _salesOrders.removeWhere((o) => o.id == orderId);
+    await _storage.saveSalesOrders(_salesOrders);
+    notifyListeners();
   }
 
   // Reset to initial sample data

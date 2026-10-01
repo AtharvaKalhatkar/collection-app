@@ -4,12 +4,14 @@ import '../models/route_model.dart';
 import '../models/shop_model.dart';
 import '../models/collection_model.dart';
 import '../models/pending_bill_model.dart';
+import '../models/order_model.dart';
 
 class StorageService {
   static const String _keyRoutes = 'app_routes_v1';
   static const String _keyShops = 'app_shops_v1';
   static const String _keyCollections = 'app_collections_v1';
   static const String _keyPendingBills = 'app_pending_bills_v1';
+  static const String _keySalesOrders = 'app_sales_orders_v1';
   static const String _keyBusinesses = 'app_businesses_v1';
   static const String _keySalesman = 'app_salesman_name_v1';
   static const String _keyInitialized = 'app_sample_data_initialized_v1';
@@ -150,6 +152,26 @@ class StorageService {
         // ignore: avoid_print
         print('LocalStorage pending bills save notice: $inner');
       }
+    }
+  }
+
+  // --- Sales Orders ---
+  Future<List<SalesOrderModel>> loadSalesOrders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keySalesOrders) ?? [];
+    return rawList
+        .map((s) => SalesOrderModel.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> saveSalesOrders(List<SalesOrderModel> orders) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final rawList = orders.map((o) => jsonEncode(o.toJson())).toList();
+      await prefs.setStringList(_keySalesOrders, rawList);
+    } catch (e) {
+      // ignore: avoid_print
+      print('LocalStorage sales orders save notice: $e');
     }
   }
 

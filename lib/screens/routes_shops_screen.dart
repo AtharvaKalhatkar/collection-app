@@ -9,6 +9,7 @@ import '../utils/theme.dart';
 import 'add_route_dialog.dart';
 import 'add_shop_screen.dart';
 import 'send_reminder_dialog.dart';
+import 'orders_screen.dart';
 
 class RoutesShopsScreen extends StatefulWidget {
   const RoutesShopsScreen({super.key});
@@ -578,7 +579,17 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                     padding: EdgeInsets.zero,
                                     tooltip: 'Options',
                                     onSelected: (val) async {
-                                      if (val == 'edit') {
+                                      if (val == 'order') {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => OrdersScreen(
+                                              initialRouteId: shop.routeId,
+                                              initialShopId: shop.id,
+                                            ),
+                                          ),
+                                        );
+                                      } else if (val == 'edit') {
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
@@ -590,6 +601,16 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                       }
                                     },
                                     itemBuilder: (ctx) => [
+                                      const PopupMenuItem(
+                                        value: 'order',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.shopping_bag_outlined, size: 18, color: Color(0xFFF59E0B)),
+                                            SizedBox(width: 8),
+                                            Text('Take Order'),
+                                          ],
+                                        ),
+                                      ),
                                       const PopupMenuItem(
                                         value: 'edit',
                                         child: Row(

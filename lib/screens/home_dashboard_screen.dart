@@ -1360,7 +1360,9 @@ class HomeDashboardScreen extends StatelessWidget {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const OrdersScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => OrdersScreen(initialFirm: provider.filterBusiness),
+                          ),
                         );
                       },
                     ),
