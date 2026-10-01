@@ -219,6 +219,64 @@ class HomeDashboardScreen extends StatelessWidget {
     }
   }
 
+  void _showInstallInstructions(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.install_mobile_rounded, color: AppTheme.primary),
+            SizedBox(width: 8),
+            Text('Install Collection App', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Add this app to your phone home screen for 1-tap quick access:',
+              style: TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text('Android Phone (Chrome):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: AppTheme.primary)),
+                  SizedBox(height: 4),
+                  Text('1. Tap the 3 dots (⋮) at top-right of Chrome\n2. Tap "Install app" or "Add to Home screen"', style: TextStyle(fontSize: 12)),
+                  SizedBox(height: 10),
+                  Text('iPhone (Safari):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: AppTheme.primary)),
+                  SizedBox(height: 4),
+                  Text('1. Tap Share icon (square with arrow) at bottom\n2. Scroll down & tap "Add to Home Screen"', style: TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CollectionProvider>();
@@ -338,7 +396,9 @@ class HomeDashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.more_vert, size: 20),
             tooltip: 'More Options',
             onSelected: (val) async {
-              if (val == 'qr') {
+              if (val == 'install') {
+                _showInstallInstructions(context);
+              } else if (val == 'qr') {
                 PaymentQrDialog.show(context, initialFirm: provider.filterBusiness);
               } else if (val == 'add_store') {
                 Navigator.push(
@@ -375,6 +435,16 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'install',
+                child: Row(
+                  children: [
+                    Icon(Icons.install_mobile_rounded, size: 18, color: Color(0xFF10B981)),
+                    SizedBox(width: 10),
+                    Text('Install App (PWA)'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'qr',
                 child: Row(
