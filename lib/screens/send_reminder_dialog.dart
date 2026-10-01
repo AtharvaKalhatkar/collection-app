@@ -48,32 +48,30 @@ class _SendReminderDialogState extends State<SendReminderDialog> {
     final balanceStr = CurrencyFormatter.format(widget.balanceAmount);
 
     if (templateIndex == 0) {
-      // Small & Concise message requested by user
       if (widget.billNumber != null && widget.billNumber!.isNotEmpty) {
         return 'Dear ${widget.shopName},\n'
-            'Payment reminder: Bill ${widget.billNumber} has a pending balance of $balanceStr with ${widget.businessName}. Kindly arrange payment.\n'
+            'Payment reminder: Bill #${widget.billNumber} has a pending balance of $balanceStr with ${widget.businessName}. Kindly arrange payment.\n'
             '- ${widget.salesmanName}';
       } else {
         return 'Dear ${widget.shopName},\n'
-            'Payment reminder: Outstanding balance of $balanceStr is pending with ${widget.businessName}. Kindly clear at your earliest convenience.\n'
+            'Payment reminder: Outstanding balance of $balanceStr is pending with ${widget.businessName}. Kindly arrange payment.\n'
             '- ${widget.salesmanName}';
       }
     } else {
-      // Detailed Bill Template
       final billTotalStr = widget.billTotal != null ? CurrencyFormatter.format(widget.billTotal!) : '';
-      final billLine = widget.billNumber != null ? 'Bill No: ${widget.billNumber}\n' : '';
-      final totalLine = billTotalStr.isNotEmpty ? 'Bill Total: $billTotalStr\n' : '';
+      final billLine = widget.billNumber != null ? 'Bill No: #${widget.billNumber}\n' : '';
+      final totalLine = billTotalStr.isNotEmpty ? 'Total: $billTotalStr\n' : '';
 
       return 'Payment Reminder\n'
           'To: ${widget.shopName}\n'
-          'From: ${widget.businessName}\n'
+          'Firm: ${widget.businessName}\n'
           '----------------------------------\n'
           '$billLine$totalLine'
-          'Balance Due: $balanceStr\n'
+          'Due: $balanceStr\n'
           '----------------------------------\n'
-          'Kindly clear the pending balance at your earliest convenience.\n'
+          'Kindly clear the pending balance.\n'
           'Thank you,\n'
-          '${widget.salesmanName} | ${widget.businessName}';
+          '${widget.salesmanName} (${widget.businessName})';
     }
   }
 
@@ -96,7 +94,7 @@ class _SendReminderDialogState extends State<SendReminderDialog> {
     try {
       final launched = await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
       if (!launched && mounted) {
-        _copyAndNotify('Could not launch WhatsApp directly. Message copied to clipboard!');
+        _copyAndNotify('Could not launch WhatsApp. Message copied to clipboard!');
       }
     } catch (_) {
       if (mounted) {
@@ -131,8 +129,16 @@ class _SendReminderDialogState extends State<SendReminderDialog> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(customMessage),
-          backgroundColor: AppTheme.secondary,
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(customMessage)),
+            ],
+          ),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -141,82 +147,102 @@ class _SendReminderDialogState extends State<SendReminderDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      backgroundColor: Colors.white,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
+        constraints: const BoxConstraints(maxWidth: 420),
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.all(18.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Header
+                // Header Row
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: AppTheme.chequeColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Icon(Icons.notifications_active_outlined, color: AppTheme.chequeColor, size: 18),
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.notifications_active_outlined,
+                        color: Color(0xFFD97706),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Payment Reminder',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
                         ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Payment Reminder',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close, size: 20),
-                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
 
-                // Recipient & Outstanding summary box
+                // Shop & Outstanding Balance Card
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppTheme.border),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.shopName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Mobile: ${widget.mobileNumber.isNotEmpty ? widget.mobileNumber : 'N/A'}',
-                            style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700),
-                          ),
-                        ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.shopName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                                color: Color(0xFF0F172A),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Mobile: ${widget.mobileNumber.isNotEmpty ? widget.mobileNumber : 'N/A'}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.blueGrey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           const Text(
                             'Balance Due',
-                            style: TextStyle(fontSize: 11, color: Colors.blueGrey),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blueGrey,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
@@ -234,101 +260,147 @@ class _SendReminderDialogState extends State<SendReminderDialog> {
                 ),
                 const SizedBox(height: 14),
 
-                // Template Style Selector
-                Row(
-                  children: [
-                    const Text(
-                      'Message Format:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-                    ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: const Text('Short Message'),
-                      selected: _selectedTemplate == 0,
-                      selectedColor: AppTheme.primary,
-                      labelStyle: TextStyle(
-                        fontSize: 11,
-                        fontWeight: _selectedTemplate == 0 ? FontWeight.bold : FontWeight.normal,
-                        color: _selectedTemplate == 0 ? Colors.white : Colors.black87,
+                // Full-width Segmented Format Switcher
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => _onTemplateChanged(0),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 7),
+                            decoration: BoxDecoration(
+                              color: _selectedTemplate == 0 ? AppTheme.primary : Colors.transparent,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Short Message',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _selectedTemplate == 0 ? Colors.white : Colors.blueGrey.shade800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                      onSelected: (val) {
-                        if (val) _onTemplateChanged(0);
-                      },
-                    ),
-                    const SizedBox(width: 6),
-                    ChoiceChip(
-                      label: const Text('Detailed Bill'),
-                      selected: _selectedTemplate == 1,
-                      selectedColor: AppTheme.primary,
-                      labelStyle: TextStyle(
-                        fontSize: 11,
-                        fontWeight: _selectedTemplate == 1 ? FontWeight.bold : FontWeight.normal,
-                        color: _selectedTemplate == 1 ? Colors.white : Colors.black87,
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => _onTemplateChanged(1),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 7),
+                            decoration: BoxDecoration(
+                              color: _selectedTemplate == 1 ? AppTheme.primary : Colors.transparent,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Detailed Bill',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _selectedTemplate == 1 ? Colors.white : Colors.blueGrey.shade800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                      onSelected: (val) {
-                        if (val) _onTemplateChanged(1);
-                      },
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
 
                 // Editable Message Box
                 TextField(
                   controller: _messageController,
-                  maxLines: 5,
-                  style: const TextStyle(fontSize: 13, height: 1.4),
+                  maxLines: 4,
+                  style: const TextStyle(fontSize: 12.5, height: 1.35, color: Color(0xFF0F172A)),
                   decoration: InputDecoration(
-                    labelText: 'Message Content (Editable)',
+                    labelText: 'Message (Editable)',
+                    labelStyle: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                     alignLabelWithHint: true,
                     contentPadding: const EdgeInsets.all(12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppTheme.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                // Direct Send Buttons
+                // Primary WhatsApp Action Button (Full Width, No Wrap!)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: const Text(
+                      'Send on WhatsApp',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366), // WhatsApp Green
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 1,
+                    ),
+                    onPressed: _launchWhatsApp,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Secondary Row: SMS & Copy
                 Row(
                   children: [
                     Expanded(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.chat_outlined, size: 16),
-                        label: const Text('WhatsApp'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF25D366), // WhatsApp Green
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.sms_outlined, size: 15),
+                        label: const Text(
+                          'Send SMS',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                         ),
-                        onPressed: _launchWhatsApp,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.sms_outlined, size: 16),
-                        label: const Text('SMS'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.secondary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.secondary,
+                          side: const BorderSide(color: AppTheme.secondary),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                         onPressed: _launchSms,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.copy_outlined, size: 16),
-                      label: const Text('Copy'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        side: const BorderSide(color: AppTheme.border),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.copy_outlined, size: 15),
+                        label: const Text(
+                          'Copy Text',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.blueGrey.shade700,
+                          side: const BorderSide(color: AppTheme.border),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () => _copyAndNotify('Reminder copied!'),
                       ),
-                      onPressed: () {
-                        _copyAndNotify('Reminder message copied to clipboard!');
-                      },
                     ),
                   ],
                 ),
