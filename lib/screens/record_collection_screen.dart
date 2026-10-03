@@ -231,6 +231,7 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
     try {
       final XFile? image = await _picker.pickImage(
         source: source,
+        preferredCameraDevice: CameraDevice.rear,
         maxWidth: 800,
         maxHeight: 800,
         imageQuality: 50,

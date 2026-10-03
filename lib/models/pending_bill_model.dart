@@ -37,6 +37,8 @@ class PendingBillModel {
       (totalAmount - collectedAmount) > 0 ? (totalAmount - collectedAmount) : 0.0;
 
   String get firmName => businessName;
+  DateTime get billDate => invoiceDate;
+  double get billAmount => totalAmount;
 
   bool get isPaid => balanceDue <= 0.001;
 
@@ -104,6 +106,7 @@ class PendingBillModel {
     String? photoPath,
     String? status,
     DateTime? createdAt,
+    bool clearPhoto = false,
   }) {
     return PendingBillModel(
       id: id ?? this.id,
@@ -117,8 +120,8 @@ class PendingBillModel {
       billNumber: billNumber ?? this.billNumber,
       totalAmount: totalAmount ?? this.totalAmount,
       collectedAmount: collectedAmount ?? this.collectedAmount,
-      photoBase64: photoBase64 ?? this.photoBase64,
-      photoPath: photoPath ?? this.photoPath,
+      photoBase64: clearPhoto ? null : (photoBase64 ?? this.photoBase64),
+      photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
     );

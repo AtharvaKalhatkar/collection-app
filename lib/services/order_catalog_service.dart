@@ -10,6 +10,25 @@ class OrderCatalogService {
     manas: ['Racket', 'Imami', 'Dabar', 'Cadbury', 'Gowardhan'],
   };
 
+  static const List<String> availableUnits = ['Pcs', 'Outer', 'Box', 'Nodes'];
+
+  // Dynamic custom products added by user
+  static final List<CatalogProduct> _customProducts = [];
+
+  static void setCustomProducts(List<CatalogProduct> products) {
+    _customProducts.clear();
+    _customProducts.addAll(products);
+  }
+
+  static void addCustomProduct(CatalogProduct product) {
+    _customProducts.removeWhere((p) => p.id == product.id);
+    _customProducts.add(product);
+  }
+
+  static List<CatalogProduct> get customProducts => List.unmodifiable(_customProducts);
+
+  static List<CatalogProduct> get allProducts => [...catalog, ..._customProducts];
+
   // Full product catalog
   static const List<CatalogProduct> catalog = [
     // ==========================================
@@ -710,11 +729,17 @@ class OrderCatalogService {
   ];
 
   static List<String> getCompanies(String firm) {
-    return companiesByFirm[firm] ?? [];
+    final base = List<String>.from(companiesByFirm[firm] ?? []);
+    for (final p in _customProducts) {
+      if (p.firm == firm && !base.any((c) => c.toLowerCase() == p.company.toLowerCase())) {
+        base.add(p.company);
+      }
+    }
+    return base;
   }
 
   static List<String> getCategories(String firm, String company) {
-    final products = catalog.where(
+    final products = allProducts.where(
       (p) => p.firm == firm && p.company.toLowerCase() == company.toLowerCase(),
     );
     final categories = <String>{};
@@ -729,7 +754,7 @@ class OrderCatalogService {
     required String company,
     String? category,
   }) {
-    return catalog.where((p) {
+    return allProducts.where((p) {
       final firmMatch = p.firm == firm;
       final compMatch = p.company.toLowerCase() == company.toLowerCase();
       final catMatch = category == null || category.isEmpty || p.category == category;

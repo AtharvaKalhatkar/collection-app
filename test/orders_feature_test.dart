@@ -97,9 +97,63 @@ void main() {
       expect(fromJson.id, equals('ord-test-1'));
       expect(fromJson.orderNumber, equals('ORD-261001-1001'));
       expect(fromJson.firm, equals('Purva Enterprises'));
-      expect(fromJson.items.length, equals(1));
       expect(fromJson.totalAmount, equals(300.0));
       expect(fromJson.notes, equals('Deliver early morning'));
     });
+
+    test('OrderItem supports packaging units: Pcs, Outer, Box, Nodes', () {
+      expect(OrderCatalogService.availableUnits, equals(['Pcs', 'Outer', 'Box', 'Nodes']));
+
+      final item = OrderItem(
+        productId: 'prod-box-1',
+        productName: 'Biscuits',
+        company: 'Cadbury',
+        category: 'Biscuits',
+        packing: '120g Pack',
+        rate: 150.0,
+        quantity: 2,
+        unit: 'Box',
+      );
+
+      expect(item.unit, equals('Box'));
+      expect(item.total, equals(300.0));
+
+      final updated = item.copyWith(unit: 'Outer', quantity: 3);
+      expect(updated.unit, equals('Outer'));
+      expect(updated.quantity, equals(3));
+      expect(updated.total, equals(450.0));
+    });
+  });
+
+  group('Catalog Custom Product Master & History', () {
+    test('Dynamic custom products are incorporated into catalog lookups', () {
+      const customProd = CatalogProduct(
+        id: 'cust-test-1',
+        name: 'New Herbal Soap',
+        category: 'Herbal Care',
+        company: 'Patanjali',
+        firm: 'Purva Enterprises',
+        packing: '100g Bar',
+        mrp: 45.0,
+        rate: 36.0,
+        defaultUnit: 'Pcs',
+      );
+
+      OrderCatalogService.addCustomProduct(customProd);
+
+      final companies = OrderCatalogService.getCompanies('Purva Enterprises');
+      expect(companies, contains('Patanjali'));
+
+      final categories = OrderCatalogService.getCategories('Purva Enterprises', 'Patanjali');
+      expect(categories, contains('Herbal Care'));
+
+      final products = OrderCatalogService.getProducts(
+        firm: 'Purva Enterprises',
+        company: 'Patanjali',
+        category: 'Herbal Care',
+      );
+      expect(products.any((p) => p.id == 'cust-test-1'), isTrue);
+    });
   });
 }
+

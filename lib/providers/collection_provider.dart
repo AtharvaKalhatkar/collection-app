@@ -8,6 +8,7 @@ import '../models/pending_bill_model.dart';
 import '../models/bill_summary.dart';
 import '../models/payment_mode.dart';
 import '../models/order_model.dart';
+import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
 import '../services/sample_data_service.dart';
 import '../services/firebase_service.dart';
@@ -23,6 +24,7 @@ class CollectionProvider extends ChangeNotifier {
   List<CollectionModel> _collections = [];
   List<PendingBillModel> _pendingBills = [];
   List<SalesOrderModel> _salesOrders = [];
+  List<CatalogProduct> _customProducts = [];
   List<String> _businesses = ['Purva Enterprises', 'Manas Sales'];
   String _salesmanName = 'Akash';
   bool _isLoading = true;
@@ -42,6 +44,7 @@ class CollectionProvider extends ChangeNotifier {
   List<CollectionModel> get collections => _collections;
   List<PendingBillModel> get pendingBills => _pendingBills;
   List<SalesOrderModel> get salesOrders => _salesOrders;
+  List<CatalogProduct> get customProducts => _customProducts;
   List<String> get businesses => _businesses;
   String get salesmanName => _salesmanName;
   bool get isLoading => _isLoading;
@@ -90,6 +93,10 @@ class CollectionProvider extends ChangeNotifier {
       _salesmanName = await _storage.loadSalesmanName();
       _salesOrders = await _storage.loadSalesOrders();
     }
+
+    // Load custom products for both fresh and existing setups
+    _customProducts = await _storage.loadCustomProducts();
+    OrderCatalogService.setCustomProducts(_customProducts);
 
     _routes.sort((a, b) => a.priority.compareTo(b.priority));
     bool routesResave = false;
@@ -723,6 +730,7 @@ class CollectionProvider extends ChangeNotifier {
     final updatedBill = pendingBill.copyWith(
       collectedAmount: newCollectedTotal,
       status: newStatus,
+      clearPhoto: true, // Delete image after collection is recorded to free device storage
     );
     await updatePendingBill(updatedBill);
   }
@@ -804,6 +812,28 @@ _Generated via Daily Collection Pro_
   Future<void> deleteSalesOrder(String orderId) async {
     _salesOrders.removeWhere((o) => o.id == orderId);
     await _storage.saveSalesOrders(_salesOrders);
+    notifyListeners();
+  }
+
+  // --- Customer History for Order Screen ---
+  List<SalesOrderModel> getPreviousOrdersForShop(String shopId, {int limit = 3}) {
+    final matches = _salesOrders.where((o) => o.shopId == shopId).toList();
+    matches.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+    return matches.take(limit).toList();
+  }
+
+  List<PendingBillModel> getPreviousBillsForShop(String shopId, {int limit = 3}) {
+    final matches = _pendingBills.where((b) => b.shopId == shopId).toList();
+    matches.sort((a, b) => b.billDate.compareTo(a.billDate));
+    return matches.take(limit).toList();
+  }
+
+  // --- Custom Product Master Management ---
+  Future<void> addCustomProduct(CatalogProduct product) async {
+    _customProducts.removeWhere((p) => p.id == product.id);
+    _customProducts.add(product);
+    OrderCatalogService.addCustomProduct(product);
+    await _storage.saveCustomProducts(_customProducts);
     notifyListeners();
   }
 

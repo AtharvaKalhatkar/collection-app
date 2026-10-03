@@ -94,6 +94,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     try {
       final picked = await _picker.pickImage(
         source: source,
+        preferredCameraDevice: CameraDevice.rear,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 70,
@@ -107,7 +108,13 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not capture image: $e')),
+          SnackBar(
+            content: Text('Camera issue: $e. Try selecting from Gallery.'),
+            action: SnackBarAction(
+              label: 'Open Gallery',
+              onPressed: () => _pickImage(ImageSource.gallery),
+            ),
+          ),
         );
       }
     }

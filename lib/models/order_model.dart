@@ -7,6 +7,7 @@ class CatalogProduct {
   final String packing;
   final double mrp;
   final double rate;
+  final String defaultUnit; // 'Pcs', 'Outer', 'Box', 'Nodes'
   final String? code;
 
   const CatalogProduct({
@@ -18,6 +19,7 @@ class CatalogProduct {
     required this.packing,
     required this.mrp,
     required this.rate,
+    this.defaultUnit = 'Pcs',
     this.code,
   });
 
@@ -30,6 +32,7 @@ class CatalogProduct {
     'packing': packing,
     'mrp': mrp,
     'rate': rate,
+    'defaultUnit': defaultUnit,
     'code': code,
   };
 
@@ -42,6 +45,7 @@ class CatalogProduct {
     packing: json['packing'] as String? ?? '',
     mrp: (json['mrp'] as num).toDouble(),
     rate: (json['rate'] as num).toDouble(),
+    defaultUnit: json['defaultUnit'] as String? ?? 'Pcs',
     code: json['code'] as String?,
   );
 }
@@ -54,6 +58,7 @@ class OrderItem {
   final String packing;
   final double rate;
   int quantity;
+  String unit; // 'Pcs', 'Outer', 'Box', 'Nodes'
 
   OrderItem({
     required this.productId,
@@ -63,9 +68,11 @@ class OrderItem {
     required this.packing,
     required this.rate,
     required this.quantity,
+    this.unit = 'Pcs',
   });
 
   double get subtotal => rate * quantity;
+  double get total => subtotal;
 
   Map<String, dynamic> toJson() => {
     'productId': productId,
@@ -75,6 +82,7 @@ class OrderItem {
     'packing': packing,
     'rate': rate,
     'quantity': quantity,
+    'unit': unit,
     'subtotal': subtotal,
   };
 
@@ -86,9 +94,10 @@ class OrderItem {
     packing: json['packing'] as String? ?? '',
     rate: (json['rate'] as num).toDouble(),
     quantity: (json['quantity'] as num).toInt(),
+    unit: json['unit'] as String? ?? 'Pcs',
   );
 
-  OrderItem copyWith({int? quantity}) => OrderItem(
+  OrderItem copyWith({int? quantity, String? unit}) => OrderItem(
     productId: productId,
     productName: productName,
     company: company,
@@ -96,6 +105,7 @@ class OrderItem {
     packing: packing,
     rate: rate,
     quantity: quantity ?? this.quantity,
+    unit: unit ?? this.unit,
   );
 }
 
@@ -133,6 +143,8 @@ class SalesOrderModel {
     this.status = 'Booked',
     this.notes,
   });
+
+  String get businessName => firm;
 
   Map<String, dynamic> toJson() => {
     'id': id,

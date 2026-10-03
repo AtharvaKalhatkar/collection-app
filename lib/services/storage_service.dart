@@ -12,6 +12,7 @@ class StorageService {
   static const String _keyCollections = 'app_collections_v1';
   static const String _keyPendingBills = 'app_pending_bills_v1';
   static const String _keySalesOrders = 'app_sales_orders_v1';
+  static const String _keyCustomProducts = 'app_custom_products_v1';
   static const String _keyBusinesses = 'app_businesses_v1';
   static const String _keySalesman = 'app_salesman_name_v1';
   static const String _keyInitialized = 'app_sample_data_initialized_v1';
@@ -172,6 +173,26 @@ class StorageService {
     } catch (e) {
       // ignore: avoid_print
       print('LocalStorage sales orders save notice: $e');
+    }
+  }
+
+  // --- Custom Products Master ---
+  Future<List<CatalogProduct>> loadCustomProducts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keyCustomProducts) ?? [];
+    return rawList
+        .map((s) => CatalogProduct.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> saveCustomProducts(List<CatalogProduct> products) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final rawList = products.map((p) => jsonEncode(p.toJson())).toList();
+      await prefs.setStringList(_keyCustomProducts, rawList);
+    } catch (e) {
+      // ignore: avoid_print
+      print('LocalStorage custom products save notice: $e');
     }
   }
 

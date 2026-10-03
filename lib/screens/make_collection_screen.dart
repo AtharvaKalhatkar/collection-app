@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +9,7 @@ import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import 'add_pending_bill_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
+import '../widgets/fullscreen_image_viewer.dart';
 
 class MakeCollectionScreen extends StatefulWidget {
   final String? initialPendingBillId;
@@ -740,6 +742,81 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                     ],
                   ),
                 ),
+                if (selectedBill.photoBase64 != null && selectedBill.photoBase64!.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: InkWell(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => FullScreenImageViewer(
+                                  imageBase64: selectedBill.photoBase64!,
+                                  title: 'Bill #${selectedBill.billNumber} - ${selectedBill.shopName}',
+                                ),
+                              );
+                            },
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Image.memory(
+                                  base64Decode(selectedBill.photoBase64!),
+                                  width: 60,
+                                  height: 60,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => Container(
+                                    width: 60,
+                                    height: 60,
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(Icons.broken_image, size: 24),
+                                  ),
+                                ),
+                                Container(
+                                  width: 60,
+                                  height: 60,
+                                  color: Colors.black26,
+                                  child: const Icon(Icons.zoom_in, color: Colors.white, size: 22),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.receipt_outlined, size: 16, color: AppTheme.primary),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Uploaded Bill Copy',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Tap to inspect full invoice proof. Photo will be auto-deleted after collection.',
+                                style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
               const SizedBox(height: 18),
 

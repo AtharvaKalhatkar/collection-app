@@ -6,12 +6,15 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/order_model.dart';
+import '../models/pending_bill_model.dart';
 import '../models/route_model.dart';
 import '../models/shop_model.dart';
 import '../providers/collection_provider.dart';
+import '../services/godown_billing_pdf_service.dart';
 import '../services/order_catalog_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
+import '../widgets/add_product_dialog.dart';
 
 class OrdersScreen extends StatefulWidget {
   final String? initialFirm;
@@ -32,16 +35,19 @@ class OrdersScreen extends StatefulWidget {
 class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Order Header Selection
+  // Dropdown Selections
   late String _selectedFirm;
   String? _selectedRouteId;
   String? _selectedShopId;
-
-  // Catalog Navigation
   late String _selectedCompany;
   String? _selectedCategory; // null = all in this company
+  String? _quickSelectedProductId;
 
-  // Cart / In-Progress Order: Map of ProductId -> OrderItem
+  // UI state
+  bool _isHistoryExpanded = true;
+  String _bookedOrdersFirmFilter = 'All';
+
+  // Cart: Map of ProductId -> OrderItem
   final Map<String, OrderItem> _cart = {};
 
   final TextEditingController _notesController = TextEditingController();
@@ -55,11 +61,14 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     _selectedRouteId = widget.initialRouteId;
     _selectedShopId = widget.initialShopId;
 
-    final initialCompanies = OrderCatalogService.getCompanies(_selectedFirm);
-    _selectedCompany = initialCompanies.isNotEmpty ? initialCompanies.first : 'Wipro';
+    _initCompanyAndCategory();
+  }
 
-    final categories = OrderCatalogService.getCategories(_selectedFirm, _selectedCompany);
-    _selectedCategory = categories.isNotEmpty ? categories.first : null;
+  void _initCompanyAndCategory() {
+    final companies = OrderCatalogService.getCompanies(_selectedFirm);
+    _selectedCompany = companies.isNotEmpty ? companies.first : 'Wipro';
+    _selectedCategory = null; // show all categories by default
+    _quickSelectedProductId = null;
   }
 
   @override
@@ -73,10 +82,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     if (_selectedFirm == firm) return;
     setState(() {
       _selectedFirm = firm;
-      final companies = OrderCatalogService.getCompanies(firm);
-      _selectedCompany = companies.isNotEmpty ? companies.first : '';
-      final categories = OrderCatalogService.getCategories(_selectedFirm, _selectedCompany);
-      _selectedCategory = categories.isNotEmpty ? categories.first : null;
+      _initCompanyAndCategory();
     });
   }
 
@@ -84,19 +90,21 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     if (_selectedCompany == company) return;
     setState(() {
       _selectedCompany = company;
-      final categories = OrderCatalogService.getCategories(_selectedFirm, _selectedCompany);
-      _selectedCategory = categories.isNotEmpty ? categories.first : null;
+      _selectedCategory = null;
+      _quickSelectedProductId = null;
     });
   }
 
   void _onCategoryChanged(String? category) {
     setState(() {
       _selectedCategory = category;
+      _quickSelectedProductId = null;
     });
   }
 
   // Cart Operations
-  void _addProduct(CatalogProduct product, {int qtyToAdd = 1}) {
+  void _addProduct(CatalogProduct product, {int qtyToAdd = 1, String? unit}) {
+    final chosenUnit = unit ?? product.defaultUnit;
     setState(() {
       if (_cart.containsKey(product.id)) {
         _cart[product.id]!.quantity += qtyToAdd;
@@ -109,6 +117,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
           packing: product.packing,
           rate: product.rate,
           quantity: qtyToAdd,
+          unit: chosenUnit,
         );
       }
     });
@@ -126,13 +135,15 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     });
   }
 
-  void _setQuantity(CatalogProduct product, int qty) {
+  void _setQuantity(CatalogProduct product, int qty, {String? unit}) {
     setState(() {
       if (qty <= 0) {
         _cart.remove(product.id);
       } else {
+        final chosenUnit = unit ?? (_cart[product.id]?.unit ?? product.defaultUnit);
         if (_cart.containsKey(product.id)) {
           _cart[product.id]!.quantity = qty;
+          _cart[product.id] = _cart[product.id]!.copyWith(unit: chosenUnit);
         } else {
           _cart[product.id] = OrderItem(
             productId: product.id,
@@ -142,14 +153,27 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             packing: product.packing,
             rate: product.rate,
             quantity: qty,
+            unit: chosenUnit,
           );
         }
       }
     });
   }
 
+  void _setProductUnit(String productId, String unit) {
+    setState(() {
+      if (_cart.containsKey(productId)) {
+        _cart[productId] = _cart[productId]!.copyWith(unit: unit);
+      }
+    });
+  }
+
   int _getItemQuantity(String productId) {
     return _cart[productId]?.quantity ?? 0;
+  }
+
+  String _getItemUnit(CatalogProduct product) {
+    return _cart[product.id]?.unit ?? product.defaultUnit;
   }
 
   int get _totalCartQuantity {
@@ -160,10 +184,6 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     return _cart.values.fold(0.0, (sum, item) => sum + item.subtotal);
   }
 
-  int _getCartCountForCompany(String company) {
-    return _cart.values.where((i) => i.company.toLowerCase() == company.toLowerCase()).fold(0, (s, i) => s + i.quantity);
-  }
-
   void _clearCart() {
     setState(() {
       _cart.clear();
@@ -171,7 +191,55 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     });
   }
 
-  // Searchable Shop Picker Bottom Sheet
+  // Quick repeat previous order items
+  void _reorderPreviousOrder(SalesOrderModel pastOrder) {
+    setState(() {
+      for (final it in pastOrder.items) {
+        if (_cart.containsKey(it.productId)) {
+          _cart[it.productId]!.quantity += it.quantity;
+        } else {
+          _cart[it.productId] = it.copyWith();
+        }
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Added ${pastOrder.items.length} items from previous order to cart!')),
+          ],
+        ),
+        backgroundColor: AppTheme.success,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // Open Add Product Dialog
+  Future<void> _openAddProductDialog() async {
+    final newProduct = await showDialog<CatalogProduct>(
+      context: context,
+      builder: (ctx) => AddProductDialog(
+        initialFirm: _selectedFirm,
+        initialCompany: _selectedCompany,
+        initialCategory: _selectedCategory,
+      ),
+    );
+
+    if (newProduct != null && mounted) {
+      setState(() {
+        _selectedFirm = newProduct.firm;
+        _selectedCompany = newProduct.company;
+        _selectedCategory = newProduct.category;
+        _quickSelectedProductId = newProduct.id;
+        _addProduct(newProduct, qtyToAdd: 1);
+      });
+    }
+  }
+
+  // Searchable Shop Picker Dialog (Alternative to Dropdown)
   void _openShopPicker(List<ShopModel> shops) {
     showModalBottomSheet(
       context: context,
@@ -201,42 +269,32 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
               child: SizedBox(
                 height: MediaQuery.of(context).size.height * 0.7,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Select Outlet / Store',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          'Select Outlet / Shop',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(ctx),
-                        ),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
                       ],
                     ),
                     const SizedBox(height: 8),
                     TextField(
+                      autofocus: true,
                       decoration: InputDecoration(
-                        hintText: 'Search by shop name, owner or mobile...',
+                        hintText: 'Search shop name, owner, or mobile...',
                         prefixIcon: const Icon(Icons.search),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
-                      onChanged: (val) {
-                        setModalState(() => query = val);
-                      },
+                      onChanged: (val) => setModalState(() => query = val),
                     ),
                     const SizedBox(height: 12),
                     Expanded(
                       child: filtered.isEmpty
-                          ? Center(
-                              child: Text(
-                                query.isEmpty ? 'No outlets found on this route' : 'No matches for "$query"',
-                                style: TextStyle(color: Colors.blueGrey.shade600),
-                              ),
-                            )
+                          ? const Center(child: Text('No matching shops found.'))
                           : ListView.separated(
                               itemCount: filtered.length,
                               separatorBuilder: (_, _) => const Divider(height: 1),
@@ -244,32 +302,21 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                                 final s = filtered[idx];
                                 final isSelected = s.id == _selectedShopId;
                                 return ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  leading: CircleAvatar(
-                                    backgroundColor: isSelected ? AppTheme.primary : Colors.grey.shade200,
-                                    foregroundColor: isSelected ? Colors.white : Colors.blueGrey.shade800,
-                                    child: Text(s.name.isNotEmpty ? s.name[0].toUpperCase() : 'S'),
-                                  ),
+                                  dense: true,
                                   title: Text(
                                     s.name,
                                     style: TextStyle(
                                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                      color: isSelected ? AppTheme.primary : const Color(0xFF0F172A),
+                                      color: isSelected ? AppTheme.primary : AppTheme.textPrimary,
                                     ),
                                   ),
                                   subtitle: Text(
-                                    '${s.ownerName != null && s.ownerName!.isNotEmpty ? "${s.ownerName} • " : ""}${s.mobileNumber} • ${s.address}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                                    '${s.ownerName != null && s.ownerName!.isNotEmpty ? "${s.ownerName} • " : ""}${s.mobileNumber}',
+                                    style: const TextStyle(fontSize: 12),
                                   ),
-                                  trailing: isSelected
-                                      ? const Icon(Icons.check_circle, color: AppTheme.primary)
-                                      : null,
+                                  trailing: isSelected ? const Icon(Icons.check_circle, color: AppTheme.primary) : null,
                                   onTap: () {
-                                    setState(() {
-                                      _selectedShopId = s.id;
-                                    });
+                                    setState(() => _selectedShopId = s.id);
                                     Navigator.pop(ctx);
                                   },
                                 );
@@ -286,47 +333,77 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     );
   }
 
-  // Quantity Manual Input Dialog
+  // Quantity Manual Input Dialog with Unit Selection
   void _showQtyInputDialog(CatalogProduct product, int currentQty) {
     final controller = TextEditingController(text: currentQty > 0 ? '$currentQty' : '1');
+    String unit = _getItemUnit(product);
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Quantity for ${product.name}', style: const TextStyle(fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${product.packing} • Rate: ${CurrencyFormatter.format(product.rate)}',
-                style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(
-                labelText: 'Quantity (Pieces)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: Text('Quantity & Unit: ${product.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${product.packing} • Rate: ${CurrencyFormatter.format(product.rate)}',
+                  style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextField(
+                      controller: controller,
+                      keyboardType: TextInputType.number,
+                      autofocus: true,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        labelText: 'Quantity',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: DropdownButtonFormField<String>(
+                      value: unit,
+                      decoration: InputDecoration(
+                        labelText: 'Unit',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      ),
+                      items: OrderCatalogService.availableUnits
+                          .map((u) => DropdownMenuItem(value: u, child: Text(u, style: const TextStyle(fontWeight: FontWeight.bold))))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) setDlgState(() => unit = val);
+                      },
+                    ),
+                  ),
+                ],
               ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+              onPressed: () {
+                final val = int.tryParse(controller.text.trim()) ?? 0;
+                _setQuantity(product, val, unit: unit);
+                Navigator.pop(ctx);
+              },
+              child: const Text('Apply'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-            onPressed: () {
-              final val = int.tryParse(controller.text.trim()) ?? 0;
-              _setQuantity(product, val);
-              Navigator.pop(ctx);
-            },
-            child: const Text('Apply'),
-          ),
-        ],
       ),
     );
   }
@@ -467,7 +544,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey),
                         ),
                         Text(
-                          '$_totalCartQuantity pcs total',
+                          '$_totalCartQuantity units total',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade600),
                         ),
                       ],
@@ -495,7 +572,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
                                       ),
                                       Text(
-                                        '${item.company} • ${item.packing} • ${CurrencyFormatter.format(item.rate)} / pc',
+                                        '${item.company} • ${item.packing} • ${CurrencyFormatter.format(item.rate)} / ${item.unit}',
                                         style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
                                       ),
                                     ],
@@ -518,8 +595,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                                       },
                                     ),
                                     Text(
-                                      '${item.quantity}',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                      '${item.quantity} ${item.unit}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.add_circle_outline, size: 20, color: AppTheme.primary),
@@ -552,7 +629,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                     TextField(
                       controller: _notesController,
                       decoration: InputDecoration(
-                        hintText: 'Order notes / delivery instructions (optional)...',
+                        hintText: 'Order notes / delivery instructions for Godown & Billing staff...',
                         prefixIcon: const Icon(Icons.note_alt_outlined, size: 18),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -617,7 +694,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                               }
                               if (mounted) {
                                 _clearCart();
-                                _showOrderSuccessDialog(order);
+                                _showOrderSuccessDialog(order, provider);
                               }
                             },
                           ),
@@ -634,8 +711,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     );
   }
 
-  // Order Placed Success Dialog
-  void _showOrderSuccessDialog(SalesOrderModel order) {
+  // Order Placed Success Dialog - Share to Godown/Billing
+  void _showOrderSuccessDialog(SalesOrderModel order, CollectionProvider provider) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -664,27 +741,59 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             _buildDialogRow('Outlet:', order.shopName),
             _buildDialogRow('Route:', order.routeName),
             _buildDialogRow('Firm:', order.firm),
-            _buildDialogRow('Items:', '${order.items.length} items (${order.totalQuantity} pcs)'),
+            _buildDialogRow('Items:', '${order.items.length} items (${order.totalQuantity} units)'),
             _buildDialogRow('Total Value:', CurrencyFormatter.format(order.totalAmount), isBold: true),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warehouse_rounded, color: Colors.blue, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Ready for Godown Picking & Billing staff dispatch.',
+                      style: TextStyle(fontSize: 11.5, color: Colors.blue, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
         actions: [
           OutlinedButton.icon(
+            icon: const Icon(Icons.picture_as_pdf_rounded, size: 16, color: AppTheme.primary),
+            label: const Text('Godown Slip (PDF)'),
+            onPressed: () {
+              GodownBillingPdfService.previewOrSharePdf(
+                context,
+                orders: [order],
+                salesmanName: provider.salesmanName,
+                firmFilter: order.firm,
+                reportDate: order.orderDate,
+              );
+            },
+          ),
+          OutlinedButton.icon(
             icon: const Icon(Icons.chat, size: 16, color: Color(0xFF25D366)),
-            label: const Text('Share on WhatsApp'),
+            label: const Text('WhatsApp to Staff'),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: Color(0xFF25D366)),
               foregroundColor: const Color(0xFF25D366),
             ),
             onPressed: () {
-              _shareOrderOnWhatsApp(order);
+              _shareGodownOrderOnWhatsApp(order);
             },
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-            onPressed: () {
-              Navigator.pop(ctx);
-            },
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('Done'),
           ),
         ],
@@ -712,38 +821,38 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     );
   }
 
-  String _formatWhatsAppMessage(SalesOrderModel order) {
+  // Format message tailored for Godown and Billing staff
+  String _formatGodownWhatsAppMessage(SalesOrderModel order) {
     final buffer = StringBuffer();
-    buffer.writeln('*SALES ORDER: ${order.orderNumber}*');
+    buffer.writeln('📦 *GODOWN & BILLING DISPATCH ORDER*');
+    buffer.writeln('Order #: ${order.orderNumber}');
     buffer.writeln('Firm: ${order.firm}');
-    buffer.writeln('Outlet: ${order.shopName}');
-    buffer.writeln('Route: ${order.routeName}');
-    buffer.writeln('Date: ${DateFormat("dd-MMM-yyyy hh:mm a").format(order.orderDate)}');
+    buffer.writeln('Outlet / Shop: *${order.shopName}*');
+    buffer.writeln('Route Beat: ${order.routeName}');
+    buffer.writeln('Date & Time: ${DateFormat("dd-MMM-yyyy hh:mm a").format(order.orderDate)}');
     buffer.writeln('Salesman: ${order.salesmanName}');
     buffer.writeln('----------------------------------------');
+    buffer.writeln('📋 *ITEMS TO BILL & DISPATCH:*');
     for (int i = 0; i < order.items.length; i++) {
       final it = order.items[i];
-      buffer.writeln('${i + 1}. ${it.productName} (${it.packing})');
-      buffer.writeln('   Qty: ${it.quantity} x ${CurrencyFormatter.format(it.rate)} = ${CurrencyFormatter.format(it.subtotal)}');
+      buffer.writeln('${i + 1}. *${it.productName}* (${it.packing})');
+      buffer.writeln('   👉 Qty: *${it.quantity} ${it.unit}* @ ${CurrencyFormatter.format(it.rate)} = ${CurrencyFormatter.format(it.subtotal)}');
     }
     buffer.writeln('----------------------------------------');
-    buffer.writeln('*TOTAL PCS:* ${order.totalQuantity}');
-    buffer.writeln('*TOTAL VALUE:* ${CurrencyFormatter.format(order.totalAmount)}');
+    buffer.writeln('*TOTAL UNITS:* ${order.totalQuantity}');
+    buffer.writeln('*EST. INVOICE AMOUNT:* ${CurrencyFormatter.format(order.totalAmount)}');
     if (order.notes != null && order.notes!.isNotEmpty) {
-      buffer.writeln('Note: ${order.notes}');
+      buffer.writeln('📝 Special Instructions: *${order.notes}*');
     }
     buffer.writeln('----------------------------------------');
-    buffer.writeln('_Order booked via Daily Collection & Orders App_');
+    buffer.writeln('_Generated via Daily Collection Pro - Godown Dispatch_');
     return buffer.toString().trim();
   }
 
-  Future<void> _shareOrderOnWhatsApp(SalesOrderModel order) async {
-    final text = _formatWhatsAppMessage(order);
-    final cleanPhone = order.shopMobile.replaceAll(RegExp(r'[^0-9]'), '');
-    final formattedPhone = cleanPhone.length == 10 ? '91$cleanPhone' : cleanPhone;
-
+  Future<void> _shareGodownOrderOnWhatsApp(SalesOrderModel order) async {
+    final text = _formatGodownWhatsAppMessage(order);
     final whatsappUrl = Uri.parse(
-      'https://api.whatsapp.com/send?phone=$formattedPhone&text=${Uri.encodeComponent(text)}',
+      'https://api.whatsapp.com/send?text=${Uri.encodeComponent(text)}',
     );
 
     try {
@@ -752,7 +861,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         await Clipboard.setData(ClipboardData(text: text));
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Order copied to clipboard! Paste in WhatsApp.')),
+            const SnackBar(content: Text('Order dispatch details copied to clipboard! Paste in WhatsApp.')),
           );
         }
       }
@@ -760,7 +869,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       await Clipboard.setData(ClipboardData(text: text));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order copied to clipboard! Paste in WhatsApp.')),
+          const SnackBar(content: Text('Order dispatch details copied to clipboard! Paste in WhatsApp.')),
         );
       }
     }
@@ -787,29 +896,47 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       _selectedShopId = shopsOnRoute.isNotEmpty ? shopsOnRoute.first.id : null;
     }
 
-    final selectedShop = shopsOnRoute.firstWhere(
-      (s) => s.id == _selectedShopId,
-      orElse: () => ShopModel(id: '', name: 'Select Outlet', routeId: '', routeName: '', mobileNumber: '', address: ''),
-    );
-
     final companies = OrderCatalogService.getCompanies(_selectedFirm);
+    if (!companies.contains(_selectedCompany) && companies.isNotEmpty) {
+      _selectedCompany = companies.first;
+    }
+
     final categories = OrderCatalogService.getCategories(_selectedFirm, _selectedCompany);
+    if (_selectedCategory != null && !categories.contains(_selectedCategory)) {
+      _selectedCategory = null;
+    }
+
     final products = OrderCatalogService.getProducts(
       firm: _selectedFirm,
       company: _selectedCompany,
       category: _selectedCategory,
     );
 
-    final isPurva = _selectedFirm == OrderCatalogService.purva;
+    // Customer previous 3 orders history
+    final previousOrders = _selectedShopId != null
+        ? provider.getPreviousOrdersForShop(_selectedShopId!, limit: 3)
+        : <SalesOrderModel>[];
+
+    final previousBills = _selectedShopId != null
+        ? provider.getPreviousBillsForShop(_selectedShopId!, limit: 3)
+        : <PendingBillModel>[];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Sales Orders'),
+        title: const Text('Sales Orders & Billing'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 18),
+            label: const Text('Add SKU', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+            onPressed: _openAddProductDialog,
+          ),
+          const SizedBox(width: 8),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: Colors.white,
@@ -841,309 +968,259 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                 child: ListView(
                   padding: const EdgeInsets.all(14),
                   children: [
-                    // 1. FIRM SELECTION (Purva Enterprises vs Manas Sales)
+                    // MASTER DROPDOWN CONTROLS CARD
                     Container(
-                      padding: const EdgeInsets.all(4),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: AppTheme.border),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 4,
+                            blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
                         ],
                       ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: InkWell(
-                              onTap: () => _onFirmChanged(OrderCatalogService.purva),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 9),
-                                decoration: BoxDecoration(
-                                  color: isPurva ? AppTheme.purvaPrimary : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'Purva Enterprises',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: isPurva ? Colors.white : AppTheme.purvaText,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: InkWell(
-                              onTap: () => _onFirmChanged(OrderCatalogService.manas),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 9),
-                                decoration: BoxDecoration(
-                                  color: !isPurva ? AppTheme.manasPrimary : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'Manas Sales',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: !isPurva ? Colors.white : AppTheme.manasText,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // 2. ROUTE & OUTLET SELECTOR CARD
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.border),
-                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Route Selector
+                          // 1. FIRM DROPDOWN
+                          const Text('1. Distributing Firm', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<String>(
+                            value: _selectedFirm,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.business_rounded, color: AppTheme.primary, size: 20),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: OrderCatalogService.purva, child: Text('Purva Enterprises (Wipro, Fena, Funfood, Imami)')),
+                              DropdownMenuItem(value: OrderCatalogService.manas, child: Text('Manas Sales (Racket, Dabur, Cadbury, Gowardhan)')),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) _onFirmChanged(val);
+                            },
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 2. ROUTE DROPDOWN
+                          const Text('2. Route Beat', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<String>(
+                            value: routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : null,
+                            hint: const Text('Select Route Beat'),
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.alt_route_rounded, color: AppTheme.primary, size: 20),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
+                            items: routes.map((r) {
+                              final count = provider.getShopsForRoute(r.id).length;
+                              return DropdownMenuItem<String>(
+                                value: r.id,
+                                child: Text('${r.priority}. ${r.name} ($count shops)', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setState(() {
+                                _selectedRouteId = val;
+                                _selectedShopId = null;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 3. OUTLET / SHOP DROPDOWN
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Icon(Icons.alt_route, size: 18, color: AppTheme.primary),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Route Beat:',
-                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    isExpanded: true,
-                                    value: _selectedRouteId,
-                                    hint: const Text('Choose Route'),
-                                    items: routes.map((r) {
-                                      final count = provider.getShopsForRoute(r.id).length;
-                                      return DropdownMenuItem<String>(
-                                        value: r.id,
-                                        child: Text(
-                                          '${r.name} ($count shops)',
-                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              const Text('3. Customer / Outlet', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
+                              if (shopsOnRoute.isNotEmpty)
+                                InkWell(
+                                  onTap: () => _openShopPicker(shopsOnRoute),
+                                  child: const Text('🔍 Search Shop', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<String>(
+                            value: shopsOnRoute.any((s) => s.id == _selectedShopId) ? _selectedShopId : null,
+                            hint: Text(shopsOnRoute.isEmpty ? 'No shops on this route' : 'Select Customer / Outlet'),
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.storefront_rounded, color: Color(0xFF10B981), size: 20),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
+                            items: shopsOnRoute.map((s) {
+                              return DropdownMenuItem<String>(
+                                value: s.id,
+                                child: Text(
+                                  '${s.name}${s.ownerName != null && s.ownerName!.isNotEmpty ? " (${s.ownerName})" : ""}',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              setState(() => _selectedShopId = val);
+                            },
+                          ),
+
+                          // CUSTOMER'S PREVIOUS 3 ORDERS / BILLS HISTORY CARD
+                          if (_selectedShopId != null && (previousOrders.isNotEmpty || previousBills.isNotEmpty)) ...[
+                            const SizedBox(height: 12),
+                            _buildCustomerHistoryCard(previousOrders, previousBills),
+                          ],
+
+                          const Divider(height: 24),
+
+                          // 4. COMPANY DROPDOWN
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('4. Company / Brand', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
+                              Text('${companies.length} Companies', style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600)),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<String>(
+                            value: companies.contains(_selectedCompany) ? _selectedCompany : null,
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.apartment_rounded, color: AppTheme.primary, size: 20),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
+                            items: companies.map((c) {
+                              final count = _cart.values.where((i) => i.company.toLowerCase() == c.toLowerCase()).fold(0, (s, i) => s + i.quantity);
+                              return DropdownMenuItem(
+                                value: c,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(c, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                                    if (count > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primary,
+                                          borderRadius: BorderRadius.circular(10),
                                         ),
-                                      );
-                                    }).toList(),
-                                    onChanged: (val) {
-                                      setState(() {
-                                        _selectedRouteId = val;
-                                        _selectedShopId = null;
-                                      });
-                                    },
+                                        child: Text('$count in cart', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) _onCompanyChanged(val);
+                            },
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 5. CATEGORY DROPDOWN
+                          if (categories.isNotEmpty) ...[
+                            const Text('5. Category', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
+                            const SizedBox(height: 6),
+                            DropdownButtonFormField<String?>(
+                              value: _selectedCategory,
+                              decoration: InputDecoration(
+                                prefixIcon: const Icon(Icons.category_rounded, color: AppTheme.primary, size: 20),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              ),
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                  value: null,
+                                  child: Text('All Categories (सर्व कॅटेगरीज)', style: TextStyle(fontWeight: FontWeight.w600)),
+                                ),
+                                ...categories.map(
+                                  (cat) => DropdownMenuItem<String?>(
+                                    value: cat,
+                                    child: Text(cat, style: const TextStyle(fontWeight: FontWeight.w600)),
                                   ),
+                                ),
+                              ],
+                              onChanged: (val) => _onCategoryChanged(val),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+
+                          // 6. QUICK PRODUCT DROPDOWN SELECTOR
+                          if (products.isNotEmpty) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('6. Quick SKU Select (उत्पादन निवडा)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
+                                Text('${products.length} Products', style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            DropdownButtonFormField<String>(
+                              value: products.any((p) => p.id == _quickSelectedProductId) ? _quickSelectedProductId : null,
+                              hint: const Text('Pick a product to add directly...'),
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                prefixIcon: const Icon(Icons.shopping_bag_outlined, color: AppTheme.primary, size: 20),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              ),
+                              items: products.map((p) {
+                                return DropdownMenuItem<String>(
+                                  value: p.id,
+                                  child: Text(
+                                    '${p.name} (${p.packing}) - ${CurrencyFormatter.format(p.rate)}',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (prodId) {
+                                if (prodId != null) {
+                                  final p = products.firstWhere((item) => item.id == prodId);
+                                  setState(() => _quickSelectedProductId = prodId);
+                                  _addProduct(p, qtyToAdd: 1);
+                                }
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // PRODUCTS LIST HEADER
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'PRODUCTS CATALOG (${products.length})',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: Colors.blueGrey),
+                        ),
+                        Row(
+                          children: [
+                            InkWell(
+                              onTap: _openAddProductDialog,
+                              child: const Text(
+                                '+ Add SKU',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                              ),
+                            ),
+                            if (_cart.isNotEmpty) ...[
+                              const SizedBox(width: 12),
+                              InkWell(
+                                onTap: _clearCart,
+                                child: const Text(
+                                  'Clear Cart',
+                                  style: TextStyle(fontSize: 12, color: AppTheme.error, fontWeight: FontWeight.w600),
                                 ),
                               ),
                             ],
-                          ),
-                          const Divider(height: 14),
-
-                          // Outlet Selector
-                          InkWell(
-                            onTap: () => _openShopPicker(shopsOnRoute),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.storefront, size: 18, color: Color(0xFF10B981)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          selectedShop.name.isNotEmpty ? selectedShop.name : 'Select Outlet / Shop',
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                                        ),
-                                        if (selectedShop.mobileNumber.isNotEmpty)
-                                          Text(
-                                            '${selectedShop.ownerName != null ? "${selectedShop.ownerName} • " : ""}${selectedShop.mobileNumber}',
-                                            style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // 3. COMPANY SELECTOR
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'SELECT COMPANY',
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: Colors.blueGrey),
-                        ),
-                        Text(
-                          '${companies.length} Companies',
-                          style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 42,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: companies.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 8),
-                        itemBuilder: (context, idx) {
-                          final comp = companies[idx];
-                          final isSelected = comp.toLowerCase() == _selectedCompany.toLowerCase();
-                          final inCartCount = _getCartCountForCompany(comp);
-
-                          return ChoiceChip(
-                            label: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(comp, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 13)),
-                                if (inCartCount > 0) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: isSelected ? Colors.white : AppTheme.primary,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      '$inCartCount',
-                                      style: TextStyle(
-                                        color: isSelected ? AppTheme.primary : Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            selected: isSelected,
-                            selectedColor: isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary,
-                            labelStyle: TextStyle(color: isSelected ? Colors.white : const Color(0xFF0F172A)),
-                            backgroundColor: Colors.white,
-                            side: BorderSide(
-                              color: isSelected
-                                  ? (isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary)
-                                  : AppTheme.border,
-                            ),
-                            onSelected: (_) => _onCompanyChanged(comp),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // 4. CATEGORY SELECTOR
-                    if (categories.isNotEmpty) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'CATEGORIES IN $_selectedCompany'.toUpperCase(),
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: Colors.blueGrey),
-                          ),
-                          InkWell(
-                            onTap: () => _onCategoryChanged(null),
-                            child: Text(
-                              'View All',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: _selectedCategory == null ? AppTheme.primary : Colors.blueGrey,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 36,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: FilterChip(
-                                label: const Text('All'),
-                                selected: _selectedCategory == null,
-                                selectedColor: AppTheme.primary.withValues(alpha: 0.15),
-                                labelStyle: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: _selectedCategory == null ? FontWeight.bold : FontWeight.normal,
-                                  color: _selectedCategory == null ? AppTheme.primary : Colors.blueGrey.shade800,
-                                ),
-                                onSelected: (_) => _onCategoryChanged(null),
-                              ),
-                            ),
-                            ...categories.map((cat) {
-                              final isCatSelected = _selectedCategory == cat;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: FilterChip(
-                                  label: Text(cat),
-                                  selected: isCatSelected,
-                                  selectedColor: AppTheme.primary.withValues(alpha: 0.15),
-                                  labelStyle: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: isCatSelected ? FontWeight.bold : FontWeight.normal,
-                                    color: isCatSelected ? AppTheme.primary : Colors.blueGrey.shade800,
-                                  ),
-                                  onSelected: (_) => _onCategoryChanged(cat),
-                                ),
-                              );
-                            }),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-
-                    // 5. PRODUCTS LIST HEADER
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'PRODUCTS (${products.length})',
-                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: Colors.blueGrey),
-                        ),
-                        if (_cart.isNotEmpty)
-                          InkWell(
-                            onTap: _clearCart,
-                            child: const Text(
-                              'Clear Cart',
-                              style: TextStyle(fontSize: 11.5, color: AppTheme.error, fontWeight: FontWeight.w600),
-                            ),
-                          ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -1152,19 +1229,34 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                     if (products.isEmpty)
                       Container(
                         padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.border),
+                        ),
                         alignment: Alignment.center,
-                        child: Text(
-                          'No products found in this category.',
-                          style: TextStyle(color: Colors.blueGrey.shade600),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.inventory_2_outlined, size: 36, color: Colors.blueGrey),
+                            const SizedBox(height: 8),
+                            Text('No products found under this category.', style: TextStyle(color: Colors.blueGrey.shade700)),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _openAddProductDialog,
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('Add New Product to Catalog'),
+                            ),
+                          ],
                         ),
                       )
                     else
                       ...products.map((prod) {
                         final qty = _getItemQuantity(prod.id);
-                        return _buildProductCard(prod, qty);
+                        final unit = _getItemUnit(prod);
+                        return _buildProductCard(prod, qty, unit);
                       }),
 
-                    const SizedBox(height: 80), // Padding for sticky bottom cart
+                    const SizedBox(height: 90), // Bottom padding for sticky cart bar
                   ],
                 ),
               ),
@@ -1192,7 +1284,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              '${_cart.length} items • $_totalCartQuantity pcs',
+                              '${_cart.length} SKUs • $_totalCartQuantity units',
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade600),
                             ),
                             Text(
@@ -1226,8 +1318,125 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     );
   }
 
-  // Individual Product Card
-  Widget _buildProductCard(CatalogProduct product, int qty) {
+  // Customer Previous 3 Orders & Bills History Card
+  Widget _buildCustomerHistoryCard(List<SalesOrderModel> orders, List<PendingBillModel> bills) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _isHistoryExpanded = !_isHistoryExpanded),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.history_rounded, size: 18, color: AppTheme.primary),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Customer Previous Purchases (मागील ऑर्डर्स व बिले)',
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${orders.isNotEmpty ? orders.length : bills.length} past records',
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(_isHistoryExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 20, color: Colors.blueGrey),
+                ],
+              ),
+            ),
+          ),
+          if (_isHistoryExpanded) ...[
+            const Divider(height: 1),
+            if (orders.isNotEmpty)
+              ...orders.map((past) {
+                return Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${past.orderNumber} • ${DateFormat("dd MMM yyyy").format(past.orderDate)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF0F172A)),
+                          ),
+                          Row(
+                            children: [
+                              Text(
+                                CurrencyFormatter.format(past.totalAmount),
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: Color(0xFF10B981)),
+                              ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => _reorderPreviousOrder(past),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text('Re-order', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        past.items.map((i) => '${i.productName} (${i.quantity} ${i.unit})').join(', '),
+                        style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade700),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Divider(height: 12),
+                    ],
+                  ),
+                );
+              })
+            else if (bills.isNotEmpty)
+              ...bills.map((bill) {
+                return Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Bill: ${bill.billNumber}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text(DateFormat("dd MMM yyyy").format(bill.billDate), style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600)),
+                        ],
+                      ),
+                      Text(CurrencyFormatter.format(bill.billAmount), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF10B981))),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Individual Product Card with Unit and Stepper
+  Widget _buildProductCard(CatalogProduct product, int qty, String currentUnit) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -1239,140 +1448,178 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
           width: qty > 0 ? 1.5 : 1.0,
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Product Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  product.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${product.company} • ${product.category} • ${product.packing}',
-                  style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
-                ),
-                const SizedBox(height: 4),
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Product Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      CurrencyFormatter.format(product.rate),
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF10B981)),
+                      product.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 2),
                     Text(
-                      'MRP ${CurrencyFormatter.format(product.mrp)}',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: Colors.blueGrey.shade400,
-                        decoration: TextDecoration.lineThrough,
-                      ),
+                      '${product.company} • ${product.category} • ${product.packing}',
+                      style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                     ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Stepper / Quick Add
-          if (qty == 0)
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('ADD', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              onPressed: () => _addProduct(product),
-            )
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove, size: 18, color: AppTheme.primary),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        padding: EdgeInsets.zero,
-                        onPressed: () => _removeProduct(product),
-                      ),
-                      InkWell(
-                        onTap: () => _showQtyInputDialog(product, qty),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            '$qty',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.primary),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(
+                          CurrencyFormatter.format(product.rate),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF10B981)),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'MRP ${CurrencyFormatter.format(product.mrp)}',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Colors.blueGrey.shade400,
+                            decoration: TextDecoration.lineThrough,
                           ),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.add, size: 18, color: AppTheme.primary),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        padding: EdgeInsets.zero,
-                        onPressed: () => _addProduct(product),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // Quick +6 / +12 box buttons
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InkWell(
-                      onTap: () => _addProduct(product, qtyToAdd: 6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        margin: const EdgeInsets.only(right: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: const Text('+6', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () => _addProduct(product, qtyToAdd: 12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: const Text('+12', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                      ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+
+              // Unit Selector Dropdown
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: currentUnit,
+                    isDense: true,
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                    items: OrderCatalogService.availableUnits
+                        .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        _setProductUnit(product.id, val);
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // Stepper / Quick Add
+              if (qty == 0)
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('ADD', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  onPressed: () => _addProduct(product, unit: currentUnit),
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.remove, size: 18, color: AppTheme.primary),
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            padding: EdgeInsets.zero,
+                            onPressed: () => _removeProduct(product),
+                          ),
+                          InkWell(
+                            onTap: () => _showQtyInputDialog(product, qty),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              child: Text(
+                                '$qty $currentUnit',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.primary),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add, size: 18, color: AppTheme.primary),
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            padding: EdgeInsets.zero,
+                            onPressed: () => _addProduct(product, unit: currentUnit),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // Quick +6 / +12 box buttons
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () => _addProduct(product, qtyToAdd: 6, unit: currentUnit),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            margin: const EdgeInsets.only(right: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: const Text('+6', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => _addProduct(product, qtyToAdd: 12, unit: currentUnit),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: const Text('+12', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  // TAB 2: Booked Orders Tab
+  // TAB 2: Booked Orders Tab with Consolidated Godown Billing PDF Sharing
   Widget _buildBookedOrdersTab(CollectionProvider provider) {
-    final orders = provider.salesOrders;
+    final allOrders = provider.salesOrders;
+    final orders = allOrders.where((o) {
+      if (_bookedOrdersFirmFilter == 'All') return true;
+      return o.firm == _bookedOrdersFirmFilter;
+    }).toList();
 
-    if (orders.isEmpty) {
+    final totalAmount = orders.fold<double>(0.0, (s, o) => s + o.totalAmount);
+    final totalUnits = orders.fold<int>(0, (s, o) => s + o.totalQuantity);
+
+    if (allOrders.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32.0),
@@ -1395,7 +1642,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
               ),
               const SizedBox(height: 6),
               Text(
-                'Switch to the "Take Order" tab to book orders from your outlets.',
+                'Switch to "Take Order" tab to book orders from your outlets.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade600),
               ),
@@ -1412,115 +1659,245 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(14),
-      itemCount: orders.length,
-      itemBuilder: (context, idx) {
-        final order = orders[idx];
-        final isPurva = order.firm == OrderCatalogService.purva;
-
-        return Card(
-          elevation: 1.5,
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Row: Order # and Firm Badge
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      order.orderNumber,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: isPurva ? AppTheme.purvaPrimary.withValues(alpha: 0.12) : AppTheme.manasPrimary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        isPurva ? 'Purva' : 'Manas',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-
-                // Shop & Route
-                Text(
-                  order.shopName,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                ),
-                Text(
-                  'Route: ${order.routeName} • ${DateFormat("dd MMM yyyy, hh:mm a").format(order.orderDate)}',
-                  style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
-                ),
-                const Divider(height: 16),
-
-                // Items preview
-                Text(
-                  '${order.items.map((i) => "${i.productName} (${i.quantity})").take(3).join(', ')}${order.items.length > 3 ? " +${order.items.length - 3} more" : ""}',
-                  style: TextStyle(fontSize: 12.5, color: Colors.blueGrey.shade800),
-                ),
-                const SizedBox(height: 8),
-
-                // Bottom row: Total amount & WhatsApp Share Button
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '${order.totalQuantity} pcs • ${CurrencyFormatter.format(order.totalAmount)}',
-                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF10B981)),
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 20, color: Colors.blueGrey),
-                          tooltip: 'Delete Order',
-                          onPressed: () async {
-                            final ok = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Delete Order?'),
-                                content: Text('Are you sure you want to delete order ${order.orderNumber}?'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('Delete'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (ok == true) {
-                              await provider.deleteSalesOrder(order.id);
-                            }
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.chat, size: 20, color: Color(0xFF25D366)),
-                          tooltip: 'Share on WhatsApp',
-                          onPressed: () => _shareOrderOnWhatsApp(order),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+    return Column(
+      children: [
+        // CONSOLIDATED GODOWN BILLING ACTION BANNER
+        Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1E3A8A).withValues(alpha: 0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        );
-      },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'GODOWN & BILLING DISPATCH',
+                        style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${orders.length} Orders • $totalUnits Units',
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    CurrencyFormatter.format(totalAmount),
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF1E3A8A),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 2,
+                ),
+                icon: const Icon(Icons.picture_as_pdf_rounded, size: 20, color: Color(0xFFDC2626)),
+                label: const Text(
+                  'Share Godown Billing PDF (एकत्रित गोदाम व बिलिंग PDF)',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                ),
+                onPressed: () {
+                  GodownBillingPdfService.previewOrSharePdf(
+                    context,
+                    orders: orders,
+                    salesmanName: provider.salesmanName,
+                    firmFilter: _bookedOrdersFirmFilter,
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+
+        // FIRM FILTER ROW
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              const Text('Filter Firm: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _bookedOrdersFirmFilter,
+                      isExpanded: true,
+                      style: const TextStyle(fontSize: 12.5, color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
+                      items: const [
+                        DropdownMenuItem(value: 'All', child: Text('All Businesses (Purva & Manas)')),
+                        DropdownMenuItem(value: OrderCatalogService.purva, child: Text('Purva Enterprises')),
+                        DropdownMenuItem(value: OrderCatalogService.manas, child: Text('Manas Sales')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => _bookedOrdersFirmFilter = val);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ORDERS LIST
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            itemCount: orders.length,
+            itemBuilder: (context, idx) {
+              final order = orders[idx];
+              final isPurva = order.firm == OrderCatalogService.purva;
+
+              return Card(
+                elevation: 1.5,
+                margin: const EdgeInsets.only(bottom: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Top Row: Order # and Firm Badge
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            order.orderNumber,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isPurva ? AppTheme.purvaPrimary.withValues(alpha: 0.12) : AppTheme.manasPrimary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isPurva ? 'Purva' : 'Manas',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+
+                      // Shop & Route
+                      Text(
+                        order.shopName,
+                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                      ),
+                      Text(
+                        'Route: ${order.routeName} • ${DateFormat("dd MMM yyyy, hh:mm a").format(order.orderDate)}',
+                        style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                      ),
+                      const Divider(height: 14),
+
+                      // Items preview
+                      Text(
+                        '${order.items.map((i) => "${i.productName} (${i.quantity} ${i.unit})").take(3).join(', ')}${order.items.length > 3 ? " +${order.items.length - 3} more" : ""}',
+                        style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade800),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Bottom row: Total amount & Actions
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${order.totalQuantity} units • ${CurrencyFormatter.format(order.totalAmount)}',
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF10B981)),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.picture_as_pdf_rounded, size: 20, color: Color(0xFFDC2626)),
+                                tooltip: 'Godown Slip PDF',
+                                onPressed: () {
+                                  GodownBillingPdfService.previewOrSharePdf(
+                                    context,
+                                    orders: [order],
+                                    salesmanName: provider.salesmanName,
+                                    firmFilter: order.firm,
+                                    reportDate: order.orderDate,
+                                  );
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.chat, size: 20, color: Color(0xFF25D366)),
+                                tooltip: 'WhatsApp to Staff',
+                                onPressed: () => _shareGodownOrderOnWhatsApp(order),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 20, color: Colors.blueGrey),
+                                tooltip: 'Delete Order',
+                                onPressed: () async {
+                                  final ok = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Delete Order?'),
+                                      content: Text('Are you sure you want to delete order ${order.orderNumber}?'),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (ok == true) {
+                                    await provider.deleteSalesOrder(order.id);
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
