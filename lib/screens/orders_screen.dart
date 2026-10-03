@@ -46,6 +46,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
   // UI state
   bool _isHistoryExpanded = true;
   String _bookedOrdersFirmFilter = 'All';
+  DateTime? _selectedOrderDate = DateTime.now();
 
   // Cart: Map of ProductId -> OrderItem
   final Map<String, OrderItem> _cart = {};
@@ -448,260 +449,278 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                top: 18,
-                left: 16,
-                right: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.85,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Review Sales Order',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                            ),
-                            Text(
-                              'Salesman: ${provider.salesmanName} • ${DateFormat("dd MMM yyyy").format(DateTime.now())}',
-                              style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(ctx),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Outlet & Firm Banner
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: _selectedFirm == OrderCatalogService.purva
-                            ? AppTheme.purvaPrimary.withValues(alpha: 0.08)
-                            : AppTheme.manasPrimary.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: _selectedFirm == OrderCatalogService.purva
-                              ? AppTheme.purvaPrimary.withValues(alpha: 0.25)
-                              : AppTheme.manasPrimary.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.storefront,
-                            size: 28,
-                            color: _selectedFirm == OrderCatalogService.purva
-                                ? AppTheme.purvaPrimary
-                                : AppTheme.manasPrimary,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  shop.name,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Route: ${route.name} • Firm: $_selectedFirm',
-                                  style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700),
-                                ),
-                                if (shop.mobileNumber.isNotEmpty)
-                                  Text(
-                                    'Mobile: ${shop.mobileNumber}${shop.ownerName != null ? " (${shop.ownerName})" : ""}',
-                                    style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Items List Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'ITEMS (${_cart.length})',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey),
-                        ),
-                        Text(
-                          '$_totalCartQuantity units total',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade600),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Items ListView
-                    Expanded(
-                      child: ListView.separated(
-                        itemCount: _cart.values.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, idx) {
-                          final item = _cart.values.elementAt(idx);
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        item.productName,
-                                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
-                                      ),
-                                      Text(
-                                        '${item.company} • ${item.packing} • ${CurrencyFormatter.format(item.rate)} / ${item.unit}',
-                                        style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.remove_circle_outline, size: 20, color: Colors.blueGrey),
-                                      onPressed: () {
-                                        setSheetState(() {
-                                          if (item.quantity > 1) {
-                                            item.quantity--;
-                                          } else {
-                                            _cart.remove(item.productId);
-                                          }
-                                        });
-                                        setState(() {});
-                                      },
-                                    ),
-                                    Text(
-                                      '${item.quantity} ${item.unit}',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.add_circle_outline, size: 20, color: AppTheme.primary),
-                                      onPressed: () {
-                                        setSheetState(() {
-                                          item.quantity++;
-                                        });
-                                        setState(() {});
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                SizedBox(
-                                  width: 75,
-                                  child: Text(
-                                    CurrencyFormatter.format(item.subtotal),
-                                    textAlign: TextAlign.end,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-                    // Remarks / Notes
-                    TextField(
-                      controller: _notesController,
-                      decoration: InputDecoration(
-                        hintText: 'Order notes / delivery instructions for Godown & Billing staff...',
-                        prefixIcon: const Icon(Icons.note_alt_outlined, size: 18),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Total & Book Button
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  top: 16,
+                  left: 16,
+                  right: 16,
+                  bottom: bottomInset > 0 ? bottomInset + 8 : 12,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'TOTAL ORDER AMOUNT',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey.shade600),
+                              const Text(
+                                'Review Sales Order',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                               ),
                               Text(
-                                CurrencyFormatter.format(_totalCartAmount),
-                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                'Salesman: ${provider.salesmanName} • ${DateFormat("dd MMM yyyy").format(DateTime.now())}',
+                                style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                               ),
                             ],
                           ),
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF10B981),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.check_circle, size: 18),
-                            label: const Text('Confirm & Book Order', style: TextStyle(fontWeight: FontWeight.bold)),
-                            onPressed: () async {
-                              final order = SalesOrderModel(
-                                id: _uuid.v4(),
-                                orderNumber: 'ORD-${DateFormat("yyMMdd").format(DateTime.now())}-${(1000 + provider.salesOrders.length + 1)}',
-                                firm: _selectedFirm,
-                                routeId: route.id,
-                                routeName: route.name,
-                                shopId: shop.id,
-                                shopName: shop.name,
-                                shopMobile: shop.mobileNumber,
-                                salesmanName: provider.salesmanName,
-                                orderDate: DateTime.now(),
-                                items: _cart.values.map((i) => i.copyWith()).toList(),
-                                totalAmount: _totalCartAmount,
-                                totalQuantity: _totalCartQuantity,
-                                notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
-                              );
-
-                              await provider.addSalesOrder(order);
-
-                              if (ctx.mounted) {
-                                Navigator.pop(ctx);
-                              }
-                              if (mounted) {
-                                _clearCart();
-                                _showOrderSuccessDialog(order, provider);
-                              }
-                            },
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(ctx),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+
+                      // Outlet & Firm Banner
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _selectedFirm == OrderCatalogService.purva
+                              ? AppTheme.purvaPrimary.withValues(alpha: 0.08)
+                              : AppTheme.manasPrimary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _selectedFirm == OrderCatalogService.purva
+                                ? AppTheme.purvaPrimary.withValues(alpha: 0.25)
+                                : AppTheme.manasPrimary.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.storefront,
+                              size: 26,
+                              color: _selectedFirm == OrderCatalogService.purva
+                                  ? AppTheme.purvaPrimary
+                                  : AppTheme.manasPrimary,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    shop.name,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Route: ${route.name} • Firm: $_selectedFirm',
+                                    style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade700),
+                                  ),
+                                  if (shop.mobileNumber.isNotEmpty)
+                                    Text(
+                                      'Mobile: ${shop.mobileNumber}${shop.ownerName != null ? " (${shop.ownerName})" : ""}',
+                                      style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Items List Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'ORDER ITEMS (${_cart.length})',
+                            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.blueGrey),
+                          ),
+                          Text(
+                            '$_totalCartQuantity units total',
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade600),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Items ListView
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: _cart.values.length,
+                          separatorBuilder: (_, _) => const Divider(height: 1),
+                          itemBuilder: (context, idx) {
+                            final item = _cart.values.elementAt(idx);
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.productName,
+                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                        ),
+                                        Text(
+                                          '${item.company} • ${item.packing} • ${CurrencyFormatter.format(item.rate)} / ${item.unit}',
+                                          style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle_outline, size: 20, color: Colors.blueGrey),
+                                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () {
+                                          setSheetState(() {
+                                            if (item.quantity > 1) {
+                                              item.quantity--;
+                                            } else {
+                                              _cart.remove(item.productId);
+                                            }
+                                          });
+                                          setState(() {});
+                                        },
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                                        child: Text(
+                                          '${item.quantity} ${item.unit}',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.add_circle_outline, size: 20, color: AppTheme.primary),
+                                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () {
+                                          setSheetState(() {
+                                            item.quantity++;
+                                          });
+                                          setState(() {});
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(
+                                    width: 70,
+                                    child: Text(
+                                      CurrencyFormatter.format(item.subtotal),
+                                      textAlign: TextAlign.end,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+                      // Remarks / Notes
+                      TextField(
+                        controller: _notesController,
+                        decoration: InputDecoration(
+                          hintText: 'Order notes / delivery instructions...',
+                          prefixIcon: const Icon(Icons.note_alt_outlined, size: 18),
+                          isDense: true,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Total & Book Button
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '$_totalCartQuantity UNITS TOTAL',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey.shade600),
+                                  ),
+                                  Text(
+                                    CurrencyFormatter.format(_totalCartAmount),
+                                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              icon: const Icon(Icons.check_circle, size: 18),
+                              label: const Text('Confirm & Book', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                              onPressed: () async {
+                                final order = SalesOrderModel(
+                                  id: _uuid.v4(),
+                                  orderNumber: 'ORD-${DateFormat("yyMMdd").format(DateTime.now())}-${(1000 + provider.salesOrders.length + 1)}',
+                                  firm: _selectedFirm,
+                                  routeId: route.id,
+                                  routeName: route.name,
+                                  shopId: shop.id,
+                                  shopName: shop.name,
+                                  shopMobile: shop.mobileNumber,
+                                  salesmanName: provider.salesmanName,
+                                  orderDate: DateTime.now(),
+                                  items: _cart.values.map((i) => i.copyWith()).toList(),
+                                  totalAmount: _totalCartAmount,
+                                  totalQuantity: _totalCartQuantity,
+                                  notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+                                );
+
+                                await provider.addSalesOrder(order);
+
+                                if (ctx.mounted) {
+                                  Navigator.pop(ctx);
+                                }
+                                if (mounted) {
+                                  _clearCart();
+                                  _showOrderSuccessDialog(order, provider);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -793,7 +812,10 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _tabController.animateTo(1);
+            },
             child: const Text('Done'),
           ),
         ],
@@ -821,16 +843,14 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     );
   }
 
-  // Format message tailored for Godown and Billing staff
+  // Format message tailored for Godown and Billing staff with date first
   String _formatGodownWhatsAppMessage(SalesOrderModel order) {
     final buffer = StringBuffer();
-    buffer.writeln('📦 *GODOWN & BILLING DISPATCH ORDER*');
-    buffer.writeln('Order #: ${order.orderNumber}');
-    buffer.writeln('Firm: ${order.firm}');
-    buffer.writeln('Outlet / Shop: *${order.shopName}*');
-    buffer.writeln('Route Beat: ${order.routeName}');
-    buffer.writeln('Date & Time: ${DateFormat("dd-MMM-yyyy hh:mm a").format(order.orderDate)}');
-    buffer.writeln('Salesman: ${order.salesmanName}');
+    buffer.writeln('📅 *DATE: ${DateFormat("dd-MMM-yyyy, hh:mm a").format(order.orderDate)}*');
+    buffer.writeln('📦 *ORDER: ${order.orderNumber}* (${order.firm})');
+    buffer.writeln('🏪 *OUTLET: ${order.shopName}*');
+    buffer.writeln('📍 *ROUTE: ${order.routeName}*');
+    buffer.writeln('👤 *Salesman:* ${order.salesmanName}');
     buffer.writeln('----------------------------------------');
     buffer.writeln('📋 *ITEMS TO BILL & DISPATCH:*');
     for (int i = 0; i < order.items.length; i++) {
@@ -845,7 +865,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       buffer.writeln('📝 Special Instructions: *${order.notes}*');
     }
     buffer.writeln('----------------------------------------');
-    buffer.writeln('_Generated via Daily Collection Pro - Godown Dispatch_');
+    buffer.writeln('_Generated via Daily Collection Pro - Orders Dispatch_');
     return buffer.toString().trim();
   }
 
@@ -921,14 +941,29 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         ? provider.getPreviousBillsForShop(_selectedShopId!, limit: 3)
         : <PendingBillModel>[];
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('Sales Orders & Billing'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+    return PopScope(
+      canPop: _tabController.index == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _tabController.index != 0) {
+          _tabController.animateTo(0);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          title: const Text('Orders & Billing'),
+          leading: Navigator.canPop(context)
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    if (_tabController.index != 0) {
+                      _tabController.animateTo(0);
+                    } else {
+                      Navigator.pop(context);
+                    }
+                  },
+                )
+              : null,
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 18),
@@ -997,8 +1032,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                             ),
                             items: const [
-                              DropdownMenuItem(value: OrderCatalogService.purva, child: Text('Purva Enterprises (Wipro, Fena, Funfood, Imami)')),
-                              DropdownMenuItem(value: OrderCatalogService.manas, child: Text('Manas Sales (Racket, Dabur, Cadbury, Gowardhan)')),
+                              DropdownMenuItem(value: OrderCatalogService.purva, child: Text('Purva Enterprises')),
+                              DropdownMenuItem(value: OrderCatalogService.manas, child: Text('Manas Sales')),
                             ],
                             onChanged: (val) {
                               if (val != null) _onFirmChanged(val);
@@ -1315,8 +1350,9 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
           _buildBookedOrdersTab(provider),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   // Customer Previous 3 Orders & Bills History Card
   Widget _buildCustomerHistoryCard(List<SalesOrderModel> orders, List<PendingBillModel> bills) {
@@ -1612,8 +1648,16 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
   Widget _buildBookedOrdersTab(CollectionProvider provider) {
     final allOrders = provider.salesOrders;
     final orders = allOrders.where((o) {
-      if (_bookedOrdersFirmFilter == 'All') return true;
-      return o.firm == _bookedOrdersFirmFilter;
+      if (_bookedOrdersFirmFilter != 'All' && o.firm != _bookedOrdersFirmFilter) {
+        return false;
+      }
+      if (_selectedOrderDate != null) {
+        final sameDay = o.orderDate.year == _selectedOrderDate!.year &&
+            o.orderDate.month == _selectedOrderDate!.month &&
+            o.orderDate.day == _selectedOrderDate!.day;
+        if (!sameDay) return false;
+      }
+      return true;
     }).toList();
 
     final totalAmount = orders.fold<double>(0.0, (s, o) => s + o.totalAmount);
@@ -1661,7 +1705,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
 
     return Column(
       children: [
-        // CONSOLIDATED GODOWN BILLING ACTION BANNER
+        // ORDERS DISPATCH ACTION BANNER
         Container(
           margin: const EdgeInsets.all(12),
           padding: const EdgeInsets.all(14),
@@ -1690,7 +1734,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'GODOWN & BILLING DISPATCH',
+                        'ORDERS DISPATCH',
                         style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5),
                       ),
                       const SizedBox(height: 2),
@@ -1717,7 +1761,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                 ),
                 icon: const Icon(Icons.picture_as_pdf_rounded, size: 20, color: Color(0xFFDC2626)),
                 label: const Text(
-                  'Share Godown Billing PDF (एकत्रित गोदाम व बिलिंग PDF)',
+                  'Share Orders PDF',
                   style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
                 ),
                 onPressed: () {
@@ -1726,6 +1770,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                     orders: orders,
                     salesmanName: provider.salesmanName,
                     firmFilter: _bookedOrdersFirmFilter,
+                    reportDate: _selectedOrderDate ?? DateTime.now(),
                   );
                 },
               ),
@@ -1733,38 +1778,124 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
           ),
         ),
 
-        // FIRM FILTER ROW
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(
+        // FIRM & DATE FILTER CARD
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Column(
             children: [
-              const Text('Filter Firm: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  height: 38,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _bookedOrdersFirmFilter,
-                      isExpanded: true,
-                      style: const TextStyle(fontSize: 12.5, color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
-                      items: const [
-                        DropdownMenuItem(value: 'All', child: Text('All Businesses (Purva & Manas)')),
-                        DropdownMenuItem(value: OrderCatalogService.purva, child: Text('Purva Enterprises')),
-                        DropdownMenuItem(value: OrderCatalogService.manas, child: Text('Manas Sales')),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) setState(() => _bookedOrdersFirmFilter = val);
-                      },
+              // Row 1: Firm Filter
+              Row(
+                children: [
+                  const Text('Firm: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _bookedOrdersFirmFilter,
+                          isExpanded: true,
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
+                          items: const [
+                            DropdownMenuItem(value: 'All', child: Text('All Businesses (Purva & Manas)')),
+                            DropdownMenuItem(value: OrderCatalogService.purva, child: Text('Purva Enterprises')),
+                            DropdownMenuItem(value: OrderCatalogService.manas, child: Text('Manas Sales')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) setState(() => _bookedOrdersFirmFilter = val);
+                          },
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Row 2: Date Filter
+              Row(
+                children: [
+                  const Text('Date: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _selectedOrderDate ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          helpText: 'SELECT ORDER DATE',
+                        );
+                        if (picked != null) {
+                          setState(() => _selectedOrderDate = picked);
+                        }
+                      },
+                      child: Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.calendar_month_outlined, size: 16, color: AppTheme.primary),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _selectedOrderDate != null
+                                      ? DateFormat('dd MMM yyyy').format(_selectedOrderDate!)
+                                      : 'All Dates (सर्व तारखा)',
+                                  style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                            const Icon(Icons.arrow_drop_down, color: Colors.blueGrey, size: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  if (_selectedOrderDate != null)
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                        minimumSize: const Size(0, 36),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () => setState(() => _selectedOrderDate = null),
+                      child: const Text('All', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    )
+                  else
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                        minimumSize: const Size(0, 36),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () => setState(() => _selectedOrderDate = DateTime.now()),
+                      child: const Text('Today', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                ],
               ),
             ],
           ),
@@ -1773,10 +1904,43 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
 
         // ORDERS LIST
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            itemCount: orders.length,
-            itemBuilder: (context, idx) {
+          child: orders.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.search_off_rounded, size: 44, color: Colors.blueGrey),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'No orders match this date / firm filter',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Try selecting a different date or showing all dates.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedOrderDate = null;
+                              _bookedOrdersFirmFilter = 'All';
+                            });
+                          },
+                          child: const Text('Clear Filters (सर्व दाखवा)'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  itemCount: orders.length,
+                  itemBuilder: (context, idx) {
               final order = orders[idx];
               final isPurva = order.firm == OrderCatalogService.purva;
 

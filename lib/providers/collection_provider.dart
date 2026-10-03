@@ -722,15 +722,17 @@ class CollectionProvider extends ChangeNotifier {
       salesmanName: _salesmanName,
       collectedAt: collectionDate,
       billDate: pendingBill.invoiceDate,
+      photoBase64: pendingBill.photoBase64,
     );
     await addCollection(newCollection);
 
     final newCollectedTotal = pendingBill.collectedAmount + collectedAmount;
-    final newStatus = (pendingBill.totalAmount - newCollectedTotal) <= 0.001 ? 'paid' : 'partial';
+    final isFullyPaid = (pendingBill.totalAmount - newCollectedTotal) <= 0.001;
+    final newStatus = isFullyPaid ? 'paid' : 'partial';
     final updatedBill = pendingBill.copyWith(
       collectedAmount: newCollectedTotal,
       status: newStatus,
-      clearPhoto: true, // Delete image after collection is recorded to free device storage
+      clearPhoto: isFullyPaid, // Delete from pending bill only when fully paid
     );
     await updatePendingBill(updatedBill);
   }

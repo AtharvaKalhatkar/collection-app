@@ -95,9 +95,9 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       final picked = await _picker.pickImage(
         source: source,
         preferredCameraDevice: CameraDevice.rear,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 70,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 50,
       );
       if (picked != null) {
         final bytes = await picked.readAsBytes();

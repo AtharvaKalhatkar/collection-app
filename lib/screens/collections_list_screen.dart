@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,7 @@ import 'collection_details_dialog.dart';
 import 'make_collection_screen.dart';
 import 'send_reminder_dialog.dart';
 import 'add_shop_screen.dart';
+import '../widgets/fullscreen_image_viewer.dart';
 
 class CollectionsListScreen extends StatefulWidget {
   final int initialTabIndex;
@@ -558,22 +560,80 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                           padding: const EdgeInsets.all(12.0),
                           child: Row(
                             children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: modeColor.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    item.paymentMode.icon,
-                                    size: 20,
-                                    color: modeColor,
-                                  ),
-                                ),
+                              Builder(
+                                builder: (ctx) {
+                                  final billPhoto = item.photoBase64 ??
+                                      provider.pendingBills
+                                          .where((b) => b.billNumber == item.billNumber && b.shopId == item.shopId)
+                                          .map((b) => b.photoBase64)
+                                          .firstWhere((p) => p != null && p.isNotEmpty, orElse: () => null);
+
+                                  if (billPhoto != null && billPhoto.isNotEmpty) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 10.0),
+                                      child: InkWell(
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => FullScreenImageViewer(
+                                                imageBase64: billPhoto,
+                                                title: 'Bill #${item.billNumber} - ${item.shopName}',
+                                                subtitle: '${item.businessName} • ${item.routeName}',
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        child: Stack(
+                                          alignment: Alignment.bottomRight,
+                                          children: [
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Image.memory(
+                                                base64Decode(billPhoto),
+                                                width: 44,
+                                                height: 44,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, _, _) => Container(
+                                                  width: 44,
+                                                  height: 44,
+                                                  color: Colors.grey.shade200,
+                                                  child: const Icon(Icons.broken_image, size: 20),
+                                                ),
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black54,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: const Icon(Icons.zoom_in, size: 10, color: Colors.white),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }
+
+                                  return Container(
+                                    width: 40,
+                                    height: 40,
+                                    margin: const EdgeInsets.only(right: 12),
+                                    decoration: BoxDecoration(
+                                      color: modeColor.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Center(
+                                      child: Icon(
+                                        item.paymentMode.icon,
+                                        size: 20,
+                                        color: modeColor,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                              const SizedBox(width: 12),
 
                               // Details
                               Expanded(

@@ -19,11 +19,13 @@ import '../widgets/payment_qr_dialog.dart';
 class HomeDashboardScreen extends StatelessWidget {
   final VoidCallback onNavigateToRoutes;
   final VoidCallback onNavigateToCollections;
+  final VoidCallback? onNavigateToOrders;
 
   const HomeDashboardScreen({
     super.key,
     required this.onNavigateToRoutes,
     required this.onNavigateToCollections,
+    this.onNavigateToOrders,
   });
 
   Color _getModeColor(PaymentMode mode) {
@@ -1358,12 +1360,16 @@ class HomeDashboardScreen extends StatelessWidget {
                       icon: Icons.shopping_bag_outlined,
                       color: const Color(0xFFF59E0B),
                       onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => OrdersScreen(initialFirm: provider.filterBusiness),
-                          ),
-                        );
+                        if (onNavigateToOrders != null) {
+                          onNavigateToOrders!();
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OrdersScreen(initialFirm: provider.filterBusiness),
+                            ),
+                          );
+                        }
                       },
                     ),
                   ),

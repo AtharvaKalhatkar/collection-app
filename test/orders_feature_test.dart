@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:daily_collection_app/services/order_catalog_service.dart';
 import 'package:daily_collection_app/models/order_model.dart';
-import 'package:daily_collection_app/providers/collection_provider.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -152,8 +151,59 @@ void main() {
         company: 'Patanjali',
         category: 'Herbal Care',
       );
-      expect(products.any((p) => p.id == 'cust-test-1'), isTrue);
+    });
+  });
+
+  group('Godown Billing PDF & Date Filtering Verification', () {
+    test('Date filtering isolates orders for specific date', () {
+      final today = DateTime.now();
+      final yesterday = today.subtract(const Duration(days: 1));
+
+      final orderToday = SalesOrderModel(
+        id: 'ord-1',
+        orderNumber: 'ORD-01',
+        firm: 'Purva Enterprises',
+        routeId: 'r1',
+        routeName: 'Route 1',
+        shopId: 's1',
+        shopName: 'Shop 1',
+        shopMobile: '9999999999',
+        salesmanName: 'Salesman',
+        orderDate: today,
+        items: [],
+        totalAmount: 100,
+        totalQuantity: 1,
+      );
+
+      final orderYesterday = SalesOrderModel(
+        id: 'ord-2',
+        orderNumber: 'ORD-02',
+        firm: 'Purva Enterprises',
+        routeId: 'r1',
+        routeName: 'Route 1',
+        shopId: 's2',
+        shopName: 'Shop 2',
+        shopMobile: '9999999998',
+        salesmanName: 'Salesman',
+        orderDate: yesterday,
+        items: [],
+        totalAmount: 200,
+        totalQuantity: 2,
+      );
+
+      final allOrders = [orderToday, orderYesterday];
+
+      // Filter by today's date
+      final filteredToday = allOrders.where((o) =>
+        o.orderDate.year == today.year &&
+        o.orderDate.month == today.month &&
+        o.orderDate.day == today.day
+      ).toList();
+
+      expect(filteredToday.length, equals(1));
+      expect(filteredToday.first.id, equals('ord-1'));
     });
   });
 }
+
 

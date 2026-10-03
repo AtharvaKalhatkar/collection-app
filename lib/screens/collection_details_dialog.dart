@@ -322,116 +322,133 @@ class CollectionDetailsDialog extends StatelessWidget {
                 ],
 
                 // Photo preview if available (Clickable & Zoomable)
-                if (collection.photoBase64 != null && collection.photoBase64!.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'DOCUMENT PROOF',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                          letterSpacing: 0.8,
-                          color: Colors.blueGrey,
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => FullScreenImageViewer(
-                                imageBase64: collection.photoBase64!,
-                                title: 'Invoice Proof #${collection.billNumber}',
-                                subtitle: '${collection.shopName} • ${collection.businessName}',
+                Builder(
+                  builder: (ctx) {
+                    final docPhoto = collection.photoBase64 ??
+                        provider.pendingBills
+                            .where((b) => b.billNumber == collection.billNumber && b.shopId == collection.shopId)
+                            .map((b) => b.photoBase64)
+                            .firstWhere((p) => p != null && p.isNotEmpty, orElse: () => null);
+
+                    if (docPhoto == null || docPhoto.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'DOCUMENT PROOF (बिल फोटो)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                                letterSpacing: 0.8,
+                                color: Colors.blueGrey,
                               ),
                             ),
-                          );
-                        },
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.fullscreen, size: 16, color: AppTheme.primary),
-                            SizedBox(width: 4),
-                            Text(
-                              'Full Screen Zoom',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primary,
+                            InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => FullScreenImageViewer(
+                                      imageBase64: docPhoto,
+                                      title: 'Invoice Proof #${collection.billNumber}',
+                                      subtitle: '${collection.shopName} • ${collection.businessName}',
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Icon(Icons.fullscreen, size: 16, color: AppTheme.primary),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Full Screen Zoom',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.primary,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FullScreenImageViewer(
-                            imageBase64: collection.photoBase64!,
-                            title: 'Invoice Proof #${collection.billNumber}',
-                            subtitle: '${collection.shopName} • ${collection.businessName}',
-                          ),
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(8),
-                    child: Stack(
-                      children: [
-                        ClipRRect(
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => FullScreenImageViewer(
+                                  imageBase64: docPhoto,
+                                  title: 'Invoice Proof #${collection.billNumber}',
+                                  subtitle: '${collection.shopName} • ${collection.businessName}',
+                                ),
+                              ),
+                            );
+                          },
                           borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            height: 180,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              border: Border.all(color: AppTheme.border),
-                            ),
-                            child: Image.memory(
-                              base64Decode(collection.photoBase64!),
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Center(child: Text('Could not load photo'));
-                              },
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 8,
-                          right: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.75),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(Icons.zoom_in, size: 14, color: Colors.white),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Tap to Zoom & Enlarge',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
+                          child: Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  height: 180,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    border: Border.all(color: AppTheme.border),
+                                  ),
+                                  child: Image.memory(
+                                    base64Decode(docPhoto),
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Center(child: Text('Could not load photo'));
+                                    },
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                              Positioned(
+                                bottom: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.75),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Tap to Zoom & Enlarge',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
 
                 // Pending Actions: Collect Balance & Send Reminder
                 if (overallPending && balanceDue > 0) ...[

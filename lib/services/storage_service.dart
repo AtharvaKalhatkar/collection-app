@@ -95,18 +95,7 @@ class StorageService {
   Future<void> saveCollections(List<CollectionModel> collections) async {
     final prefs = await SharedPreferences.getInstance();
     try {
-      // Browser localStorage has a strict 5MB quota for the whole site.
-      // To guarantee the app never crashes with QuotaExceededError,
-      // we store collection transactions in localStorage without bulky base64 images.
-      // Full images are safely saved in memory and synced to Cloud Firestore.
-      final safeCollections = collections.map((c) {
-        if (c.photoBase64 != null && c.photoBase64!.length > 15000) {
-          return c.copyWith(photoBase64: null);
-        }
-        return c;
-      }).toList();
-
-      final rawList = safeCollections.map((c) => jsonEncode(c.toJson())).toList();
+      final rawList = collections.map((c) => jsonEncode(c.toJson())).toList();
       await prefs.setStringList(_keyCollections, rawList);
     } catch (e) {
       try {
@@ -134,14 +123,7 @@ class StorageService {
   Future<void> savePendingBills(List<PendingBillModel> bills) async {
     final prefs = await SharedPreferences.getInstance();
     try {
-      final safeBills = bills.map((b) {
-        if (b.photoBase64 != null && b.photoBase64!.length > 15000) {
-          return b.copyWith(photoBase64: null);
-        }
-        return b;
-      }).toList();
-
-      final rawList = safeBills.map((b) => jsonEncode(b.toJson())).toList();
+      final rawList = bills.map((b) => jsonEncode(b.toJson())).toList();
       await prefs.setStringList(_keyPendingBills, rawList);
     } catch (e) {
       try {
