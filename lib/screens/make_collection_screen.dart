@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +6,7 @@ import '../models/pending_bill_model.dart';
 import '../providers/collection_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
+import '../utils/image_compress_helper.dart';
 import 'add_pending_bill_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import '../widgets/fullscreen_image_viewer.dart';
@@ -742,81 +742,258 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                     ],
                   ),
                 ),
-                if (selectedBill.photoBase64 != null && selectedBill.photoBase64!.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: InkWell(
-                            onTap: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) => FullScreenImageViewer(
-                                  imageBase64: selectedBill.photoBase64!,
-                                  title: 'Bill #${selectedBill.billNumber} - ${selectedBill.shopName}',
-                                ),
-                              );
-                            },
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Image.memory(
-                                  base64Decode(selectedBill.photoBase64!),
-                                  width: 60,
-                                  height: 60,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => Container(
+                Builder(
+                  builder: (ctx) {
+                    final billPhoto = selectedBill.photoBase64 ??
+                        provider.getPhotoForBill(selectedBill.billNumber, shopId: selectedBill.shopId, shopName: selectedBill.shopName);
+                    final photoBytes = ImageCompressHelper.safeBase64Decode(billPhoto);
+
+                    if (photoBytes == null) return const SizedBox.shrink();
+
+                    return Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: InkWell(
+                              onTap: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => FullScreenImageViewer(
+                                    imageBase64: billPhoto!,
+                                    title: 'Bill #${selectedBill.billNumber} - ${selectedBill.shopName}',
+                                  ),
+                                );
+                              },
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Image.memory(
+                                    photoBytes,
                                     width: 60,
                                     height: 60,
-                                    color: Colors.grey.shade200,
-                                    child: const Icon(Icons.broken_image, size: 24),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      width: 60,
+                                      height: 60,
+                                      color: Colors.grey.shade200,
+                                      child: const Icon(Icons.broken_image, size: 24),
+                                    ),
                                   ),
+                                  Container(
+                                    width: 60,
+                                    height: 60,
+                                    color: Colors.black26,
+                                    child: const Icon(Icons.zoom_in, color: Colors.white, size: 22),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.receipt_outlined, size: 16, color: AppTheme.primary),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Uploaded Bill Copy',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                  ],
                                 ),
-                                Container(
-                                  width: 60,
-                                  height: 60,
-                                  color: Colors.black26,
-                                  child: const Icon(Icons.zoom_in, color: Colors.white, size: 22),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Tap to inspect full invoice proof. Photo proof is kept attached for payment records.',
+                                  style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
                                 ),
                               ],
                             ),
                           ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+
+                // 4B. PREVIOUS INSTALLMENTS / PAYMENT HISTORY BREAKDOWN
+                Builder(
+                  builder: (ctx) {
+                    final previousPayments = provider.getCollectionsForBill(
+                      selectedBill.billNumber,
+                      shopId: selectedBill.shopId,
+                      shopName: selectedBill.shopName,
+                    );
+                    final totalPaidOnBill = selectedBill.collectedAmount > 0
+                        ? selectedBill.collectedAmount
+                        : previousPayments.fold(0.0, (s, c) => s + c.collectedAmount);
+
+                    return Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: previousPayments.isNotEmpty
+                              ? const Color(0xFF0284C7).withValues(alpha: 0.35)
+                              : AppTheme.border,
+                          width: 1.2,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Row(
+                              Row(
                                 children: [
-                                  Icon(Icons.receipt_outlined, size: 16, color: AppTheme.primary),
-                                  SizedBox(width: 4),
+                                  Icon(
+                                    previousPayments.isNotEmpty ? Icons.history_rounded : Icons.info_outline,
+                                    size: 16,
+                                    color: previousPayments.isNotEmpty ? const Color(0xFF0284C7) : Colors.blueGrey,
+                                  ),
+                                  const SizedBox(width: 6),
                                   Text(
-                                    'Uploaded Bill Copy',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    'PAYMENT HISTORY (${previousPayments.length} ${previousPayments.length == 1 ? 'PAID' : 'PAID'})',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.5,
+                                      color: previousPayments.isNotEmpty ? const Color(0xFF0284C7) : Colors.blueGrey,
+                                    ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Tap to inspect full invoice proof. Photo will be auto-deleted after collection.',
-                                style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: totalPaidOnBill > 0
+                                      ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                                      : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'Paid: ${CurrencyFormatter.format(totalPaidOnBill)}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: totalPaidOnBill > 0 ? const Color(0xFF059669) : Colors.blueGrey.shade600,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                          if (previousPayments.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            const Divider(height: 1),
+                            const SizedBox(height: 6),
+                            ...previousPayments.asMap().entries.map((entry) {
+                              final p = entry.value;
+                              final installmentNo = previousPayments.length - entry.key;
+                              final payDateStr = DateFormat('dd MMM yyyy, hh:mm a').format(p.collectedAt);
+                              final bankInfo = p.bankName != null && p.bankName!.isNotEmpty ? ' (${p.bankName})' : '';
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '#$installmentNo',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF059669),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            payDateStr,
+                                            style: const TextStyle(
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                          Text(
+                                            '${p.paymentMode.label}$bankInfo${p.referenceNumber != null && p.referenceNumber!.isNotEmpty ? ' • Ref #${p.referenceNumber}' : ''}',
+                                            style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Text(
+                                      CurrencyFormatter.format(p.collectedAmount),
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF059669),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF3C7),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Remaining Current Due:',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF92400E)),
+                                  ),
+                                  Text(
+                                    CurrencyFormatter.format(selectedBill.balanceDue),
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFFB45309)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ] else ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'No prior payments on this bill yet. This will be installment #1.',
+                              style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ],
               const SizedBox(height: 18),
 

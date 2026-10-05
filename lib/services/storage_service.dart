@@ -100,8 +100,16 @@ class StorageService {
     } catch (e) {
       try {
         await prefs.remove(_keyCollections);
-        final noPhotos = collections.map((c) => c.copyWith(photoBase64: null)).toList();
-        final rawList = noPhotos.map((c) => jsonEncode(c.toJson())).toList();
+        // Keep photos for recent 15 records, only trim older ones if storage limit hit
+        final trimmed = <CollectionModel>[];
+        for (int i = 0; i < collections.length; i++) {
+          if (i < 15) {
+            trimmed.add(collections[i]);
+          } else {
+            trimmed.add(collections[i].copyWith(photoBase64: null));
+          }
+        }
+        final rawList = trimmed.map((c) => jsonEncode(c.toJson())).toList();
         await prefs.setStringList(_keyCollections, rawList);
       } catch (inner) {
         // Safe failover: in-memory state is preserved even if localStorage is completely locked
@@ -128,8 +136,16 @@ class StorageService {
     } catch (e) {
       try {
         await prefs.remove(_keyPendingBills);
-        final noPhotos = bills.map((b) => b.copyWith(photoBase64: null)).toList();
-        final rawList = noPhotos.map((b) => jsonEncode(b.toJson())).toList();
+        // Keep photos for recent 15 bills, only trim older ones if storage limit hit
+        final trimmed = <PendingBillModel>[];
+        for (int i = 0; i < bills.length; i++) {
+          if (i < 15) {
+            trimmed.add(bills[i]);
+          } else {
+            trimmed.add(bills[i].copyWith(photoBase64: null));
+          }
+        }
+        final rawList = trimmed.map((b) => jsonEncode(b.toJson())).toList();
         await prefs.setStringList(_keyPendingBills, rawList);
       } catch (inner) {
         // ignore: avoid_print

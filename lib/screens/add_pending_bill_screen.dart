@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -9,6 +8,7 @@ import '../models/shop_model.dart';
 import '../providers/collection_provider.dart';
 import '../utils/theme.dart';
 import '../widgets/fullscreen_image_viewer.dart';
+import '../utils/image_compress_helper.dart';
 import 'add_shop_screen.dart';
 import 'pending_bills_list_screen.dart';
 
@@ -102,7 +102,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       if (picked != null) {
         final bytes = await picked.readAsBytes();
         setState(() {
-          _photoBase64 = base64Encode(bytes);
+          _photoBase64 = ImageCompressHelper.compressToBase64(bytes);
         });
       }
     } catch (e) {
@@ -901,11 +901,24 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                               ),
                             );
                           },
-                          child: Image.memory(
-                            base64Decode(_photoBase64!),
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
+                          child: Builder(
+                            builder: (ctx) {
+                              final bytes = ImageCompressHelper.safeBase64Decode(_photoBase64);
+                              if (bytes == null) {
+                                return Container(
+                                  width: 60,
+                                  height: 60,
+                                  color: Colors.grey.shade200,
+                                  child: const Icon(Icons.broken_image, size: 24),
+                                );
+                              }
+                              return Image.memory(
+                                bytes,
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                              );
+                            },
                           ),
                         ),
                       ),

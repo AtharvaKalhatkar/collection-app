@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../utils/image_compress_helper.dart';
 
 /// Full-screen zoomable image viewer supporting pinch-to-zoom, scroll-zoom,
 /// pan gestures, and manual zoom controls.
@@ -66,7 +66,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final imageBytes = base64Decode(widget.imageBase64);
+    final imageBytes = ImageCompressHelper.safeBase64Decode(widget.imageBase64);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0F1D),
@@ -126,23 +126,32 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
         children: [
           // Interactive Pan / Pinch / Zoom Viewer
           Center(
-            child: InteractiveViewer(
-              transformationController: _transformationController,
-              minScale: 0.5,
-              maxScale: 6.0,
-              panEnabled: true,
-              scaleEnabled: true,
-              clipBehavior: Clip.none,
-              child: Image.memory(
-                imageBytes,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Text('Could not render image', style: TextStyle(color: Colors.white)),
-                  );
-                },
-              ),
-            ),
+            child: imageBytes == null
+                ? const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.broken_image, size: 54, color: Colors.white54),
+                      SizedBox(height: 12),
+                      Text('Image data corrupted or unavailable', style: TextStyle(color: Colors.white70)),
+                    ],
+                  )
+                : InteractiveViewer(
+                    transformationController: _transformationController,
+                    minScale: 0.5,
+                    maxScale: 6.0,
+                    panEnabled: true,
+                    scaleEnabled: true,
+                    clipBehavior: Clip.none,
+                    child: Image.memory(
+                      imageBytes,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Center(
+                          child: Text('Could not render image', style: TextStyle(color: Colors.white)),
+                        );
+                      },
+                    ),
+                  ),
           ),
 
           // Bottom instruction chip

@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +10,7 @@ import '../models/bill_summary.dart';
 import '../providers/collection_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
+import '../utils/image_compress_helper.dart';
 import 'add_shop_screen.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 
@@ -237,22 +235,9 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
         imageQuality: 50,
       );
       if (image != null) {
-        Uint8List bytes = await image.readAsBytes();
-        // Downscale image if larger than 120KB to ensure fast instant saving & eliminate quota issues
-        if (bytes.length > 120 * 1024) {
-          try {
-            final codec = await ui.instantiateImageCodec(bytes, targetWidth: 800);
-            final frame = await codec.getNextFrame();
-            final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
-            if (byteData != null) {
-              bytes = byteData.buffer.asUint8List();
-            }
-          } catch (e) {
-            debugPrint('Image downscale note: $e');
-          }
-        }
+        final bytes = await image.readAsBytes();
         setState(() {
-          _photoBase64 = base64Encode(bytes);
+          _photoBase64 = ImageCompressHelper.compressToBase64(bytes);
         });
       }
     } catch (e) {
@@ -1442,14 +1427,28 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                               borderRadius: BorderRadius.circular(8),
                               child: Stack(
                                 children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.memory(
-                                      base64Decode(_photoBase64!),
-                                      height: 160,
-                                      width: double.infinity,
-                                      fit: BoxFit.cover,
-                                    ),
+                                  Builder(
+                                    builder: (ctx) {
+                                      final bytes = ImageCompressHelper.safeBase64Decode(_photoBase64);
+                                      if (bytes == null) {
+                                        return Container(
+                                          height: 120,
+                                          color: Colors.grey.shade200,
+                                          child: const Center(
+                                            child: Icon(Icons.broken_image, size: 36, color: Colors.blueGrey),
+                                          ),
+                                        );
+                                      }
+                                      return ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.memory(
+                                          bytes,
+                                          height: 160,
+                                          width: double.infinity,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      );
+                                    },
                                   ),
                                   Positioned(
                                     bottom: 8,

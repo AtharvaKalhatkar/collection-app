@@ -151,6 +151,7 @@ void main() {
         company: 'Patanjali',
         category: 'Herbal Care',
       );
+      expect(products.map((p) => p.name), contains('New Herbal Soap'));
     });
   });
 

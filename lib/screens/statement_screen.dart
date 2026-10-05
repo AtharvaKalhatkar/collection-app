@@ -114,6 +114,7 @@ class _StatementScreenState extends State<StatementScreen> {
         xl.TextCellValue('Bill Number'),
         xl.TextCellValue('Bill Date'),
         xl.TextCellValue('Payment Mode'),
+        xl.TextCellValue('Deposit Bank'),
         xl.TextCellValue('Collected Amount (INR)'),
         xl.TextCellValue('Total Bill Amount (INR)'),
         xl.TextCellValue('Pending Balance (INR)'),
@@ -126,7 +127,8 @@ class _StatementScreenState extends State<StatementScreen> {
         final c = records[i];
         final timeStr = DateFormat('dd-MM-yyyy hh:mm a').format(c.collectedAt);
         final billDateStr = DateFormat('dd-MM-yyyy').format(c.billDate);
-        final ref = c.referenceNumber ?? (c.chequeNumber != null ? 'Chq #${c.chequeNumber} (${c.bankName ?? ''})' : '-');
+        final bank = (c.bankName != null && c.bankName!.trim().isNotEmpty) ? c.bankName!.trim() : '-';
+        final ref = c.referenceNumber ?? (c.chequeNumber != null ? 'Chq #${c.chequeNumber}' : '-');
 
         sheet.appendRow([
           xl.IntCellValue(i + 1),
@@ -137,6 +139,7 @@ class _StatementScreenState extends State<StatementScreen> {
           xl.TextCellValue(c.billNumber),
           xl.TextCellValue(billDateStr),
           xl.TextCellValue(c.paymentMode.label),
+          xl.TextCellValue(bank),
           xl.DoubleCellValue(c.collectedAmount),
           xl.DoubleCellValue(c.billAmount),
           xl.DoubleCellValue(c.balanceAmount),
@@ -286,7 +289,7 @@ class _StatementScreenState extends State<StatementScreen> {
 
               // Table
               pw.TableHelper.fromTextArray(
-                headers: ['#', 'Outlet / Shop', 'Firm', 'Route', 'Bill #', 'Mode', 'Collected', 'Balance'],
+                headers: ['#', 'Outlet / Shop', 'Firm', 'Route', 'Bill #', 'Mode', 'Deposit Bank', 'Collected', 'Balance'],
                 headerStyle: headerTextStyle,
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo900),
                 cellStyle: baseStyle,
@@ -295,6 +298,7 @@ class _StatementScreenState extends State<StatementScreen> {
                 cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 data: List.generate(records.length, (idx) {
                   final c = records[idx];
+                  final bank = (c.bankName != null && c.bankName!.trim().isNotEmpty) ? c.bankName!.trim() : '-';
                   return [
                     '${idx + 1}',
                     c.shopName,
@@ -302,6 +306,7 @@ class _StatementScreenState extends State<StatementScreen> {
                     c.routeName,
                     c.billNumber,
                     c.paymentMode.label,
+                    bank,
                     'INR ${c.collectedAmount.toStringAsFixed(0)}',
                     c.balanceAmount > 0 ? 'INR ${c.balanceAmount.toStringAsFixed(0)}' : 'Settled',
                   ];
@@ -468,7 +473,29 @@ class _StatementScreenState extends State<StatementScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text('Bill: ${c.billNumber}', style: const TextStyle(fontSize: 12)),
-                                  Text(c.paymentMode.label, style: const TextStyle(fontSize: 11)),
+                                  Wrap(
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    spacing: 4,
+                                    children: [
+                                      Text(c.paymentMode.label, style: const TextStyle(fontSize: 11)),
+                                      if (c.bankName != null && c.bankName!.trim().isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blueGrey.shade100,
+                                            borderRadius: BorderRadius.circular(3),
+                                          ),
+                                          child: Text(
+                                            c.bankName!.trim(),
+                                            style: TextStyle(
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.blueGrey.shade800,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
@@ -952,16 +979,40 @@ class _StatementScreenState extends State<StatementScreen> {
                                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: modeColor),
                                     ),
                                     const SizedBox(height: 2),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: modeColor.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        item.paymentMode.label,
-                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: modeColor),
-                                      ),
+                                    Wrap(
+                                      spacing: 4,
+                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                      alignment: WrapAlignment.end,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: modeColor.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            item.paymentMode.label,
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: modeColor),
+                                          ),
+                                        ),
+                                        if (item.bankName != null && item.bankName!.trim().isNotEmpty)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF1F5F9),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
+                                            ),
+                                            child: Text(
+                                              item.bankName!.trim(),
+                                              style: const TextStyle(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF334155),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ],
                                 ),

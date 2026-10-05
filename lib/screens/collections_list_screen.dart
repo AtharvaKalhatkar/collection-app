@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +12,7 @@ import 'make_collection_screen.dart';
 import 'send_reminder_dialog.dart';
 import 'add_shop_screen.dart';
 import '../widgets/fullscreen_image_viewer.dart';
+import '../utils/image_compress_helper.dart';
 
 class CollectionsListScreen extends StatefulWidget {
   final int initialTabIndex;
@@ -545,6 +545,9 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                     final modeColor = _getModeColor(item.paymentMode);
                     final timeStr = DateFormat('hh:mm a').format(item.collectedAt);
                     final isPartial = item.isPartial;
+                    final billPhoto = item.photoBase64 ??
+                        provider.getPhotoForBill(item.billNumber, shopId: item.shopId, shopName: item.shopName);
+                    final photoBytes = ImageCompressHelper.safeBase64Decode(billPhoto);
 
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
@@ -562,13 +565,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                             children: [
                               Builder(
                                 builder: (ctx) {
-                                  final billPhoto = item.photoBase64 ??
-                                      provider.pendingBills
-                                          .where((b) => b.billNumber == item.billNumber && b.shopId == item.shopId)
-                                          .map((b) => b.photoBase64)
-                                          .firstWhere((p) => p != null && p.isNotEmpty, orElse: () => null);
-
-                                  if (billPhoto != null && billPhoto.isNotEmpty) {
+                                  if (photoBytes != null) {
                                     return Padding(
                                       padding: const EdgeInsets.only(right: 10.0),
                                       child: InkWell(
@@ -577,7 +574,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                             context,
                                             MaterialPageRoute(
                                               builder: (_) => FullScreenImageViewer(
-                                                imageBase64: billPhoto,
+                                                imageBase64: billPhoto!,
                                                 title: 'Bill #${item.billNumber} - ${item.shopName}',
                                                 subtitle: '${item.businessName} • ${item.routeName}',
                                               ),
@@ -590,7 +587,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                             ClipRRect(
                                               borderRadius: BorderRadius.circular(8),
                                               child: Image.memory(
-                                                base64Decode(billPhoto),
+                                                photoBytes,
                                                 width: 44,
                                                 height: 44,
                                                 fit: BoxFit.cover,
@@ -653,7 +650,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        if (item.photoBase64 != null)
+                                        if (photoBytes != null)
                                           const Padding(
                                             padding: EdgeInsets.only(left: 4.0),
                                             child: Icon(Icons.attach_file, size: 14, color: Colors.blueGrey),

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +6,7 @@ import '../models/pending_bill_model.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import '../widgets/fullscreen_image_viewer.dart';
+import '../utils/image_compress_helper.dart';
 import 'add_pending_bill_screen.dart';
 import 'make_collection_screen.dart';
 
@@ -707,17 +707,30 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                         children: [
                                           ClipRRect(
                                             borderRadius: BorderRadius.circular(6),
-                                            child: Image.memory(
-                                              base64Decode(bill.photoBase64!),
-                                              width: 52,
-                                              height: 52,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (ctx, err, stack) => Container(
-                                                width: 52,
-                                                height: 52,
-                                                color: Colors.grey.shade200,
-                                                child: const Icon(Icons.broken_image, size: 20),
-                                              ),
+                                            child: Builder(
+                                              builder: (ctx) {
+                                                final bytes = ImageCompressHelper.safeBase64Decode(bill.photoBase64);
+                                                if (bytes == null) {
+                                                  return Container(
+                                                    width: 52,
+                                                    height: 52,
+                                                    color: Colors.grey.shade200,
+                                                    child: const Icon(Icons.broken_image, size: 20),
+                                                  );
+                                                }
+                                                return Image.memory(
+                                                  bytes,
+                                                  width: 52,
+                                                  height: 52,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (ctx, err, stack) => Container(
+                                                    width: 52,
+                                                    height: 52,
+                                                    color: Colors.grey.shade200,
+                                                    child: const Icon(Icons.broken_image, size: 20),
+                                                  ),
+                                                );
+                                              },
                                             ),
                                           ),
                                           Container(

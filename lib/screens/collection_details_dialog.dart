@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +9,7 @@ import '../utils/theme.dart';
 import 'record_collection_screen.dart';
 import 'send_reminder_dialog.dart';
 import '../widgets/fullscreen_image_viewer.dart';
+import '../utils/image_compress_helper.dart';
 
 class CollectionDetailsDialog extends StatelessWidget {
   final CollectionModel collection;
@@ -325,12 +325,10 @@ class CollectionDetailsDialog extends StatelessWidget {
                 Builder(
                   builder: (ctx) {
                     final docPhoto = collection.photoBase64 ??
-                        provider.pendingBills
-                            .where((b) => b.billNumber == collection.billNumber && b.shopId == collection.shopId)
-                            .map((b) => b.photoBase64)
-                            .firstWhere((p) => p != null && p.isNotEmpty, orElse: () => null);
+                        provider.getPhotoForBill(collection.billNumber, shopId: collection.shopId, shopName: collection.shopName);
 
-                    if (docPhoto == null || docPhoto.isEmpty) {
+                    final photoBytes = ImageCompressHelper.safeBase64Decode(docPhoto);
+                    if (photoBytes == null) {
                       return const SizedBox.shrink();
                     }
 
@@ -356,7 +354,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => FullScreenImageViewer(
-                                      imageBase64: docPhoto,
+                                      imageBase64: docPhoto!,
                                       title: 'Invoice Proof #${collection.billNumber}',
                                       subtitle: '${collection.shopName} • ${collection.businessName}',
                                     ),
@@ -388,7 +386,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => FullScreenImageViewer(
-                                  imageBase64: docPhoto,
+                                  imageBase64: docPhoto!,
                                   title: 'Invoice Proof #${collection.billNumber}',
                                   subtitle: '${collection.shopName} • ${collection.businessName}',
                                 ),
@@ -408,7 +406,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                                     border: Border.all(color: AppTheme.border),
                                   ),
                                   child: Image.memory(
-                                    base64Decode(docPhoto),
+                                    photoBytes,
                                     fit: BoxFit.contain,
                                     errorBuilder: (context, error, stackTrace) {
                                       return const Center(child: Text('Could not load photo'));

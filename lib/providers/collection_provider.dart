@@ -652,6 +652,90 @@ class CollectionProvider extends ChangeNotifier {
     return pending.fold(0.0, (sum, b) => sum + b.balanceDue);
   }
 
+  List<CollectionModel> getCollectionsForBill(String billNumber, {String? shopId, String? shopName}) {
+    final cleanBill = billNumber.trim().toLowerCase();
+    final cleanShopId = shopId?.trim().toLowerCase();
+    final cleanShopName = shopName?.trim().toLowerCase();
+
+    final matches = _collections.where((c) {
+      if (c.billNumber.trim().toLowerCase() != cleanBill) return false;
+      if (cleanShopId != null && c.shopId.trim().toLowerCase() == cleanShopId) return true;
+      if (cleanShopName != null && c.shopName.trim().toLowerCase() == cleanShopName) return true;
+      return true;
+    }).toList()
+      ..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+
+    return matches;
+  }
+
+  String? getPhotoForBill(String billNumber, {String? shopId, String? shopName}) {
+    final cleanBill = billNumber.trim().toLowerCase();
+    final cleanShopId = shopId?.trim().toLowerCase();
+    final cleanShopName = shopName?.trim().toLowerCase();
+
+    // 1. Direct match in pending bills with shop match preferred
+    for (final b in _pendingBills) {
+      if (b.billNumber.trim().toLowerCase() == cleanBill &&
+          b.photoBase64 != null &&
+          b.photoBase64!.isNotEmpty) {
+        if (cleanShopId != null && b.shopId.trim().toLowerCase() == cleanShopId) {
+          return b.photoBase64;
+        }
+        if (cleanShopName != null && b.shopName.trim().toLowerCase() == cleanShopName) {
+          return b.photoBase64;
+        }
+      }
+    }
+    // Any pending bill with same billNumber
+    for (final b in _pendingBills) {
+      if (b.billNumber.trim().toLowerCase() == cleanBill &&
+          b.photoBase64 != null &&
+          b.photoBase64!.isNotEmpty) {
+        return b.photoBase64;
+      }
+    }
+
+    // 2. Direct match in collections
+    for (final c in _collections) {
+      if (c.billNumber.trim().toLowerCase() == cleanBill &&
+          c.photoBase64 != null &&
+          c.photoBase64!.isNotEmpty) {
+        if (cleanShopId != null && c.shopId.trim().toLowerCase() == cleanShopId) {
+          return c.photoBase64;
+        }
+        if (cleanShopName != null && c.shopName.trim().toLowerCase() == cleanShopName) {
+          return c.photoBase64;
+        }
+      }
+    }
+    for (final c in _collections) {
+      if (c.billNumber.trim().toLowerCase() == cleanBill &&
+          c.photoBase64 != null &&
+          c.photoBase64!.isNotEmpty) {
+        return c.photoBase64;
+      }
+    }
+
+    // 3. Digit-based fuzzy match
+    final digits = cleanBill.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isNotEmpty && digits.length >= 3) {
+      for (final b in _pendingBills) {
+        final bDigits = b.billNumber.replaceAll(RegExp(r'[^0-9]'), '');
+        if (bDigits == digits && b.photoBase64 != null && b.photoBase64!.isNotEmpty) {
+          return b.photoBase64;
+        }
+      }
+      for (final c in _collections) {
+        final cDigits = c.billNumber.replaceAll(RegExp(r'[^0-9]'), '');
+        if (cDigits == digits && c.photoBase64 != null && c.photoBase64!.isNotEmpty) {
+          return c.photoBase64;
+        }
+      }
+    }
+
+    return null;
+  }
+
   // --- Pending Bill Operations ---
   Future<PendingBillModel> addPendingBill(PendingBillModel bill) async {
     _pendingBills.insert(0, bill);
@@ -732,7 +816,7 @@ class CollectionProvider extends ChangeNotifier {
     final updatedBill = pendingBill.copyWith(
       collectedAmount: newCollectedTotal,
       status: newStatus,
-      clearPhoto: isFullyPaid, // Delete from pending bill only when fully paid
+      clearPhoto: false, // Keep photo proof attached for historical view
     );
     await updatePendingBill(updatedBill);
   }
