@@ -14,6 +14,7 @@ import '../services/storage_service.dart';
 import '../services/sample_data_service.dart';
 import '../services/firebase_service.dart';
 import '../utils/currency_formatter.dart';
+import '../utils/marathi_search_helper.dart';
 
 class CollectionProvider extends ChangeNotifier {
   final StorageService _storage = StorageService();
@@ -306,9 +307,9 @@ class CollectionProvider extends ChangeNotifier {
       // Search query
       if (_searchQuery.trim().isNotEmpty) {
         final query = _searchQuery.toLowerCase().trim();
-        final matchShop = c.shopName.toLowerCase().contains(query);
+        final matchShop = MarathiSearchHelper.matches(c.shopName, query);
         final matchBill = c.billNumber.toLowerCase().contains(query);
-        final matchRoute = c.routeName.toLowerCase().contains(query);
+        final matchRoute = MarathiSearchHelper.matches(c.routeName, query);
         if (!matchShop && !matchBill && !matchRoute) return false;
       }
 
@@ -647,6 +648,21 @@ class CollectionProvider extends ChangeNotifier {
         latitude: latitude,
         longitude: longitude,
       );
+      _shops[idx] = updated;
+      await _storage.saveShops(_shops);
+      notifyListeners();
+      if (_firebase.isInitialized) {
+        _firebase.saveShop(updated);
+      }
+      return updated;
+    }
+    return null;
+  }
+
+  Future<ShopModel?> deleteShopLocation(String shopId) async {
+    final idx = _shops.indexWhere((s) => s.id == shopId);
+    if (idx != -1) {
+      final updated = _shops[idx].copyWith(clearLocation: true);
       _shops[idx] = updated;
       await _storage.saveShops(_shops);
       notifyListeners();

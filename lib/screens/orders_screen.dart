@@ -15,6 +15,7 @@ import '../services/order_catalog_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
+import '../utils/marathi_search_helper.dart';
 
 class OrdersScreen extends StatefulWidget {
   final String? initialFirm;
@@ -255,8 +256,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             final filtered = shops.where((s) {
               if (query.isEmpty) return true;
               final q = query.toLowerCase();
-              return s.name.toLowerCase().contains(q) ||
-                  (s.ownerName?.toLowerCase().contains(q) ?? false) ||
+              return MarathiSearchHelper.matches(s.name, q) ||
+                  (s.ownerName != null && MarathiSearchHelper.matches(s.ownerName!, q)) ||
                   s.mobileNumber.contains(q);
             }).toList();
 

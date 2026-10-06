@@ -34,16 +34,13 @@ class FirmBankInfo {
 
   String get formattedShareText {
     return '''
-PAYMENT DETAILS - $firmName
+PAYMENT DETAILS
+$firmName
 Bank: $bankName
 Branch: $branch
 A/c No: $accountNumber
 A/c Type: $accountType
 IFSC Code: $ifscCode
-UPI ID: $upiId
-Contact: $mobileNumber
-
-Please share payment screenshot once transferred. Thank you!
 '''.trim();
   }
 }
@@ -341,8 +338,6 @@ class _QuickSharePaymentSheetState extends State<_QuickSharePaymentSheet> {
                 _buildInfoRow('Branch', firm.branch),
                 _buildInfoRow('Account No', firm.accountNumber, isBold: true),
                 _buildInfoRow('IFSC Code', firm.ifscCode, isBold: true),
-                _buildInfoRow('UPI ID', firm.upiId),
-                _buildInfoRow('Contact', firm.mobileNumber),
               ],
             ),
           ),

@@ -11,6 +11,7 @@ import 'add_pending_bill_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 import '../utils/qr_data.dart';
+import '../utils/marathi_search_helper.dart';
 
 class MakeCollectionScreen extends StatefulWidget {
   final String? initialPendingBillId;
@@ -124,8 +125,8 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
               if (query.isEmpty) return true;
               final q = query.toLowerCase();
               return b.billNumber.toLowerCase().contains(q) ||
-                  b.shopName.toLowerCase().contains(q) ||
-                  b.routeName.toLowerCase().contains(q);
+                  MarathiSearchHelper.matches(b.shopName, q) ||
+                  MarathiSearchHelper.matches(b.routeName, q);
             }).toList();
 
             return Padding(

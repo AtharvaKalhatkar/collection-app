@@ -9,6 +9,7 @@ import '../widgets/fullscreen_image_viewer.dart';
 import '../utils/image_compress_helper.dart';
 import 'add_pending_bill_screen.dart';
 import 'make_collection_screen.dart';
+import '../utils/marathi_search_helper.dart';
 
 class PendingBillsListScreen extends StatefulWidget {
   final DateTime? initialInvoiceDate;
@@ -123,8 +124,8 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
       if (_searchQuery.trim().isNotEmpty) {
         final q = _searchQuery.toLowerCase().trim();
         return b.billNumber.toLowerCase().contains(q) ||
-            b.shopName.toLowerCase().contains(q) ||
-            b.routeName.toLowerCase().contains(q);
+            MarathiSearchHelper.matches(b.shopName, q) ||
+            MarathiSearchHelper.matches(b.routeName, q);
       }
 
       return true;

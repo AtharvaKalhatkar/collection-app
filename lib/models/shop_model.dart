@@ -88,6 +88,7 @@ class ShopModel {
     double? latitude,
     double? longitude,
     DateTime? createdAt,
+    bool clearLocation = false,
   }) {
     return ShopModel(
       id: id ?? this.id,
@@ -97,9 +98,9 @@ class ShopModel {
       mobileNumber: mobileNumber ?? this.mobileNumber,
       address: address ?? this.address,
       ownerName: ownerName ?? this.ownerName,
-      locationUrl: locationUrl ?? this.locationUrl,
-      latitude: latitude ?? this.latitude,
-      longitude: longitude ?? this.longitude,
+      locationUrl: clearLocation ? null : (locationUrl ?? this.locationUrl),
+      latitude: clearLocation ? null : (latitude ?? this.latitude),
+      longitude: clearLocation ? null : (longitude ?? this.longitude),
       createdAt: createdAt ?? this.createdAt,
     );
   }

@@ -13,6 +13,7 @@ import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import '../utils/file_download/file_download.dart';
 import 'collection_details_dialog.dart';
+import '../utils/marathi_search_helper.dart';
 
 class StatementScreen extends StatefulWidget {
   final String? initialBusiness;
@@ -200,9 +201,9 @@ class _StatementScreenState extends State<StatementScreen> {
       // 6. Outlet Name, Bill #, Reference Search Filter
       if (_searchQuery.trim().isNotEmpty) {
         final q = _searchQuery.toLowerCase().trim();
-        final matchShop = c.shopName.toLowerCase().contains(q);
+        final matchShop = MarathiSearchHelper.matches(c.shopName, q);
         final matchBill = c.billNumber.toLowerCase().contains(q);
-        final matchRoute = c.routeName.toLowerCase().contains(q);
+        final matchRoute = MarathiSearchHelper.matches(c.routeName, q);
         final matchRef = c.referenceNumber?.toLowerCase().contains(q) ?? false;
         final matchCheque = c.chequeNumber?.toLowerCase().contains(q) ?? false;
         final matchBank = c.bankName?.toLowerCase().contains(q) ?? false;

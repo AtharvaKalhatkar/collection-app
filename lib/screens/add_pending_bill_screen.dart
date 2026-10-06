@@ -11,6 +11,7 @@ import '../widgets/fullscreen_image_viewer.dart';
 import '../utils/image_compress_helper.dart';
 import 'add_shop_screen.dart';
 import 'pending_bills_list_screen.dart';
+import '../utils/marathi_search_helper.dart';
 
 class AddPendingBillScreen extends StatefulWidget {
   final String? initialRouteId;
@@ -175,9 +176,9 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
             final filtered = shops.where((s) {
               if (query.isEmpty) return true;
               final q = query.toLowerCase();
-              return s.name.toLowerCase().contains(q) ||
+              return MarathiSearchHelper.matches(s.name, q) ||
                   s.mobileNumber.contains(q) ||
-                  s.address.toLowerCase().contains(q);
+                  MarathiSearchHelper.matches(s.address, q);
             }).toList();
 
             return Padding(

@@ -15,7 +15,7 @@ import 'send_reminder_dialog.dart';
 import 'package:flutter/services.dart';
 import '../utils/firm_details.dart';
 import '../services/location_service.dart';
-import 'orders_screen.dart';
+import '../utils/marathi_search_helper.dart';
 
 class RoutesShopsScreen extends StatefulWidget {
   const RoutesShopsScreen({super.key});
@@ -276,11 +276,13 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
       return;
     }
 
-    final shareText = '''
-${shop.name}
-Address: ${shop.address}
-Google Maps: $url
-'''.trim();
+    final lines = <String>[
+      shop.name,
+      if (shop.address.trim().isNotEmpty) 'Address: ${shop.address.trim()}',
+      if (shop.mobileNumber.trim().isNotEmpty) 'Mobile: ${shop.mobileNumber.trim()}',
+      'Google Maps: $url',
+    ];
+    final shareText = lines.join('\n');
 
     showModalBottomSheet(
       context: context,
@@ -321,7 +323,10 @@ Google Maps: $url
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        shop.address,
+                        [
+                          if (shop.address.isNotEmpty) shop.address,
+                          if (shop.mobileNumber.isNotEmpty) shop.mobileNumber,
+                        ].join(' • '),
                         style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -360,39 +365,19 @@ Google Maps: $url
               ),
             ),
             const SizedBox(height: 16),
-            // WhatsApp to Shop
-            if (shop.mobileNumber.isNotEmpty) ...[
-              ElevatedButton.icon(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  String cleanPhone = shop.mobileNumber.replaceAll(RegExp(r'[^0-9]'), '');
-                  if (cleanPhone.length == 10) cleanPhone = '91$cleanPhone';
-                  final waUrl = 'https://wa.me/$cleanPhone?text=${Uri.encodeComponent(shareText)}';
-                  await launchUrl(Uri.parse(waUrl), mode: LaunchMode.externalApplication);
-                },
-                icon: const Icon(Icons.send_rounded, size: 18),
-                label: Text('Send to ${shop.name} on WhatsApp'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            // WhatsApp to Any Contact
-            OutlinedButton.icon(
+            // Primary Share on WhatsApp button
+            ElevatedButton.icon(
               onPressed: () async {
                 Navigator.pop(ctx);
                 final waUrl = 'https://api.whatsapp.com/send?text=${Uri.encodeComponent(shareText)}';
                 await launchUrl(Uri.parse(waUrl), mode: LaunchMode.externalApplication);
               },
-              icon: const Icon(Icons.share, size: 18, color: Color(0xFF25D366)),
-              label: const Text('Share to Any WhatsApp Contact', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-              style: OutlinedButton.styleFrom(
+              icon: const Icon(Icons.share, size: 18),
+              label: const Text('Share Location on WhatsApp', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366),
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 13),
-                side: const BorderSide(color: Color(0xFF25D366)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
@@ -439,21 +424,71 @@ Google Maps: $url
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
             const SizedBox(height: 8),
-            Center(
-              child: TextButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showAddLocationDialog(context, shop);
-                },
-                icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
-                label: const Text('Edit / Re-detect Location'),
-              ),
+            // Edit or Delete Location Options
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showAddLocationDialog(context, shop);
+                    },
+                    icon: const Icon(Icons.edit_location_alt_outlined, size: 16, color: AppTheme.primary),
+                    label: const Text('Edit Location', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _confirmAndDeleteLocation(shop);
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                    label: const Text('Delete Location', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _confirmAndDeleteLocation(ShopModel shop) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Location?'),
+        content: Text('Remove saved Google Maps location for "${shop.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await context.read<CollectionProvider>().deleteShopLocation(shop.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Location deleted for "${shop.name}"'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -484,10 +519,11 @@ Google Maps: $url
         if (s.id != _selectedShopId) return false;
       }
       if (_shopSearch.isNotEmpty) {
-        final q = _shopSearch.toLowerCase();
-        return s.name.toLowerCase().contains(q) ||
-            s.mobileNumber.contains(q) ||
-            s.address.toLowerCase().contains(q);
+        final q = _shopSearch.trim();
+        return MarathiSearchHelper.matches(s.name, q) ||
+            MarathiSearchHelper.matches(s.address, q) ||
+            (s.ownerName != null && MarathiSearchHelper.matches(s.ownerName!, q)) ||
+            s.mobileNumber.contains(q);
       }
       return true;
     }).toList();
@@ -1013,7 +1049,7 @@ Google Maps: $url
                                         // Location Actions Bar
                                         Row(
                                           children: [
-                                            if (shop.hasLocation) ...[
+                                            if (shop.hasLocation)
                                               InkWell(
                                                 onTap: () => _shareShopLocation(shop),
                                                 child: Container(
@@ -1032,28 +1068,8 @@ Google Maps: $url
                                                     ],
                                                   ),
                                                 ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              InkWell(
-                                                onTap: () => launchUrl(Uri.parse(shop.mapsUrl!), mode: LaunchMode.externalApplication),
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.blueGrey.shade50,
-                                                    borderRadius: BorderRadius.circular(5),
-                                                    border: Border.all(color: AppTheme.border),
-                                                  ),
-                                                  child: const Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(Icons.map_outlined, size: 12, color: Colors.blueGrey),
-                                                      SizedBox(width: 3),
-                                                      Text('Maps', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blueGrey)),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ] else ...[
+                                              )
+                                            else
                                               InkWell(
                                                 onTap: () => _showAddLocationDialog(context, shop),
                                                 child: Container(
@@ -1073,7 +1089,6 @@ Google Maps: $url
                                                   ),
                                                 ),
                                               ),
-                                            ],
                                           ],
                                         ),
                                       ],
@@ -1094,16 +1109,8 @@ Google Maps: $url
                                         _showAddLocationDialog(context, shop);
                                       } else if (val == 'loc_share') {
                                         _shareShopLocation(shop);
-                                      } else if (val == 'order') {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => OrdersScreen(
-                                              initialRouteId: shop.routeId,
-                                              initialShopId: shop.id,
-                                            ),
-                                          ),
-                                        );
+                                      } else if (val == 'loc_delete') {
+                                        _confirmAndDeleteLocation(shop);
                                       } else if (val == 'edit') {
                                         Navigator.push(
                                           context,
@@ -1131,7 +1138,7 @@ Google Maps: $url
                                         child: Row(
                                           children: [
                                             Icon(Icons.location_on_outlined, size: 18, color: AppTheme.secondary),
-                                            const SizedBox(width: 8),
+                                            SizedBox(width: 8),
                                             Text(shop.hasLocation ? 'Update Location' : 'Add Location'),
                                           ],
                                         ),
@@ -1147,16 +1154,17 @@ Google Maps: $url
                                             ],
                                           ),
                                         ),
-                                      const PopupMenuItem(
-                                        value: 'order',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.shopping_bag_outlined, size: 18, color: Color(0xFFF59E0B)),
-                                            SizedBox(width: 8),
-                                            Text('Take Order'),
-                                          ],
+                                      if (shop.hasLocation)
+                                        const PopupMenuItem(
+                                          value: 'loc_delete',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.location_off_outlined, size: 18, color: AppTheme.error),
+                                              SizedBox(width: 8),
+                                              Text('Delete Location', style: TextStyle(color: AppTheme.error)),
+                                            ],
+                                          ),
                                         ),
-                                      ),
                                       const PopupMenuItem(
                                         value: 'edit',
                                         child: Row(
