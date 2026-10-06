@@ -59,7 +59,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
   }
 
   Future<void> _showAddLocationDialog(BuildContext context, ShopModel shop) async {
-    final locCtrl = TextEditingController(text: shop.locationUrl ?? '');
+    final locCtrl = TextEditingController(text: shop.locationUrl ?? (shop.mapsUrl ?? ''));
     double? tempLat = shop.latitude;
     double? tempLng = shop.longitude;
     bool isDetecting = false;
@@ -76,7 +76,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Set Location: ${shop.name}',
+                    shop.hasLocation ? 'Update Location: ${shop.name}' : 'Set Location: ${shop.name}',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -169,30 +169,189 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
 
   Future<void> _shareShopLocation(ShopModel shop) async {
     final url = shop.mapsUrl;
-    if (url == null) return;
-
-    await Clipboard.setData(ClipboardData(text: url));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Maps link copied for "${shop.name}"!')),
-            ],
-          ),
-          action: SnackBarAction(
-            label: 'Open',
-            textColor: Colors.yellow,
-            onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-          ),
-          backgroundColor: const Color(0xFF10B981),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+    if (url == null || url.isEmpty) {
+      _showAddLocationDialog(context, shop);
+      return;
     }
+
+    final shareText = '''
+📍 *STORE LOCATION - ${shop.name}*
+📌 *Address:* ${shop.address}
+🗺️ *Google Maps:* $url
+'''.trim();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.location_on, color: Color(0xFF10B981), size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        shop.name,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        shop.address,
+                        style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(ctx),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.map_outlined, size: 18, color: Colors.blueGrey),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      url,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // WhatsApp to Shop
+            if (shop.mobileNumber.isNotEmpty) ...[
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  String cleanPhone = shop.mobileNumber.replaceAll(RegExp(r'[^0-9]'), '');
+                  if (cleanPhone.length == 10) cleanPhone = '91$cleanPhone';
+                  final waUrl = 'https://wa.me/$cleanPhone?text=${Uri.encodeComponent(shareText)}';
+                  await launchUrl(Uri.parse(waUrl), mode: LaunchMode.externalApplication);
+                },
+                icon: const Icon(Icons.send_rounded, size: 18),
+                label: Text('Send to ${shop.name} on WhatsApp'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            // WhatsApp to Any Contact
+            OutlinedButton.icon(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final waUrl = 'https://api.whatsapp.com/send?text=${Uri.encodeComponent(shareText)}';
+                await launchUrl(Uri.parse(waUrl), mode: LaunchMode.externalApplication);
+              },
+              icon: const Icon(Icons.share, size: 18, color: Color(0xFF25D366)),
+              label: const Text('Share to Any WhatsApp Contact', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                side: const BorderSide(color: Color(0xFF25D366)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    },
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Open Maps'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await Clipboard.setData(ClipboardData(text: url));
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Maps link copied to clipboard!'),
+                            backgroundColor: Color(0xFF10B981),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.copy, size: 16),
+                    label: const Text('Copy Link'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _showAddLocationDialog(context, shop);
+                },
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+                label: const Text('Edit / Re-detect Location'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
