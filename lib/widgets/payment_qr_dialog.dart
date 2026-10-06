@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../utils/theme.dart';
 import '../utils/firm_details.dart';
+import '../utils/qr_data.dart';
 
 class PaymentQrDialog extends StatefulWidget {
   final String? initialFirm;
@@ -50,7 +51,6 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
   Widget build(BuildContext context) {
     final firmInfo = _isPurva ? FirmDetailsHelper.purva : FirmDetailsHelper.manas;
     final firmName = firmInfo.firmName;
-    final firmShort = firmInfo.shortName;
     final firmPhone = firmInfo.mobileNumber;
     final upiId = firmInfo.upiId;
     final assetPath = _isPurva ? 'assets/images/qr_purva.png' : 'assets/images/qr_manas.png';
@@ -214,32 +214,17 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          assetPath,
+                        child: Image.memory(
+                          _isPurva ? QrData.purvaBytes : QrData.manasBytes,
                           width: 250,
                           height: 330,
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) {
-                            return SizedBox(
+                            return Image.asset(
+                              assetPath,
                               width: 250,
-                              height: 250,
-                              child: Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.qr_code, size: 60, color: Colors.blueGrey),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      '$firmShort QR Code',
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
-                                    ),
-                                    Text(
-                                      upiId,
-                                      style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              height: 330,
+                              fit: BoxFit.contain,
                             );
                           },
                         ),

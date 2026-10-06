@@ -10,6 +10,7 @@ import '../utils/image_compress_helper.dart';
 import 'add_pending_bill_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import '../widgets/fullscreen_image_viewer.dart';
+import '../utils/qr_data.dart';
 
 class MakeCollectionScreen extends StatefulWidget {
   final String? initialPendingBillId;
@@ -1308,13 +1309,23 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: Image.asset(
+                          child: Image.memory(
                             _selectedBusiness == 'Purva Enterprises'
-                                ? 'assets/images/qr_purva.png'
-                                : 'assets/images/qr_manas.png',
+                                ? QrData.purvaBytes
+                                : QrData.manasBytes,
                             width: 44,
                             height: 44,
                             fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Image.asset(
+                                _selectedBusiness == 'Purva Enterprises'
+                                    ? 'assets/images/qr_purva.png'
+                                    : 'assets/images/qr_manas.png',
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(width: 10),
