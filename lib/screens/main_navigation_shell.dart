@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../utils/theme.dart';
 import 'home_dashboard_screen.dart';
-import 'orders_screen.dart';
 import 'collections_list_screen.dart';
 import 'routes_shops_screen.dart';
+
+import 'profile_screen.dart';
 
 class MainNavigationShell extends StatefulWidget {
   const MainNavigationShell({super.key});
@@ -25,13 +26,14 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   Widget build(BuildContext context) {
     final screens = [
       HomeDashboardScreen(
-        onNavigateToRoutes: () => _navigateToTab(3),
-        onNavigateToCollections: () => _navigateToTab(2),
-        onNavigateToOrders: () => _navigateToTab(1),
+        onNavigateToRoutes: () => _navigateToTab(2),
+        onNavigateToCollections: () => _navigateToTab(1),
+        onNavigateToOrders: null,
+        onNavigateToProfile: () => _navigateToTab(3),
       ),
-      const OrdersScreen(),
       const CollectionsListScreen(),
       const RoutesShopsScreen(),
+      const ProfileScreen(),
     ];
 
     return PopScope(
@@ -59,11 +61,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
               label: 'Overview',
             ),
             NavigationDestination(
-              icon: Icon(Icons.shopping_bag_outlined),
-              selectedIcon: Icon(Icons.shopping_bag, color: AppTheme.primary),
-              label: 'Orders',
-            ),
-            NavigationDestination(
               icon: Icon(Icons.receipt_long_outlined),
               selectedIcon: Icon(Icons.receipt_long, color: AppTheme.primary),
               label: 'Ledger',
@@ -72,6 +69,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
               icon: Icon(Icons.storefront_outlined),
               selectedIcon: Icon(Icons.storefront, color: AppTheme.primary),
               label: 'Outlets',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person, color: AppTheme.primary),
+              label: 'Profile',
             ),
           ],
         ),

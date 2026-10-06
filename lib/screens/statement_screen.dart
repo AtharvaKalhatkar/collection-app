@@ -17,11 +17,19 @@ import 'collection_details_dialog.dart';
 class StatementScreen extends StatefulWidget {
   final String? initialBusiness;
   final PaymentMode? initialMode;
+  final String? initialRouteId;
+  final String? initialShopId;
+  final DateTime? initialDate;
+  final DateTimeRange? initialDateRange;
 
   const StatementScreen({
     super.key,
     this.initialBusiness,
     this.initialMode,
+    this.initialRouteId,
+    this.initialShopId,
+    this.initialDate,
+    this.initialDateRange,
   });
 
   @override
@@ -30,8 +38,13 @@ class StatementScreen extends StatefulWidget {
 
 class _StatementScreenState extends State<StatementScreen> {
   String? _selectedBusiness; // null means 'All'
-  DateTime _selectedDate = DateTime.now();
+  DateTime? _startDate;
+  DateTime? _endDate;
   bool _filterByDate = true;
+  String? _selectedRouteId; // null means 'All Routes'
+  String? _selectedShopId; // null means 'All Outlets'
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
   PaymentMode? _selectedMode; // null means 'All Modes'
   bool _isExporting = false;
 
@@ -40,42 +53,162 @@ class _StatementScreenState extends State<StatementScreen> {
     super.initState();
     _selectedBusiness = widget.initialBusiness;
     _selectedMode = widget.initialMode;
+    _selectedRouteId = widget.initialRouteId;
+    _selectedShopId = widget.initialShopId;
+
+    if (widget.initialDateRange != null) {
+      _startDate = widget.initialDateRange!.start;
+      _endDate = widget.initialDateRange!.end;
+      _filterByDate = true;
+    } else if (widget.initialDate != null) {
+      _startDate = widget.initialDate;
+      _endDate = widget.initialDate;
+      _filterByDate = true;
+    } else {
+      final now = DateTime.now();
+      _startDate = DateTime(now.year, now.month, now.day);
+      _endDate = DateTime(now.year, now.month, now.day);
+      _filterByDate = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDateRange() async {
+    final now = DateTime.now();
+    final initialRange = (_startDate != null && _endDate != null)
+        ? DateTimeRange(start: _startDate!, end: _endDate!)
+        : DateTimeRange(start: now, end: now);
+
+    final picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: initialRange,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      helpText: 'SELECT STATEMENT DATE RANGE',
+      saveText: 'APPLY',
+    );
+    if (picked != null) {
+      setState(() {
+        _startDate = picked.start;
+        _endDate = picked.end;
+        _filterByDate = true;
+      });
+    }
   }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
+      initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
       helpText: 'SELECT STATEMENT DATE',
     );
     if (picked != null) {
       setState(() {
-        _selectedDate = picked;
+        _startDate = picked;
+        _endDate = picked;
         _filterByDate = true;
       });
     }
   }
 
+  String _getDateRangeDisplay() {
+    if (!_filterByDate || _startDate == null || _endDate == null) {
+      return 'All Dates';
+    }
+    final sameDay = _startDate!.year == _endDate!.year &&
+        _startDate!.month == _endDate!.month &&
+        _startDate!.day == _endDate!.day;
+    if (sameDay) {
+      return DateFormat('dd MMM yyyy').format(_startDate!);
+    }
+    return '${DateFormat('dd MMM').format(_startDate!)} - ${DateFormat('dd MMM yyyy').format(_endDate!)}';
+  }
+
+  bool get _hasActiveFilters {
+    final now = DateTime.now();
+    final isToday = _startDate != null &&
+        _endDate != null &&
+        _startDate!.year == now.year &&
+        _startDate!.month == now.month &&
+        _startDate!.day == now.day &&
+        _endDate!.year == now.year &&
+        _endDate!.month == now.month &&
+        _endDate!.day == now.day;
+
+    return _selectedBusiness != null ||
+        !_filterByDate ||
+        !isToday ||
+        _selectedRouteId != null ||
+        _selectedShopId != null ||
+        _selectedMode != null ||
+        _searchQuery.isNotEmpty;
+  }
+
+  void _resetFilters() {
+    final now = DateTime.now();
+    setState(() {
+      _selectedBusiness = null;
+      _startDate = DateTime(now.year, now.month, now.day);
+      _endDate = DateTime(now.year, now.month, now.day);
+      _filterByDate = true;
+      _selectedRouteId = null;
+      _selectedShopId = null;
+      _selectedMode = null;
+      _searchQuery = '';
+      _searchController.clear();
+    });
+  }
+
   List<CollectionModel> _getFilteredCollections(CollectionProvider provider) {
     return provider.collections.where((c) {
-      // Date filter
-      if (_filterByDate) {
-        final sameDay = c.collectedAt.year == _selectedDate.year &&
-            c.collectedAt.month == _selectedDate.month &&
-            c.collectedAt.day == _selectedDate.day;
-        if (!sameDay) return false;
+      // 1. Date Range Filter
+      if (_filterByDate && _startDate != null && _endDate != null) {
+        final startOfDay = DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
+        final endOfDay = DateTime(_endDate!.year, _endDate!.month, _endDate!.day, 23, 59, 59, 999);
+        if (c.collectedAt.isBefore(startOfDay) || c.collectedAt.isAfter(endOfDay)) {
+          return false;
+        }
       }
 
-      // Firm filter
+      // 2. Firm Filter
       if (_selectedBusiness != null && _selectedBusiness != 'All') {
         if (c.businessName != _selectedBusiness) return false;
       }
 
-      // Mode filter
+      // 3. Route Filter
+      if (_selectedRouteId != null && _selectedRouteId!.isNotEmpty) {
+        if (c.routeId != _selectedRouteId) return false;
+      }
+
+      // 4. Outlet / Shop Filter
+      if (_selectedShopId != null && _selectedShopId!.isNotEmpty) {
+        if (c.shopId != _selectedShopId) return false;
+      }
+
+      // 5. Payment Mode Filter
       if (_selectedMode != null) {
         if (c.paymentMode != _selectedMode) return false;
+      }
+
+      // 6. Outlet Name, Bill #, Reference Search Filter
+      if (_searchQuery.trim().isNotEmpty) {
+        final q = _searchQuery.toLowerCase().trim();
+        final matchShop = c.shopName.toLowerCase().contains(q);
+        final matchBill = c.billNumber.toLowerCase().contains(q);
+        final matchRoute = c.routeName.toLowerCase().contains(q);
+        final matchRef = c.referenceNumber?.toLowerCase().contains(q) ?? false;
+        final matchCheque = c.chequeNumber?.toLowerCase().contains(q) ?? false;
+        final matchBank = c.bankName?.toLowerCase().contains(q) ?? false;
+        if (!matchShop && !matchBill && !matchRoute && !matchRef && !matchCheque && !matchBank) {
+          return false;
+        }
       }
 
       return true;
@@ -150,10 +283,15 @@ class _StatementScreenState extends State<StatementScreen> {
 
       final bytes = excel.encode();
       if (bytes != null) {
-        final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+        final dateStr = !_filterByDate
+            ? 'All_Dates'
+            : (_startDate != null && _endDate != null && _startDate == _endDate
+                ? DateFormat('yyyy-MM-dd').format(_startDate!)
+                : '${_startDate != null ? DateFormat('yyyy-MM-dd').format(_startDate!) : 'start'}_to_${_endDate != null ? DateFormat('yyyy-MM-dd').format(_endDate!) : 'end'}');
         final firmTag = _selectedBusiness?.replaceAll(' ', '_') ?? 'All_Firms';
         final modeTag = _selectedMode?.name ?? 'All_Modes';
-        final fileName = 'Collection_Statement_${firmTag}_${modeTag}_$dateStr.xlsx';
+        final routeTag = _selectedRouteId != null ? '_Route' : '';
+        final fileName = 'Collection_Statement_${firmTag}_${modeTag}_$dateStr$routeTag.xlsx';
 
         await downloadFile(
           bytes: bytes,
@@ -199,7 +337,13 @@ class _StatementScreenState extends State<StatementScreen> {
       final headerTextStyle = pw.TextStyle(font: devanagariBoldFont, fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white);
 
       final doc = pw.Document();
-      final dateStr = _filterByDate ? DateFormat('dd MMM yyyy').format(_selectedDate) : 'All Dates';
+      final dateStr = _getDateRangeDisplay();
+      final routeName = _selectedRouteId != null
+          ? (provider.routes.where((r) => r.id == _selectedRouteId).firstOrNull?.name ?? 'Route')
+          : null;
+      final shopName = _selectedShopId != null
+          ? (provider.shops.where((s) => s.id == _selectedShopId).firstOrNull?.name ?? 'Outlet')
+          : null;
       final totalCollected = records.fold(0.0, (s, c) => s + c.collectedAmount);
       final totalBilled = records.fold(0.0, (s, c) => s + c.billAmount);
       final totalDue = records.fold(0.0, (s, c) => s + c.balanceAmount);
@@ -236,6 +380,10 @@ class _StatementScreenState extends State<StatementScreen> {
                     children: [
                       pw.Text('Date: $dateStr', style: pw.TextStyle(font: devanagariFont, fontSize: 11)),
                       pw.Text('Mode: $modeTitle', style: pw.TextStyle(font: devanagariFont, fontSize: 11)),
+                      if (routeName != null)
+                        pw.Text('Route: $routeName', style: pw.TextStyle(font: devanagariFont, fontSize: 10)),
+                      if (shopName != null)
+                        pw.Text('Outlet: $shopName', style: pw.TextStyle(font: devanagariFont, fontSize: 10)),
                       pw.Text('Officer: ${provider.salesmanName}', style: pw.TextStyle(font: devanagariFont, fontSize: 11)),
                     ],
                   ),
@@ -326,7 +474,11 @@ class _StatementScreenState extends State<StatementScreen> {
       );
 
       final pdfBytes = await doc.save();
-      final dateTag = DateFormat('yyyy-MM-dd').format(_selectedDate);
+      final dateTag = !_filterByDate
+          ? 'All_Dates'
+          : (_startDate != null && _endDate != null && _startDate == _endDate
+              ? DateFormat('yyyy-MM-dd').format(_startDate!)
+              : '${_startDate != null ? DateFormat('yyyy-MM-dd').format(_startDate!) : 'start'}_to_${_endDate != null ? DateFormat('yyyy-MM-dd').format(_endDate!) : 'end'}');
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => pdfBytes,
         name: 'Collection_Statement_$dateTag.pdf',
@@ -343,7 +495,13 @@ class _StatementScreenState extends State<StatementScreen> {
   }
 
   void _showStatementPreview(List<CollectionModel> records, CollectionProvider provider) {
-    final dateStr = _filterByDate ? DateFormat('dd MMM yyyy').format(_selectedDate) : 'All Dates';
+    final dateStr = _getDateRangeDisplay();
+    final routeName = _selectedRouteId != null
+        ? (provider.routes.where((r) => r.id == _selectedRouteId).firstOrNull?.name ?? 'Route')
+        : null;
+    final shopName = _selectedShopId != null
+        ? (provider.shops.where((s) => s.id == _selectedShopId).firstOrNull?.name ?? 'Outlet')
+        : null;
     final totalCollected = records.fold(0.0, (s, c) => s + c.collectedAmount);
     final totalBilled = records.fold(0.0, (s, c) => s + c.billAmount);
     final totalDue = records.fold(0.0, (s, c) => s + c.balanceAmount);
@@ -393,6 +551,10 @@ class _StatementScreenState extends State<StatementScreen> {
                           children: [
                             Text('Date: $dateStr', style: const TextStyle(fontSize: 11)),
                             Text('Mode: $modeTitle', style: const TextStyle(fontSize: 11)),
+                            if (routeName != null)
+                              Text('Route: $routeName', style: const TextStyle(fontSize: 10)),
+                            if (shopName != null)
+                              Text('Outlet: $shopName', style: const TextStyle(fontSize: 10)),
                             Text('Officer: ${provider.salesmanName}', style: const TextStyle(fontSize: 11)),
                           ],
                         ),
@@ -660,38 +822,55 @@ class _StatementScreenState extends State<StatementScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // 2. DATE SELECTOR & 3. PAYMENT MODE DROPDOWN ROW
+                // 2. DATE RANGE SELECTOR & PAYMENT MODE ROW
                 Row(
                   children: [
-                    // Date Selector
+                    // Date Range Selector
                     Expanded(
-                      flex: 5,
+                      flex: 6,
                       child: InkWell(
-                        onTap: _pickDate,
+                        onTap: _pickDateRange,
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: _filterByDate ? AppTheme.primary.withValues(alpha: 0.05) : Colors.white,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.border),
+                            border: Border.all(
+                              color: _filterByDate ? AppTheme.primary : AppTheme.border,
+                              width: _filterByDate ? 1.2 : 1.0,
+                            ),
                           ),
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.event, size: 16, color: AppTheme.primary),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    _filterByDate
-                                        ? DateFormat('dd MMM yyyy').format(_selectedDate)
-                                        : 'All Dates',
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                                  ),
-                                ],
+                              Icon(
+                                Icons.date_range_outlined,
+                                size: 16,
+                                color: _filterByDate ? AppTheme.primary : Colors.blueGrey,
                               ),
-                              const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _getDateRangeDisplay(),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                    color: _filterByDate ? AppTheme.primary : Colors.blueGrey.shade800,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (_filterByDate)
+                                InkWell(
+                                  onTap: () => setState(() => _filterByDate = false),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(2.0),
+                                    child: Icon(Icons.close, size: 14, color: Colors.blueGrey),
+                                  ),
+                                )
+                              else
+                                const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
                             ],
                           ),
                         ),
@@ -701,13 +880,16 @@ class _StatementScreenState extends State<StatementScreen> {
 
                     // Payment Mode Dropdown
                     Expanded(
-                      flex: 6,
+                      flex: 5,
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.border),
+                          border: Border.all(
+                            color: _selectedMode != null ? AppTheme.primary : AppTheme.border,
+                            width: _selectedMode != null ? 1.2 : 1.0,
+                          ),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<PaymentMode?>(
@@ -732,13 +914,197 @@ class _StatementScreenState extends State<StatementScreen> {
                                 );
                               }),
                             ],
+                            onChanged: (val) => setState(() => _selectedMode = val),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // 3. ROUTE DROPDOWN & OUTLET DROPDOWN (REACTIVE)
+                Row(
+                  children: [
+                    // Route Filter Dropdown
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _selectedRouteId != null ? AppTheme.primary : AppTheme.border,
+                            width: _selectedRouteId != null ? 1.2 : 1.0,
+                          ),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String?>(
+                            isExpanded: true,
+                            value: _selectedRouteId,
+                            hint: const Row(
+                              children: [
+                                Icon(Icons.alt_route, size: 15, color: Colors.blueGrey),
+                                SizedBox(width: 6),
+                                Text('All Routes', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.alt_route, size: 15, color: Colors.blueGrey),
+                                    SizedBox(width: 6),
+                                    Text('All Routes', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                              ...provider.routes.map((r) {
+                                return DropdownMenuItem<String?>(
+                                  value: r.id,
+                                  child: Text(
+                                    r.name,
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }),
+                            ],
                             onChanged: (val) {
-                              setState(() => _selectedMode = val);
+                              setState(() {
+                                _selectedRouteId = val;
+                                if (_selectedShopId != null && val != null) {
+                                  final shopsInRoute = provider.getShopsForRoute(val);
+                                  if (!shopsInRoute.any((s) => s.id == _selectedShopId)) {
+                                    _selectedShopId = null;
+                                  }
+                                }
+                              });
                             },
                           ),
                         ),
                       ),
                     ),
+                    const SizedBox(width: 8),
+
+                    // Outlet Filter Dropdown (Reactive to selected route)
+                    Expanded(
+                      child: Builder(
+                        builder: (context) {
+                          final availableShops = _selectedRouteId != null && _selectedRouteId!.isNotEmpty
+                              ? provider.getShopsForRoute(_selectedRouteId!)
+                              : provider.shops;
+
+                          final effectiveShopId = availableShops.any((s) => s.id == _selectedShopId)
+                              ? _selectedShopId
+                              : null;
+
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: effectiveShopId != null ? AppTheme.primary : AppTheme.border,
+                                width: effectiveShopId != null ? 1.2 : 1.0,
+                              ),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String?>(
+                                isExpanded: true,
+                                value: effectiveShopId,
+                                hint: const Row(
+                                  children: [
+                                    Icon(Icons.storefront_outlined, size: 15, color: Colors.blueGrey),
+                                    SizedBox(width: 6),
+                                    Text('All Outlets', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.storefront_outlined, size: 15, color: Colors.blueGrey),
+                                        SizedBox(width: 6),
+                                        Text('All Outlets', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  ),
+                                  ...availableShops.map((s) {
+                                    return DropdownMenuItem<String?>(
+                                      value: s.id,
+                                      child: Text(
+                                        s.name,
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    );
+                                  }),
+                                ],
+                                onChanged: (val) => setState(() => _selectedShopId = val),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // 4. SEARCH BAR & RESET FILTERS BUTTON
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 38,
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Search outlet, bill #, reference...',
+                            hintStyle: const TextStyle(fontSize: 12),
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 16),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : null,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: AppTheme.border),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: AppTheme.border),
+                            ),
+                          ),
+                          onChanged: (val) => setState(() => _searchQuery = val),
+                        ),
+                      ),
+                    ),
+                    if (_hasActiveFilters) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          minimumSize: const Size(0, 38),
+                          foregroundColor: AppTheme.error,
+                          side: const BorderSide(color: AppTheme.error, width: 0.8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.filter_alt_off, size: 15),
+                        label: const Text('Reset', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                        onPressed: _resetFilters,
+                      ),
+                    ],
                   ],
                 ),
               ],

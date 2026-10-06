@@ -27,6 +27,8 @@ class CollectionProvider extends ChangeNotifier {
   List<CatalogProduct> _customProducts = [];
   List<String> _businesses = ['Purva Enterprises', 'Manas Sales'];
   String _salesmanName = 'Akash';
+  String _salesmanPhone = '+91 98765 43210';
+  String _salesmanRole = 'Field Collection & Sales Officer';
   bool _isLoading = true;
 
   // Filters for Dashboard & Collection List
@@ -47,6 +49,8 @@ class CollectionProvider extends ChangeNotifier {
   List<CatalogProduct> get customProducts => _customProducts;
   List<String> get businesses => _businesses;
   String get salesmanName => _salesmanName;
+  String get salesmanPhone => _salesmanPhone;
+  String get salesmanRole => _salesmanRole;
   bool get isLoading => _isLoading;
   DateTime get selectedDate => _selectedDate;
   String? get filterBusiness => _filterBusiness;
@@ -85,12 +89,20 @@ class CollectionProvider extends ChangeNotifier {
       _shops = await _storage.loadShops();
       _collections = await _storage.loadCollections();
       _pendingBills = await _storage.loadPendingBills();
-      if (_pendingBills.isEmpty) {
-        _pendingBills = SampleDataService.getInitialPendingBills();
+
+      // Auto-purge any legacy sample dummy records (col-1..col-6, pb-1..pb-4)
+      final hadDummyCol = _collections.any((c) => c.id.startsWith('col-'));
+      final hadDummyPb = _pendingBills.any((b) => b.id.startsWith('pb-'));
+      if (hadDummyCol || hadDummyPb) {
+        _collections.removeWhere((c) => c.id.startsWith('col-'));
+        _pendingBills.removeWhere((b) => b.id.startsWith('pb-'));
+        await _storage.saveCollections(_collections);
         await _storage.savePendingBills(_pendingBills);
       }
       _businesses = await _storage.loadBusinesses();
       _salesmanName = await _storage.loadSalesmanName();
+      _salesmanPhone = await _storage.loadSalesmanPhone();
+      _salesmanRole = await _storage.loadSalesmanRole();
       _salesOrders = await _storage.loadSalesOrders();
     }
 
@@ -544,6 +556,9 @@ class CollectionProvider extends ChangeNotifier {
     required String mobileNumber,
     required String address,
     String? ownerName,
+    String? locationUrl,
+    double? latitude,
+    double? longitude,
   }) async {
     final newShop = ShopModel(
       id: _uuid.v4(),
@@ -553,6 +568,9 @@ class CollectionProvider extends ChangeNotifier {
       mobileNumber: mobileNumber.trim(),
       address: address.trim(),
       ownerName: ownerName?.trim(),
+      locationUrl: locationUrl?.trim(),
+      latitude: latitude,
+      longitude: longitude,
       createdAt: DateTime.now(),
     );
     _shops.insert(0, newShop);
@@ -562,6 +580,30 @@ class CollectionProvider extends ChangeNotifier {
       _firebase.saveShop(newShop);
     }
     return newShop;
+  }
+
+  Future<ShopModel?> updateShopLocation(
+    String shopId, {
+    String? locationUrl,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final idx = _shops.indexWhere((s) => s.id == shopId);
+    if (idx != -1) {
+      final updated = _shops[idx].copyWith(
+        locationUrl: locationUrl?.trim(),
+        latitude: latitude,
+        longitude: longitude,
+      );
+      _shops[idx] = updated;
+      await _storage.saveShops(_shops);
+      notifyListeners();
+      if (_firebase.isInitialized) {
+        _firebase.saveShop(updated);
+      }
+      return updated;
+    }
+    return null;
   }
 
   Future<ShopModel> updateShop(ShopModel updatedShop) async {
@@ -920,6 +962,34 @@ _Generated via Daily Collection Pro_
     _customProducts.add(product);
     OrderCatalogService.addCustomProduct(product);
     await _storage.saveCustomProducts(_customProducts);
+    notifyListeners();
+  }
+
+  // --- Salesman Profile Management ---
+  Future<void> updateProfile({required String name, String? phone, String? role}) async {
+    if (name.trim().isNotEmpty) {
+      _salesmanName = name.trim();
+      await _storage.saveSalesmanName(_salesmanName);
+    }
+    if (phone != null && phone.trim().isNotEmpty) {
+      _salesmanPhone = phone.trim();
+      await _storage.saveSalesmanPhone(_salesmanPhone);
+    }
+    if (role != null && role.trim().isNotEmpty) {
+      _salesmanRole = role.trim();
+      await _storage.saveSalesmanRole(_salesmanRole);
+    }
+    notifyListeners();
+  }
+
+  // Clear all transaction data (collections, pending bills, orders) but KEEP all routes & shops
+  Future<void> resetTransactions() async {
+    _collections.clear();
+    _pendingBills.clear();
+    _salesOrders.clear();
+    await _storage.saveCollections(_collections);
+    await _storage.savePendingBills(_pendingBills);
+    await _storage.saveSalesOrders(_salesOrders);
     notifyListeners();
   }
 

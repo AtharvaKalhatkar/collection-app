@@ -15,6 +15,8 @@ class StorageService {
   static const String _keyCustomProducts = 'app_custom_products_v1';
   static const String _keyBusinesses = 'app_businesses_v1';
   static const String _keySalesman = 'app_salesman_name_v1';
+  static const String _keySalesmanPhone = 'app_salesman_phone_v1';
+  static const String _keySalesmanRole = 'app_salesman_role_v1';
   static const String _keyInitialized = 'app_sample_data_initialized_v1';
 
   Future<bool> isFirstLaunch() async {
@@ -51,6 +53,26 @@ class StorageService {
   Future<void> saveSalesmanName(String name) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keySalesman, name);
+  }
+
+  Future<String> loadSalesmanPhone() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keySalesmanPhone) ?? '+91 98765 43210';
+  }
+
+  Future<void> saveSalesmanPhone(String phone) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keySalesmanPhone, phone);
+  }
+
+  Future<String> loadSalesmanRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keySalesmanRole) ?? 'Field Collection & Sales Officer';
+  }
+
+  Future<void> saveSalesmanRole(String role) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keySalesmanRole, role);
   }
 
   // --- Routes ---

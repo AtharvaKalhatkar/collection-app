@@ -371,7 +371,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                   Expanded(
                     flex: 2,
                     child: DropdownButtonFormField<String>(
-                      value: unit,
+                      key: ValueKey('order_dialog_unit_$unit'),
+                      initialValue: unit,
                       decoration: InputDecoration(
                         labelText: 'Unit',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -1025,7 +1026,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                           const Text('1. Distributing Firm', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
                           const SizedBox(height: 6),
                           DropdownButtonFormField<String>(
-                            value: _selectedFirm,
+                            key: ValueKey('order_firm_$_selectedFirm'),
+                            initialValue: _selectedFirm,
                             decoration: InputDecoration(
                               prefixIcon: const Icon(Icons.business_rounded, color: AppTheme.primary, size: 20),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -1045,7 +1047,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                           const Text('2. Route Beat', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
                           const SizedBox(height: 6),
                           DropdownButtonFormField<String>(
-                            value: routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : null,
+                            key: ValueKey('order_route_${routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : "none"}'),
+                            initialValue: routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : null,
                             hint: const Text('Select Route Beat'),
                             decoration: InputDecoration(
                               prefixIcon: const Icon(Icons.alt_route_rounded, color: AppTheme.primary, size: 20),
@@ -1082,7 +1085,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                           ),
                           const SizedBox(height: 6),
                           DropdownButtonFormField<String>(
-                            value: shopsOnRoute.any((s) => s.id == _selectedShopId) ? _selectedShopId : null,
+                            key: ValueKey('order_shop_${shopsOnRoute.any((s) => s.id == _selectedShopId) ? _selectedShopId : "none"}'),
+                            initialValue: shopsOnRoute.any((s) => s.id == _selectedShopId) ? _selectedShopId : null,
                             hint: Text(shopsOnRoute.isEmpty ? 'No shops on this route' : 'Select Customer / Outlet'),
                             isExpanded: true,
                             decoration: InputDecoration(
@@ -1123,7 +1127,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                           ),
                           const SizedBox(height: 6),
                           DropdownButtonFormField<String>(
-                            value: companies.contains(_selectedCompany) ? _selectedCompany : null,
+                            key: ValueKey('order_company_${_selectedFirm}_${companies.contains(_selectedCompany) ? _selectedCompany : "none"}'),
+                            initialValue: companies.contains(_selectedCompany) ? _selectedCompany : null,
                             decoration: InputDecoration(
                               prefixIcon: const Icon(Icons.apartment_rounded, color: AppTheme.primary, size: 20),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -1161,7 +1166,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                             const Text('5. Category', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
                             const SizedBox(height: 6),
                             DropdownButtonFormField<String?>(
-                              value: _selectedCategory,
+                              key: ValueKey('order_category_${_selectedCompany}_${_selectedCategory ?? "all"}'),
+                              initialValue: _selectedCategory,
                               decoration: InputDecoration(
                                 prefixIcon: const Icon(Icons.category_rounded, color: AppTheme.primary, size: 20),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -1195,7 +1201,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                             ),
                             const SizedBox(height: 6),
                             DropdownButtonFormField<String>(
-                              value: products.any((p) => p.id == _quickSelectedProductId) ? _quickSelectedProductId : null,
+                              key: ValueKey('order_quick_sku_${products.any((p) => p.id == _quickSelectedProductId) ? _quickSelectedProductId : "none"}'),
+                              initialValue: products.any((p) => p.id == _quickSelectedProductId) ? _quickSelectedProductId : null,
                               hint: const Text('Pick a product to add directly...'),
                               isExpanded: true,
                               decoration: InputDecoration(

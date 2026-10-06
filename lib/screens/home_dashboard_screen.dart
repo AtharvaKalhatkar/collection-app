@@ -15,7 +15,8 @@ import 'collection_details_dialog.dart';
 import 'add_shop_screen.dart';
 import 'firebase_config_dialog.dart';
 import '../widgets/payment_qr_dialog.dart';
-import '../widgets/firm_info_dialog.dart';
+import 'profile_screen.dart';
+import '../utils/firm_details.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
   // Set to true to restore Orders and Company action cards to the Overview screen
@@ -24,12 +25,14 @@ class HomeDashboardScreen extends StatelessWidget {
   final VoidCallback onNavigateToRoutes;
   final VoidCallback onNavigateToCollections;
   final VoidCallback? onNavigateToOrders;
+  final VoidCallback? onNavigateToProfile;
 
   const HomeDashboardScreen({
     super.key,
     required this.onNavigateToRoutes,
     required this.onNavigateToCollections,
     this.onNavigateToOrders,
+    this.onNavigateToProfile,
   });
 
   Color _getModeColor(PaymentMode mode) {
@@ -322,7 +325,16 @@ class HomeDashboardScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: InkWell(
-          onTap: () => FirmInfoDialog.show(context),
+          onTap: () {
+            if (onNavigateToProfile != null) {
+              onNavigateToProfile!();
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              );
+            }
+          },
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -377,11 +389,11 @@ class HomeDashboardScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          const Icon(Icons.info_outline, size: 13, color: Colors.white70),
+                          const Icon(Icons.person_outline, size: 13, color: Colors.white70),
                         ],
                       ),
                       const Text(
-                        'Purva • Manas (Tap for Firm Info)',
+                        'Purva • Manas (Tap for Profile)',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.white70,
@@ -398,6 +410,14 @@ class HomeDashboardScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.send_rounded, size: 20),
+            tooltip: 'Send Bank Details',
+            onPressed: () => FirmDetailsHelper.showQuickShareModal(
+              context,
+              defaultFirm: provider.filterBusiness,
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.qr_code_2_rounded, size: 22),
             tooltip: 'Payment QR',
             onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
@@ -411,7 +431,12 @@ class HomeDashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.more_vert, size: 20),
             tooltip: 'More Options',
             onSelected: (val) async {
-              if (val == 'install') {
+              if (val == 'bank_info') {
+                FirmDetailsHelper.showQuickShareModal(
+                  context,
+                  defaultFirm: provider.filterBusiness,
+                );
+              } else if (val == 'install') {
                 _showInstallInstructions(context);
               } else if (val == 'qr') {
                 PaymentQrDialog.show(context, initialFirm: provider.filterBusiness);
@@ -450,6 +475,16 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'bank_info',
+                child: Row(
+                  children: [
+                    Icon(Icons.send_rounded, size: 18, color: Color(0xFF25D366)),
+                    SizedBox(width: 10),
+                    Text('Send Payment Info'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'install',
                 child: Row(

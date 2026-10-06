@@ -9,6 +9,9 @@ import '../utils/theme.dart';
 import 'add_route_dialog.dart';
 import 'add_shop_screen.dart';
 import 'send_reminder_dialog.dart';
+import 'package:flutter/services.dart';
+import '../utils/firm_details.dart';
+import '../services/location_service.dart';
 import 'orders_screen.dart';
 
 class RoutesShopsScreen extends StatefulWidget {
@@ -52,6 +55,143 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _showAddLocationDialog(BuildContext context, ShopModel shop) async {
+    final locCtrl = TextEditingController(text: shop.locationUrl ?? '');
+    double? tempLat = shop.latitude;
+    double? tempLng = shop.longitude;
+    bool isDetecting = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Icon(Icons.add_location_alt_outlined, color: AppTheme.secondary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Set Location: ${shop.name}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Add a Google Maps link or capture GPS coordinates so you can easily locate or share this store.',
+                    style: TextStyle(fontSize: 12.5, color: Colors.blueGrey),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: locCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Google Maps Link / Coords',
+                      hintText: 'https://maps.google.com/?q=... or 18.75,73.85',
+                      prefixIcon: const Icon(Icons.link, size: 20),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: isDetecting
+                        ? null
+                        : () async {
+                            setDialogState(() => isDetecting = true);
+                            final pos = await LocationService.getCurrentLocation();
+                            setDialogState(() => isDetecting = false);
+                            if (pos != null) {
+                              tempLat = pos.latitude;
+                              tempLng = pos.longitude;
+                              locCtrl.text = LocationService.buildMapsUrl(pos.latitude, pos.longitude);
+                            } else {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Could not fetch GPS. Please enter maps link manually.'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    icon: isDetecting
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.my_location, size: 16),
+                    label: Text(isDetecting ? 'Detecting GPS...' : 'Use Current GPS Location'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+                onPressed: () async {
+                  final text = locCtrl.text.trim();
+                  await context.read<CollectionProvider>().updateShopLocation(
+                    shop.id,
+                    locationUrl: text.isNotEmpty ? text : null,
+                    latitude: tempLat,
+                    longitude: tempLng,
+                  );
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Location saved for "${shop.name}"!'),
+                        backgroundColor: const Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save Location', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _shareShopLocation(ShopModel shop) async {
+    final url = shop.mapsUrl;
+    if (url == null) return;
+
+    await Clipboard.setData(ClipboardData(text: url));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Maps link copied for "${shop.name}"!')),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'Open',
+            textColor: Colors.yellow,
+            onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+          ),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -571,6 +711,115 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                             ),
                                           ],
                                         ),
+                                        const SizedBox(height: 6),
+                                        // Location & Payment Actions Bar
+                                        Row(
+                                          children: [
+                                            if (shop.hasLocation) ...[
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.location_on, size: 11, color: Color(0xFF10B981)),
+                                                    SizedBox(width: 2),
+                                                    Text('Maps Added', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF10B981))),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              InkWell(
+                                                onTap: () => _shareShopLocation(shop),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.blueGrey.shade50,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    border: Border.all(color: AppTheme.border),
+                                                  ),
+                                                  child: const Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.share_location, size: 12, color: AppTheme.secondary),
+                                                      SizedBox(width: 3),
+                                                      Text('Share Loc', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppTheme.secondary)),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              InkWell(
+                                                onTap: () => launchUrl(Uri.parse(shop.mapsUrl!), mode: LaunchMode.externalApplication),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.blueGrey.shade50,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    border: Border.all(color: AppTheme.border),
+                                                  ),
+                                                  child: const Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.map_outlined, size: 12, color: Colors.blueGrey),
+                                                      SizedBox(width: 3),
+                                                      Text('Maps', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.blueGrey)),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ] else ...[
+                                              InkWell(
+                                                onTap: () => _showAddLocationDialog(context, shop),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+                                                  ),
+                                                  child: const Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.add_location_alt_outlined, size: 12, color: Color(0xFFD97706)),
+                                                      SizedBox(width: 3),
+                                                      Text('+ Add Location', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFFD97706))),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                            const Spacer(),
+                                            // Send Payment Info button
+                                            InkWell(
+                                              onTap: () => FirmDetailsHelper.showQuickShareModal(
+                                                context,
+                                                recipientMobile: shop.mobileNumber,
+                                                recipientName: shop.name,
+                                              ),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: AppTheme.primary.withValues(alpha: 0.08),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.account_balance_outlined, size: 12, color: AppTheme.primary),
+                                                    SizedBox(width: 3),
+                                                    Text('Bank Info', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -579,7 +828,17 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                     padding: EdgeInsets.zero,
                                     tooltip: 'Options',
                                     onSelected: (val) async {
-                                      if (val == 'order') {
+                                      if (val == 'bank') {
+                                        FirmDetailsHelper.showQuickShareModal(
+                                          context,
+                                          recipientMobile: shop.mobileNumber,
+                                          recipientName: shop.name,
+                                        );
+                                      } else if (val == 'loc_edit') {
+                                        _showAddLocationDialog(context, shop);
+                                      } else if (val == 'loc_share') {
+                                        _shareShopLocation(shop);
+                                      } else if (val == 'order') {
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
@@ -602,6 +861,37 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                     },
                                     itemBuilder: (ctx) => [
                                       const PopupMenuItem(
+                                        value: 'bank',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.send_rounded, size: 18, color: Color(0xFF25D366)),
+                                            SizedBox(width: 8),
+                                            Text('Send Bank Details'),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'loc_edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.location_on_outlined, size: 18, color: AppTheme.secondary),
+                                            const SizedBox(width: 8),
+                                            Text(shop.hasLocation ? 'Update Location' : 'Add Location'),
+                                          ],
+                                        ),
+                                      ),
+                                      if (shop.hasLocation)
+                                        const PopupMenuItem(
+                                          value: 'loc_share',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.share_location, size: 18, color: AppTheme.secondary),
+                                              SizedBox(width: 8),
+                                              Text('Share Location Link'),
+                                            ],
+                                          ),
+                                        ),
+                                      const PopupMenuItem(
                                         value: 'order',
                                         child: Row(
                                           children: [
@@ -617,7 +907,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                           children: [
                                             Icon(Icons.edit_outlined, size: 18, color: AppTheme.primary),
                                             SizedBox(width: 8),
-                                            Text('Edit'),
+                                            Text('Edit Store'),
                                           ],
                                         ),
                                       ),
@@ -627,7 +917,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                           children: const [
                                             Icon(Icons.delete_outline, size: 18, color: AppTheme.error),
                                             SizedBox(width: 8),
-                                            Text('Delete', style: TextStyle(color: AppTheme.error)),
+                                            Text('Delete Store', style: TextStyle(color: AppTheme.error)),
                                           ],
                                         ),
                                       ),

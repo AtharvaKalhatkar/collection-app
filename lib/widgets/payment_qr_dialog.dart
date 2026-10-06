@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../utils/theme.dart';
+import '../utils/firm_details.dart';
 
 class PaymentQrDialog extends StatefulWidget {
   final String? initialFirm;
@@ -47,14 +48,15 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final firmName = _isPurva ? 'Purva Enterprises' : 'Manas Sales';
-    final firmShort = _isPurva ? 'Purva' : 'Manas';
-    final firmPhone = _isPurva ? '+91 84596 71694' : '+91 93098 62465';
-    final upiId = _isPurva ? '8459671694@okbizaxis' : '9309862465@okbizaxis';
-    final bankName = _isPurva ? 'Union Bank' : 'Central Bank';
+    final firmInfo = _isPurva ? FirmDetailsHelper.purva : FirmDetailsHelper.manas;
+    final firmName = firmInfo.firmName;
+    final firmShort = firmInfo.shortName;
+    final firmPhone = firmInfo.mobileNumber;
+    final upiId = firmInfo.upiId;
+    final bankName = firmInfo.bankName;
     final assetPath = _isPurva ? 'assets/images/qr_purva.png' : 'assets/images/qr_manas.png';
-    final firmPrimaryColor = _isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary;
-    final firmLightColor = _isPurva ? AppTheme.purvaLight : AppTheme.manasLight;
+    final firmPrimaryColor = firmInfo.primaryColor;
+    final firmLightColor = firmInfo.lightColor;
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -294,23 +296,96 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 10),
+
+                    // Bank Account Details Box
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: firmLightColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: firmPrimaryColor.withValues(alpha: 0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '${firmInfo.bankName} (${firmInfo.branch})',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: firmPrimaryColor,
+                                ),
+                              ),
+                              Text(
+                                firmInfo.accountType,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueGrey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'A/c: ${firmInfo.accountNumber}  |  IFSC: ${firmInfo.ifscCode}',
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              fontFamily: 'monospace',
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 12),
 
-                    // Done / Close button
+                    // Quick Action Buttons: Copy & WhatsApp
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.copy_rounded, size: 15),
+                            label: const Text('Copy Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            onPressed: () => FirmDetailsHelper.copyToClipboard(context, firmInfo),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF25D366),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.chat_bubble_outline, size: 15),
+                            label: const Text('WhatsApp', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            onPressed: () => FirmDetailsHelper.shareViaWhatsApp(
+                              context: context,
+                              firm: firmInfo,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Close button
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: firmPrimaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
+                      child: TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          'Close',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
+                        child: const Text('Close', style: TextStyle(color: Colors.grey)),
                       ),
                     ),
                   ],

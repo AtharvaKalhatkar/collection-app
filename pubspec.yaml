@@ -47,6 +47,7 @@ dependencies:
   printing: ^5.14.3
   excel: ^4.0.6
   image: ^4.3.0
+  geolocator: ^14.1.1
 
 dev_dependencies:
   flutter_test:

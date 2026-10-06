@@ -304,7 +304,8 @@ class _AddProductDialogState extends State<AddProductDialog> {
                     )
                   else
                     DropdownButtonFormField<String>(
-                      value: existingCompanies.contains(_selectedCompany) ? _selectedCompany : null,
+                      key: ValueKey('add_prod_company_${_firm}_${existingCompanies.contains(_selectedCompany) ? _selectedCompany : "none"}'),
+                      initialValue: existingCompanies.contains(_selectedCompany) ? _selectedCompany : null,
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.business_rounded, size: 20),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -362,7 +363,8 @@ class _AddProductDialogState extends State<AddProductDialog> {
                     )
                   else
                     DropdownButtonFormField<String>(
-                      value: existingCategories.contains(_selectedCategory) ? _selectedCategory : null,
+                      key: ValueKey('add_prod_category_${_firm}_${_selectedCompany}_${existingCategories.contains(_selectedCategory) ? _selectedCategory : "none"}'),
+                      initialValue: existingCategories.contains(_selectedCategory) ? _selectedCategory : null,
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.category_rounded, size: 20),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -429,7 +431,8 @@ class _AddProductDialogState extends State<AddProductDialog> {
                             const Text('Packaging Unit', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary)),
                             const SizedBox(height: 6),
                             DropdownButtonFormField<String>(
-                              value: _selectedUnit,
+                              key: ValueKey('add_prod_unit_$_selectedUnit'),
+                              initialValue: _selectedUnit,
                               decoration: InputDecoration(
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),

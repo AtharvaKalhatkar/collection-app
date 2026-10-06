@@ -83,6 +83,28 @@ class FirebaseService {
   FirebaseConfig? _config;
   String? _lastError;
 
+  /// Optional flag to suppress logging, useful for automated test harnesses.
+  static bool suppressLogging = false;
+
+  /// Returns true if [error] is a platform channel communication failure
+  /// typically encountered during headless unit testing without native host mocks.
+  static bool _isChannelOrTestError(Object error) {
+    final str = error.toString();
+    return str.contains('channel-error') ||
+        str.contains('MissingPluginException') ||
+        str.contains('Unable to establish connection on channel') ||
+        str.contains('no-app') ||
+        str.contains('FirebaseApp');
+  }
+
+  /// Centralized logging that filters out expected headless test channel errors
+  /// while preserving genuine runtime errors in debug mode.
+  static void _logError(String prefix, Object error) {
+    if (!suppressLogging && !_isChannelOrTestError(error)) {
+      debugPrint('$prefix: $error');
+    }
+  }
+
   bool get isInitialized => _isInitialized || Firebase.apps.isNotEmpty;
   bool get isEnabled => _isEnabled;
   FirebaseConfig? get config => _config ?? defaultConfig;
@@ -122,7 +144,7 @@ class FirebaseService {
       }
     } catch (e) {
       _lastError = e.toString();
-      debugPrint('Firebase init error: $e');
+      _logError('Firebase init error', e);
     }
   }
 
@@ -154,7 +176,7 @@ class FirebaseService {
     } catch (e) {
       _isInitialized = false;
       _lastError = e.toString();
-      debugPrint('Error connecting to Firebase: $e');
+      _logError('Error connecting to Firebase', e);
       return false;
     }
   }
@@ -180,7 +202,7 @@ class FirebaseService {
       final downloadUrl = await uploadTask.ref.getDownloadURL();
       return downloadUrl;
     } catch (e) {
-      debugPrint('Firebase Storage upload failed: $e');
+      _logError('Firebase Storage upload failed', e);
       return null;
     }
   }
@@ -196,7 +218,7 @@ class FirebaseService {
       return true;
     } catch (e) {
       _lastError = e.toString();
-      debugPrint('Error saving collection to Firestore: $e');
+      _logError('Error saving collection to Firestore', e);
       return false;
     }
   }
@@ -212,7 +234,7 @@ class FirebaseService {
 
       return snapshot.docs.map((doc) => CollectionModel.fromJson(doc.data())).toList();
     } catch (e) {
-      debugPrint('Error fetching collections from Firestore: $e');
+      _logError('Error fetching collections from Firestore', e);
       return [];
     }
   }
@@ -225,7 +247,7 @@ class FirebaseService {
       await _firestore!.collection('shops').doc(shop.id).set(shop.toJson());
       return true;
     } catch (e) {
-      debugPrint('Error saving shop to Firestore: $e');
+      _logError('Error saving shop to Firestore', e);
       return false;
     }
   }
@@ -237,7 +259,7 @@ class FirebaseService {
       final snapshot = await _firestore!.collection('shops').get();
       return snapshot.docs.map((doc) => ShopModel.fromJson(doc.data())).toList();
     } catch (e) {
-      debugPrint('Error fetching shops from Firestore: $e');
+      _logError('Error fetching shops from Firestore', e);
       return [];
     }
   }
@@ -250,7 +272,7 @@ class FirebaseService {
       await _firestore!.collection('routes').doc(route.id).set(route.toJson());
       return true;
     } catch (e) {
-      debugPrint('Error saving route to Firestore: $e');
+      _logError('Error saving route to Firestore', e);
       return false;
     }
   }
@@ -262,7 +284,7 @@ class FirebaseService {
       final snapshot = await _firestore!.collection('routes').get();
       return snapshot.docs.map((doc) => RouteModel.fromJson(doc.data())).toList();
     } catch (e) {
-      debugPrint('Error fetching routes from Firestore: $e');
+      _logError('Error fetching routes from Firestore', e);
       return [];
     }
   }
@@ -275,7 +297,7 @@ class FirebaseService {
       await fs.collection('collections').doc(id).delete();
       return true;
     } catch (e) {
-      debugPrint('Error deleting collection from Firestore: $e');
+      _logError('Error deleting collection from Firestore', e);
       return false;
     }
   }
@@ -287,7 +309,7 @@ class FirebaseService {
       await fs.collection('shops').doc(id).delete();
       return true;
     } catch (e) {
-      debugPrint('Error deleting shop from Firestore: $e');
+      _logError('Error deleting shop from Firestore', e);
       return false;
     }
   }
@@ -299,7 +321,7 @@ class FirebaseService {
       await fs.collection('routes').doc(id).delete();
       return true;
     } catch (e) {
-      debugPrint('Error deleting route from Firestore: $e');
+      _logError('Error deleting route from Firestore', e);
       return false;
     }
   }

@@ -14,8 +14,25 @@ void main() {
   group('Bill Pending vs Paid & Follow-up Payment Verification', () {
     test('ATA Kirana: Bill 40000 with 30000 collected is marked PENDING with 10000 due', () async {
       final provider = CollectionProvider();
-      // Wait for async sample data initialization
       await Future.delayed(const Duration(milliseconds: 100));
+
+      await provider.addCollection(
+        CollectionModel(
+          id: 'test-col-1',
+          businessName: 'Purva Enterprises',
+          shopId: 'shop-ata-kirana',
+          shopName: 'ATA Kirana',
+          routeId: 'route-chakan',
+          routeName: 'Chakan',
+          billNumber: 'PE-4081',
+          billAmount: 40000.0,
+          collectedAmount: 30000.0,
+          paymentMode: PaymentMode.cash,
+          remarks: 'Partial payment received. ₹10,000 pending.',
+          salesmanName: 'Akash',
+          collectedAt: DateTime.now(),
+        ),
+      );
 
       // ATA Kirana has initial bill PE-4081: 40000 total, 30000 collected
       final pendingBills = provider.getPendingBills(forShopId: 'shop-ata-kirana');
@@ -37,6 +54,24 @@ void main() {
     test('Recording subsequent payment of 10000 clears the bill and marks it PAID (100%)', () async {
       final provider = CollectionProvider();
       await Future.delayed(const Duration(milliseconds: 100));
+
+      await provider.addCollection(
+        CollectionModel(
+          id: 'test-col-1',
+          businessName: 'Purva Enterprises',
+          shopId: 'shop-ata-kirana',
+          shopName: 'ATA Kirana',
+          routeId: 'route-chakan',
+          routeName: 'Chakan',
+          billNumber: 'PE-4081',
+          billAmount: 40000.0,
+          collectedAmount: 30000.0,
+          paymentMode: PaymentMode.cash,
+          remarks: 'Partial payment received. ₹10,000 pending.',
+          salesmanName: 'Akash',
+          collectedAt: DateTime.now(),
+        ),
+      );
 
       final initialBill = provider.getBillSummary('shop-ata-kirana', 'PE-4081');
       expect(initialBill, isNotNull);
