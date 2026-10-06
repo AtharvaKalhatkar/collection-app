@@ -53,7 +53,6 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
     final firmShort = firmInfo.shortName;
     final firmPhone = firmInfo.mobileNumber;
     final upiId = firmInfo.upiId;
-    final bankName = firmInfo.bankName;
     final assetPath = _isPurva ? 'assets/images/qr_purva.png' : 'assets/images/qr_manas.png';
     final firmPrimaryColor = firmInfo.primaryColor;
     final firmLightColor = firmInfo.lightColor;
@@ -125,7 +124,7 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                                   ),
                                   child: Center(
                                     child: Text(
-                                      'PURVA (Union Bank)',
+                                      'PURVA ENTERPRISES',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w800,
@@ -149,7 +148,7 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                                   ),
                                   child: Center(
                                     child: Text(
-                                      'MANAS (Central Bank)',
+                                      'MANAS SALES',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w800,
@@ -168,7 +167,7 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
 
                     // Firm Info Badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: firmLightColor,
                         borderRadius: BorderRadius.circular(8),
@@ -177,40 +176,20 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                firmName,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 13,
-                                  color: firmPrimaryColor,
-                                ),
-                              ),
-                              Text(
-                                firmPhone,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.blueGrey.shade700,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
+                          Text(
+                            firmName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
                               color: firmPrimaryColor,
-                              borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Text(
-                              bankName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          ),
+                          Text(
+                            firmPhone,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blueGrey.shade700,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
@@ -296,56 +275,15 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-
-                    // Bank Account Details Box
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: firmLightColor,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: firmPrimaryColor.withValues(alpha: 0.2)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                '${firmInfo.bankName} (${firmInfo.branch})',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                  color: firmPrimaryColor,
-                                ),
-                              ),
-                              Text(
-                                firmInfo.accountType,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blueGrey.shade700,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'A/c: ${firmInfo.accountNumber}  |  IFSC: ${firmInfo.ifscCode}',
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w800,
-                              fontFamily: 'monospace',
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                     const SizedBox(height: 12),
+                    const Text(
+                      'Scan using Google Pay, PhonePe, Paytm or any UPI App',
+                      style: TextStyle(fontSize: 11.5, color: Colors.blueGrey, fontWeight: FontWeight.w500),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 14),
 
-                    // Quick Action Buttons: Copy & WhatsApp
+                    // Quick Action Buttons: Copy UPI & WhatsApp
                     Row(
                       children: [
                         Expanded(
@@ -355,8 +293,8 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
                             icon: const Icon(Icons.copy_rounded, size: 15),
-                            label: const Text('Copy Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            onPressed: () => FirmDetailsHelper.copyToClipboard(context, firmInfo),
+                            label: const Text('Copy UPI ID', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            onPressed: () => _copyUpiId(upiId),
                           ),
                         ),
                         const SizedBox(width: 8),

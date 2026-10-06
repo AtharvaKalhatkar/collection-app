@@ -359,23 +359,23 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
     final provider = context.watch<CollectionProvider>();
     final routes = provider.routes;
 
-    if (_selectedRouteId == null && routes.isNotEmpty) {
-      _selectedRouteId = routes.first.id;
-    }
+    final isAllRoutes = _selectedRouteId == null || _selectedRouteId == 'all';
 
-    final selectedRoute = routes.firstWhere(
-      (r) => r.id == _selectedRouteId,
-      orElse: () => routes.isNotEmpty
-          ? routes.first
-          : RouteModel(id: '', name: 'No Beat Selected'),
-    );
+    final selectedRoute = isAllRoutes
+        ? RouteModel(id: 'all', name: 'All Routes')
+        : routes.firstWhere(
+            (r) => r.id == _selectedRouteId,
+            orElse: () => routes.isNotEmpty
+                ? routes.first
+                : RouteModel(id: '', name: 'No Beat Selected'),
+          );
 
-    final outletsInSelectedRoute = _selectedRouteId != null && _selectedRouteId!.isNotEmpty
-        ? provider.getShopsForRoute(_selectedRouteId!)
-        : provider.shops;
+    final outletsInSelectedRoute = isAllRoutes
+        ? provider.shops
+        : provider.getShopsForRoute(_selectedRouteId!);
 
     final shopsInRoute = provider.shops.where((s) {
-      if (_selectedRouteId != null && _selectedRouteId!.isNotEmpty) {
+      if (!isAllRoutes) {
         if (s.routeId != _selectedRouteId) return false;
       }
       if (_selectedShopId != null && _selectedShopId!.isNotEmpty) {
@@ -417,7 +417,9 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => AddShopScreen(initialRouteId: _selectedRouteId),
+                  builder: (_) => AddShopScreen(
+                    initialRouteId: isAllRoutes ? (routes.isNotEmpty ? routes.first.id : null) : _selectedRouteId,
+                  ),
                 ),
               );
             },
@@ -468,22 +470,21 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         isExpanded: true,
-                        value: routes.any((r) => r.id == _selectedRouteId)
-                            ? _selectedRouteId
-                            : routes.first.id,
+                        value: isAllRoutes
+                            ? 'all'
+                            : (routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : 'all'),
                         icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary, size: 24),
-                        items: routes.map((r) {
-                          final count = provider.getShopsForRoute(r.id).length;
-                          return DropdownMenuItem<String>(
-                            value: r.id,
+                        items: [
+                          DropdownMenuItem<String>(
+                            value: 'all',
                             child: Row(
                               children: [
-                                const Icon(Icons.location_on_outlined, size: 18, color: AppTheme.primary),
+                                const Icon(Icons.alt_route_rounded, size: 18, color: AppTheme.primary),
                                 const SizedBox(width: 8),
-                                Expanded(
+                                const Expanded(
                                   child: Text(
-                                    r.name,
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF0F172A)),
+                                    'All Routes',
+                                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF0F172A)),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -494,14 +495,44 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
-                                    '$count outlets',
+                                    '${provider.shops.length} outlets',
                                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primary),
                                   ),
                                 ),
                               ],
                             ),
-                          );
-                        }).toList(),
+                          ),
+                          ...routes.map((r) {
+                            final count = provider.getShopsForRoute(r.id).length;
+                            return DropdownMenuItem<String>(
+                              value: r.id,
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.location_on_outlined, size: 18, color: AppTheme.primary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      r.name,
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF0F172A)),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primary.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '$count outlets',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
                         onChanged: (val) {
                           if (val != null) {
                             setState(() {
@@ -570,27 +601,28 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                           ],
                         ),
                       ),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.edit_outlined, size: 14, color: AppTheme.primary),
-                        label: const Text('Edit Route', style: TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w600)),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          side: const BorderSide(color: AppTheme.primary),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      if (selectedRoute.id != 'all' && selectedRoute.id.isNotEmpty)
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.edit_outlined, size: 14, color: AppTheme.primary),
+                          label: const Text('Edit Route', style: TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w600)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            side: const BorderSide(color: AppTheme.primary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          onPressed: () async {
+                            final result = await showDialog(
+                              context: context,
+                              builder: (ctx) => AddRouteDialog(existingRoute: selectedRoute),
+                            );
+                            if (result == 'deleted') {
+                              setState(() {
+                                _selectedRouteId = null;
+                                _selectedShopId = null;
+                              });
+                            }
+                          },
                         ),
-                        onPressed: () async {
-                          final result = await showDialog(
-                            context: context,
-                            builder: (ctx) => AddRouteDialog(existingRoute: selectedRoute),
-                          );
-                          if (result == 'deleted') {
-                            setState(() {
-                              _selectedRouteId = null;
-                              _selectedShopId = null;
-                            });
-                          }
-                        },
-                      ),
                     ],
                   ),
                   const SizedBox(height: 10),

@@ -34,18 +34,16 @@ class FirmBankInfo {
 
   String get formattedShareText {
     return '''
-*PAYMENT DETAILS - $firmName*
-━━━━━━━━━━━━━━━━━━━━━
-🏦 *Bank:* $bankName
-📍 *Branch:* $branch
-🔢 *A/c No:* $accountNumber
-📋 *A/c Type:* $accountType
-⚡ *IFSC Code:* $ifscCode
-📱 *UPI ID:* $upiId
-📞 *Contact:* $mobileNumber
-━━━━━━━━━━━━━━━━━━━━━
-*Brands:* ${companies.join(', ')}
-_Please share the payment screenshot once transferred. Thank you!_
+PAYMENT DETAILS - $firmName
+Bank: $bankName
+Branch: $branch
+A/c No: $accountNumber
+A/c Type: $accountType
+IFSC Code: $ifscCode
+UPI ID: $upiId
+Contact: $mobileNumber
+
+Please share payment screenshot once transferred. Thank you!
 '''.trim();
   }
 }

@@ -90,14 +90,22 @@ class CollectionProvider extends ChangeNotifier {
       _collections = await _storage.loadCollections();
       _pendingBills = await _storage.loadPendingBills();
 
-      // Auto-purge any legacy sample dummy records (col-1..col-6, pb-1..pb-4)
+      // Auto-purge any legacy sample dummy records (col-1..col-6, pb-1..pb-4, shop-*)
       final hadDummyCol = _collections.any((c) => c.id.startsWith('col-'));
       final hadDummyPb = _pendingBills.any((b) => b.id.startsWith('pb-'));
-      if (hadDummyCol || hadDummyPb) {
+      final hadDummyShop = _shops.any(_isDummyShop);
+      if (hadDummyCol || hadDummyPb || hadDummyShop) {
         _collections.removeWhere((c) => c.id.startsWith('col-'));
         _pendingBills.removeWhere((b) => b.id.startsWith('pb-'));
+        _shops.removeWhere(_isDummyShop);
         await _storage.saveCollections(_collections);
         await _storage.savePendingBills(_pendingBills);
+        await _storage.saveShops(_shops);
+      }
+      final deduped = _deduplicateShops(_shops);
+      if (deduped.length != _shops.length) {
+        _shops = deduped;
+        await _storage.saveShops(_shops);
       }
       _businesses = await _storage.loadBusinesses();
       _salesmanName = await _storage.loadSalesmanName();
@@ -143,11 +151,21 @@ class CollectionProvider extends ChangeNotifier {
           }
           final cloudShops = await _firebase.fetchShops();
           if (cloudShops.isNotEmpty) {
-            _shops = cloudShops;
+            final cleanCloudShops = <ShopModel>[];
+            for (final s in cloudShops) {
+              if (_isDummyShop(s)) {
+                await _firebase.deleteShop(s.id);
+              } else {
+                cleanCloudShops.add(s);
+              }
+            }
+            _shops = _deduplicateShops(cleanCloudShops);
             await _storage.saveShops(_shops);
           } else {
             for (final s in _shops) {
-              await _firebase.saveShop(s);
+              if (!_isDummyShop(s)) {
+                await _firebase.saveShop(s);
+              }
             }
           }
           final cloudRoutes = await _firebase.fetchRoutes();
@@ -165,6 +183,31 @@ class CollectionProvider extends ChangeNotifier {
         debugPrint('Firebase load error: $e');
       }
     }();
+  }
+
+  bool _isDummyShop(ShopModel s) {
+    if (s.id.startsWith('shop-') || s.id.startsWith('sample-')) return true;
+    const dummyNames = {
+      'ata kirana',
+      'shree ganesh traders',
+      'mahesh provision store',
+      'sai krupa supermarket',
+      'om traders',
+    };
+    return dummyNames.contains(s.name.trim().toLowerCase());
+  }
+
+  List<ShopModel> _deduplicateShops(List<ShopModel> list) {
+    final seenIds = <String>{};
+    final seenKeys = <String>{};
+    final result = <ShopModel>[];
+    for (final s in list) {
+      final key = '${s.name.trim().toLowerCase()}_${s.routeId}';
+      if (seenIds.add(s.id) && seenKeys.add(key)) {
+        result.add(s);
+      }
+    }
+    return result;
   }
 
   Future<bool> syncAllToCloud() async {
