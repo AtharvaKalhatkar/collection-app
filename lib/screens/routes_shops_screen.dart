@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
+import 'package:excel/excel.dart' as xl;
 import '../providers/collection_provider.dart';
 import '../models/route_model.dart';
 import '../models/shop_model.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
+import '../utils/file_download/file_download.dart';
 import 'add_route_dialog.dart';
 import 'add_shop_screen.dart';
 import 'send_reminder_dialog.dart';
@@ -25,6 +28,105 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
   String? _selectedRouteId;
   String? _selectedShopId;
   String _shopSearch = '';
+
+  Future<void> _exportOutletsToExcel(CollectionProvider provider) async {
+    try {
+      final excel = xl.Excel.createExcel();
+      final defaultSheet = excel.getDefaultSheet() ?? 'Sheet1';
+      final outletSheet = excel['Outlets'];
+      excel.setDefaultSheet('Outlets');
+      if (defaultSheet != 'Outlets') {
+        excel.delete(defaultSheet);
+      }
+
+      outletSheet.appendRow([
+        xl.TextCellValue('Sr No'),
+        xl.TextCellValue('Outlet / Store Name'),
+        xl.TextCellValue('Beat Route'),
+        xl.TextCellValue('Mobile Number'),
+        xl.TextCellValue('Address'),
+        xl.TextCellValue('Owner / Contact Person'),
+        xl.TextCellValue('Google Maps URL'),
+        xl.TextCellValue('Latitude'),
+        xl.TextCellValue('Longitude'),
+        xl.TextCellValue('Registration Date'),
+      ]);
+
+      final shops = provider.shops;
+      for (int i = 0; i < shops.length; i++) {
+        final s = shops[i];
+        final mapsUrl = s.mapsUrl ?? '';
+        outletSheet.appendRow([
+          xl.IntCellValue(i + 1),
+          xl.TextCellValue(s.name),
+          xl.TextCellValue(s.routeName),
+          xl.TextCellValue(s.mobileNumber),
+          xl.TextCellValue(s.address),
+          xl.TextCellValue(s.ownerName ?? ''),
+          xl.TextCellValue(mapsUrl),
+          xl.TextCellValue(s.latitude?.toString() ?? ''),
+          xl.TextCellValue(s.longitude?.toString() ?? ''),
+          xl.TextCellValue(DateFormat('yyyy-MM-dd').format(s.createdAt)),
+        ]);
+      }
+
+      final routeSheet = excel['Routes'];
+      routeSheet.appendRow([
+        xl.TextCellValue('Sr No'),
+        xl.TextCellValue('Route Name'),
+        xl.TextCellValue('Description / Areas'),
+        xl.TextCellValue('Priority'),
+        xl.TextCellValue('Total Outlets'),
+      ]);
+
+      final routes = provider.routes;
+      for (int i = 0; i < routes.length; i++) {
+        final r = routes[i];
+        final count = provider.getShopsForRoute(r.id).length;
+        routeSheet.appendRow([
+          xl.IntCellValue(i + 1),
+          xl.TextCellValue(r.name),
+          xl.TextCellValue(r.description ?? ''),
+          xl.IntCellValue(r.priority),
+          xl.IntCellValue(count),
+        ]);
+      }
+
+      final bytes = excel.encode();
+      if (bytes != null) {
+        await downloadFile(
+          bytes: bytes,
+          fileName: 'Registered_Outlets_and_Routes.xlsx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.table_view_outlined, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(child: Text('Excel file "Registered_Outlets_and_Routes.xlsx" downloaded!')),
+                ],
+              ),
+              backgroundColor: Color(0xFF10B981),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to export Excel: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
+  }
 
   Future<void> _confirmAndDeleteShop(ShopModel shop) async {
     final confirmed = await showDialog<bool>(
@@ -175,9 +277,9 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
     }
 
     final shareText = '''
-📍 *STORE LOCATION - ${shop.name}*
-📌 *Address:* ${shop.address}
-🗺️ *Google Maps:* $url
+${shop.name}
+Address: ${shop.address}
+Google Maps: $url
 '''.trim();
 
     showModalBottomSheet(
@@ -409,6 +511,11 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                 });
               }
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.table_view_outlined, size: 20),
+            tooltip: 'Export Outlets to Excel',
+            onPressed: () => _exportOutletsToExcel(provider),
           ),
           IconButton(
             icon: const Icon(Icons.add_business_outlined, size: 20),
@@ -903,54 +1010,37 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                           ],
                                         ),
                                         const SizedBox(height: 6),
-                                        // Location & Payment Actions Bar
+                                        // Location Actions Bar
                                         Row(
                                           children: [
                                             if (shop.hasLocation) ...[
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                                                ),
-                                                child: const Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.location_on, size: 11, color: Color(0xFF10B981)),
-                                                    SizedBox(width: 2),
-                                                    Text('Maps Added', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF10B981))),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(width: 6),
                                               InkWell(
                                                 onTap: () => _shareShopLocation(shop),
                                                 child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                                                   decoration: BoxDecoration(
-                                                    color: Colors.blueGrey.shade50,
-                                                    borderRadius: BorderRadius.circular(4),
-                                                    border: Border.all(color: AppTheme.border),
+                                                    color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(5),
+                                                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                                                   ),
                                                   child: const Row(
                                                     mainAxisSize: MainAxisSize.min,
                                                     children: [
-                                                      Icon(Icons.share_location, size: 12, color: AppTheme.secondary),
-                                                      SizedBox(width: 3),
-                                                      Text('Share Loc', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppTheme.secondary)),
+                                                      Icon(Icons.share_location, size: 12, color: Color(0xFF059669)),
+                                                      SizedBox(width: 4),
+                                                      Text('Share Location', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF059669))),
                                                     ],
                                                   ),
                                                 ),
                                               ),
-                                              const SizedBox(width: 4),
+                                              const SizedBox(width: 6),
                                               InkWell(
                                                 onTap: () => launchUrl(Uri.parse(shop.mapsUrl!), mode: LaunchMode.externalApplication),
                                                 child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                                                   decoration: BoxDecoration(
                                                     color: Colors.blueGrey.shade50,
-                                                    borderRadius: BorderRadius.circular(4),
+                                                    borderRadius: BorderRadius.circular(5),
                                                     border: Border.all(color: AppTheme.border),
                                                   ),
                                                   child: const Row(
@@ -958,7 +1048,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                                     children: [
                                                       Icon(Icons.map_outlined, size: 12, color: Colors.blueGrey),
                                                       SizedBox(width: 3),
-                                                      Text('Maps', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.blueGrey)),
+                                                      Text('Maps', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blueGrey)),
                                                     ],
                                                   ),
                                                 ),
@@ -967,48 +1057,23 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                               InkWell(
                                                 onTap: () => _showAddLocationDialog(context, shop),
                                                 child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                                                   decoration: BoxDecoration(
                                                     color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-                                                    borderRadius: BorderRadius.circular(4),
+                                                    borderRadius: BorderRadius.circular(5),
                                                     border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
                                                   ),
                                                   child: const Row(
                                                     mainAxisSize: MainAxisSize.min,
                                                     children: [
                                                       Icon(Icons.add_location_alt_outlined, size: 12, color: Color(0xFFD97706)),
-                                                      SizedBox(width: 3),
-                                                      Text('+ Add Location', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFFD97706))),
+                                                      SizedBox(width: 4),
+                                                      Text('+ Add Location', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFD97706))),
                                                     ],
                                                   ),
                                                 ),
                                               ),
                                             ],
-                                            const Spacer(),
-                                            // Send Payment Info button
-                                            InkWell(
-                                              onTap: () => FirmDetailsHelper.showQuickShareModal(
-                                                context,
-                                                recipientMobile: shop.mobileNumber,
-                                                recipientName: shop.name,
-                                              ),
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                                decoration: BoxDecoration(
-                                                  color: AppTheme.primary.withValues(alpha: 0.08),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
-                                                ),
-                                                child: const Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.account_balance_outlined, size: 12, color: AppTheme.primary),
-                                                    SizedBox(width: 3),
-                                                    Text('Bank Info', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
                                           ],
                                         ),
                                       ],
@@ -1116,41 +1181,19 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                   ),
                                 ],
                               ),
-                              const Divider(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      if (balanceDue > 0)
-                                        Text(
-                                          'Due: ${CurrencyFormatter.format(balanceDue)}',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: AppTheme.partialBadgeColor,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        )
-                                      else
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.cashColor.withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Text(
-                                            'All Clear',
-                                            style: TextStyle(
-                                              fontSize: 11.5,
-                                              color: AppTheme.cashColor,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  if (balanceDue > 0)
+                              if (balanceDue > 0) ...[
+                                const Divider(height: 16),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Due: ${CurrencyFormatter.format(balanceDue)}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppTheme.partialBadgeColor,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
                                     OutlinedButton.icon(
                                       icon: const Icon(Icons.notifications_active_outlined, size: 13, color: AppTheme.chequeColor),
                                       label: const Text('Remind', style: TextStyle(color: AppTheme.chequeColor, fontSize: 12, fontWeight: FontWeight.bold)),
@@ -1172,8 +1215,9 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                         );
                                       },
                                     ),
-                                ],
-                              ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),

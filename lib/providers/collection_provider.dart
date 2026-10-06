@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../models/route_model.dart';
@@ -112,6 +113,19 @@ class CollectionProvider extends ChangeNotifier {
       _salesmanPhone = await _storage.loadSalesmanPhone();
       _salesmanRole = await _storage.loadSalesmanRole();
       _salesOrders = await _storage.loadSalesOrders();
+
+      // Forced wipe of legacy cached test collections, bills and orders
+      final prefs = await SharedPreferences.getInstance();
+      final forcedClean = prefs.getBool('forced_clean_transactions_v4') ?? false;
+      if (!forcedClean) {
+        _collections.clear();
+        _pendingBills.clear();
+        _salesOrders.clear();
+        await _storage.saveCollections(_collections);
+        await _storage.savePendingBills(_pendingBills);
+        await _storage.saveSalesOrders(_salesOrders);
+        await prefs.setBool('forced_clean_transactions_v4', true);
+      }
     }
 
     // Load custom products for both fresh and existing setups
@@ -140,15 +154,10 @@ class CollectionProvider extends ChangeNotifier {
         await _firebase.init();
         if (_firebase.isInitialized) {
           final cloudCollections = await _firebase.fetchCollections();
-          if (cloudCollections.isNotEmpty) {
-            _collections = cloudCollections;
-            await _storage.saveCollections(_collections);
-          } else {
-            // First time sync: push existing local collections to Firestore
-            for (final c in _collections) {
-              await _firebase.saveCollection(c);
-            }
-          }
+          // Always synchronize local with cloud.
+          // If cloud collections are empty (e.g. wiped), ensure local is also empty!
+          _collections = cloudCollections;
+          await _storage.saveCollections(_collections);
           final cloudShops = await _firebase.fetchShops();
           if (cloudShops.isNotEmpty) {
             final cleanCloudShops = <ShopModel>[];
@@ -1027,12 +1036,26 @@ _Generated via Daily Collection Pro_
 
   // Clear all transaction data (collections, pending bills, orders) but KEEP all routes & shops
   Future<void> resetTransactions() async {
+    final oldCollections = List<CollectionModel>.from(_collections);
     _collections.clear();
     _pendingBills.clear();
     _salesOrders.clear();
     await _storage.saveCollections(_collections);
     await _storage.savePendingBills(_pendingBills);
     await _storage.saveSalesOrders(_salesOrders);
+    if (_firebase.isInitialized) {
+      for (final c in oldCollections) {
+        try {
+          await _firebase.deleteCollection(c.id);
+        } catch (_) {}
+      }
+      try {
+        final cloudCols = await _firebase.fetchCollections();
+        for (final c in cloudCols) {
+          await _firebase.deleteCollection(c.id);
+        }
+      } catch (_) {}
+    }
     notifyListeners();
   }
 
