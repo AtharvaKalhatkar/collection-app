@@ -225,26 +225,64 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
     );
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImage(ImageSource source, {CameraDevice preferredCameraDevice = CameraDevice.rear}) async {
     try {
       final XFile? image = await _picker.pickImage(
         source: source,
-        preferredCameraDevice: CameraDevice.rear,
+        preferredCameraDevice: preferredCameraDevice,
         maxWidth: 800,
         maxHeight: 800,
         imageQuality: 50,
       );
       if (image != null) {
         final bytes = await image.readAsBytes();
-        setState(() {
-          _photoBase64 = ImageCompressHelper.compressToBase64(bytes);
-        });
+        if (mounted) {
+          setState(() {
+            _photoBase64 = ImageCompressHelper.compressToBase64(bytes);
+          });
+        }
       }
     } catch (e) {
+      debugPrint('Camera error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not access image: $e')),
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.flip_camera_android, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Direct camera error detected. Opening device camera app with back camera...',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFFD97706),
+            duration: const Duration(seconds: 4),
+          ),
         );
+
+        // Fallback: automatically open device camera chooser so camera still opens after error!
+        try {
+          final fallback = await _picker.pickImage(
+            source: ImageSource.gallery,
+            maxWidth: 800,
+            maxHeight: 800,
+            imageQuality: 50,
+          );
+          if (fallback != null) {
+            final bytes = await fallback.readAsBytes();
+            if (mounted) {
+              setState(() {
+                _photoBase64 = ImageCompressHelper.compressToBase64(bytes);
+              });
+            }
+          }
+        } catch (fallbackError) {
+          debugPrint('Fallback picker error: $fallbackError');
+        }
       }
     }
   }
@@ -252,35 +290,181 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
   void _showImagePickerModal() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12.0),
+            padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
             child: Wrap(
+              runSpacing: 4,
               children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.camera_alt, color: AppTheme.primary, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Attach Invoice / Payment Proof',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            'Choose camera mode or pick from gallery',
+                            style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.shade100),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue.shade700, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Front camera issue? Use "Back Camera" or "Device Camera App" to switch cameras.',
+                          style: TextStyle(fontSize: 11.5, color: Colors.blue.shade900, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
                 ListTile(
-                  leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.primary),
-                  title: const Text('Capture Invoice / Proof via Camera'),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.camera_rear_rounded, color: Colors.green.shade700),
+                  ),
+                  title: const Text(
+                    'Back Camera (Rear)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Direct back camera (Recommended - avoids front camera)',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'ID: 0',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                    ),
+                  ),
                   onTap: () {
                     Navigator.pop(ctx);
-                    _pickImage(ImageSource.camera);
+                    _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.rear);
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.photo_library_outlined, color: AppTheme.secondary),
-                  title: const Text('Upload from Device Gallery'),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.indigo.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.cameraswitch_rounded, color: Colors.indigo.shade700),
+                  ),
+                  title: const Text(
+                    'Device Camera App (Switchable ⇄)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Opens native camera app with camera switch (<->) button',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   onTap: () {
                     Navigator.pop(ctx);
                     _pickImage(ImageSource.gallery);
                   },
                 ),
-                if (_photoBase64 != null)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.camera_front_rounded, color: Colors.orange.shade700),
+                  ),
+                  title: const Text(
+                    'Front Camera (Selfie)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Try front camera (switches automatically if error)',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.front);
+                  },
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.photo_library_outlined, color: Colors.blueGrey.shade700),
+                  ),
+                  title: const Text(
+                    'Upload from Device Gallery',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Choose existing photo from storage',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImage(ImageSource.gallery);
+                  },
+                ),
+                if (_photoBase64 != null) ...[
+                  const Divider(),
                   ListTile(
-                    leading: const Icon(Icons.delete_outline, color: AppTheme.balanceDueColor),
-                    title: const Text('Remove Photo', style: TextStyle(color: AppTheme.balanceDueColor)),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.delete_outline, color: AppTheme.balanceDueColor),
+                    ),
+                    title: const Text(
+                      'Remove Photo',
+                      style: TextStyle(color: AppTheme.balanceDueColor, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
                     onTap: () {
                       Navigator.pop(ctx);
                       setState(() {
@@ -288,6 +472,7 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                       });
                     },
                   ),
+                ],
               ],
             ),
           ),
