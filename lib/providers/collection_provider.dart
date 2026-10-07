@@ -13,13 +13,17 @@ import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
 import '../services/sample_data_service.dart';
 import '../services/firebase_service.dart';
+import '../services/backup_service.dart';
+import '../services/auth_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
 
 class CollectionProvider extends ChangeNotifier {
   final StorageService _storage = StorageService();
   final FirebaseService _firebase = FirebaseService();
+  final BackupService _backupService = BackupService();
   final Uuid _uuid = const Uuid();
+  DateTime? _lastBackupTime;
 
   List<RouteModel> _routes = [];
   List<ShopModel> _shops = [];
@@ -60,6 +64,25 @@ class CollectionProvider extends ChangeNotifier {
   String get searchQuery => _searchQuery;
   bool get isFirebaseConnected => _firebase.isInitialized;
   String? get firebaseError => _firebase.lastError;
+  DateTime? get lastBackupTime => _lastBackupTime;
+
+  Future<bool> triggerManualBackup() async {
+    final authService = AuthService();
+    final users = await authService.loadUsers();
+    final success = await _backupService.createBackup(
+      routes: _routes,
+      shops: _shops,
+      collections: _collections,
+      pendingBills: _pendingBills,
+      users: users,
+      trigger: 'manual',
+    );
+    if (success) {
+      _lastBackupTime = DateTime.now();
+      notifyListeners();
+    }
+    return success;
+  }
 
   CollectionProvider() {
     initialize();
@@ -187,6 +210,31 @@ class CollectionProvider extends ChangeNotifier {
               await _firebase.saveRoute(r);
             }
           }
+
+          // Synchronize Pending Bills across all devices & logins
+          final cloudBills = await _firebase.fetchPendingBills();
+          if (cloudBills.isNotEmpty) {
+            _pendingBills = cloudBills;
+            await _storage.savePendingBills(_pendingBills);
+          } else {
+            for (final b in _pendingBills) {
+              await _firebase.savePendingBill(b);
+            }
+          }
+
+          // Check and perform auto-backup if 4 days have passed
+          final authService = AuthService();
+          final users = await authService.loadUsers();
+          _lastBackupTime = await _backupService.getLastBackupTime();
+          await _backupService.checkAndRunAutoBackup(
+            routes: _routes,
+            shops: _shops,
+            collections: _collections,
+            pendingBills: _pendingBills,
+            users: users,
+          );
+          _lastBackupTime = await _backupService.getLastBackupTime();
+
           notifyListeners();
         }
       } catch (e) {
@@ -850,6 +898,9 @@ class CollectionProvider extends ChangeNotifier {
   Future<PendingBillModel> addPendingBill(PendingBillModel bill) async {
     _pendingBills.insert(0, bill);
     await _storage.savePendingBills(_pendingBills);
+    if (_firebase.isInitialized) {
+      await _firebase.savePendingBill(bill);
+    }
     notifyListeners();
     return bill;
   }
@@ -859,6 +910,9 @@ class CollectionProvider extends ChangeNotifier {
     if (idx != -1) {
       _pendingBills[idx] = updatedBill;
       await _storage.savePendingBills(_pendingBills);
+      if (_firebase.isInitialized) {
+        await _firebase.savePendingBill(updatedBill);
+      }
       notifyListeners();
     }
   }
@@ -866,6 +920,9 @@ class CollectionProvider extends ChangeNotifier {
   Future<void> deletePendingBill(String id) async {
     _pendingBills.removeWhere((b) => b.id == id);
     await _storage.savePendingBills(_pendingBills);
+    if (_firebase.isInitialized) {
+      await _firebase.deletePendingBill(id);
+    }
     notifyListeners();
   }
 

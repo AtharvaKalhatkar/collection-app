@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../utils/theme.dart';
 import '../providers/collection_provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/payment_mode.dart';
 import '../utils/currency_formatter.dart';
 import 'add_pending_bill_screen.dart';
@@ -362,7 +363,7 @@ class HomeDashboardScreen extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              provider.salesmanName,
+                              context.watch<AuthProvider>().currentUser?.name ?? provider.salesmanName,
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
@@ -378,9 +379,13 @@ class HomeDashboardScreen extends StatelessWidget {
                               color: const Color(0xFF10B981).withValues(alpha: 0.25),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text(
-                              'OFFICER',
-                              style: TextStyle(
+                            child: Text(
+                              (context.watch<AuthProvider>().currentUser?.isSuperAdmin == true)
+                                  ? 'SUPER ADMIN'
+                                  : (context.watch<AuthProvider>().currentUser?.isOffice == true
+                                      ? 'OFFICE'
+                                      : 'SALES & COLL'),
+                              style: const TextStyle(
                                 fontSize: 8.5,
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF34D399),

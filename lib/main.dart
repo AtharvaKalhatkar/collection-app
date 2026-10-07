@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'providers/collection_provider.dart';
+import 'providers/auth_provider.dart';
 import 'screens/main_navigation_shell.dart';
+import 'screens/login_screen.dart';
 import 'utils/theme.dart';
 
 void main() async {
@@ -27,13 +29,29 @@ class DailyCollectionApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CollectionProvider()),
       ],
       child: MaterialApp(
         title: 'Daily Collection Tracker',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
-        home: const MainNavigationShell(),
+        home: Consumer<AuthProvider>(
+          builder: (context, auth, _) {
+            if (auth.isLoading) {
+              return const Scaffold(
+                backgroundColor: Color(0xFF0F172A),
+                body: Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              );
+            }
+            if (auth.isAuthenticated) {
+              return const MainNavigationShell();
+            }
+            return const LoginScreen();
+          },
+        ),
       ),
     );
   }

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../providers/collection_provider.dart';
+import '../providers/auth_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/firm_details.dart';
 import '../utils/theme.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'statement_screen.dart';
-import 'firebase_config_dialog.dart';
+import 'user_management_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -235,9 +237,23 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildProfileHeaderCard(BuildContext context, CollectionProvider provider) {
-    final initials = provider.salesmanName.trim().isNotEmpty
-        ? provider.salesmanName.trim().substring(0, 1).toUpperCase()
+    final auth = context.watch<AuthProvider>();
+    final currentUser = auth.currentUser;
+
+    final displayName = currentUser?.name ?? provider.salesmanName;
+    final displayPhone = currentUser?.phone ?? provider.salesmanPhone;
+    final displayRole = currentUser?.roleDisplayName ?? (provider.salesmanRole.isNotEmpty ? provider.salesmanRole : 'Collection Executive');
+
+    final initials = displayName.trim().isNotEmpty
+        ? displayName.trim().substring(0, 1).toUpperCase()
         : 'A';
+
+    Color roleBadgeColor = const Color(0xFFD97706);
+    if (currentUser?.isSuperAdmin == true) {
+      roleBadgeColor = const Color(0xFF3B82F6);
+    } else if (currentUser?.isOffice == true) {
+      roleBadgeColor = const Color(0xFF10B981);
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -263,7 +279,7 @@ class ProfileScreen extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 30,
-                backgroundColor: AppTheme.secondary,
+                backgroundColor: roleBadgeColor,
                 child: Text(
                   initials,
                   style: const TextStyle(
@@ -278,33 +294,48 @@ class ProfileScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      provider.salesmanName,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 0.3,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 0.3,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: roleBadgeColor.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: roleBadgeColor.withValues(alpha: 0.6)),
+                          ),
+                          child: Text(
+                            displayRole,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: roleBadgeColor,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      provider.salesmanRole.isNotEmpty ? provider.salesmanRole : 'Collection Executive',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.blueGrey.shade300,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
                         const Icon(Icons.phone, size: 12, color: Color(0xFF10B981)),
                         const SizedBox(width: 4),
                         Text(
-                          provider.salesmanPhone.isNotEmpty ? provider.salesmanPhone : '+91 98220 12345',
+                          displayPhone,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 12.5,
                             color: Colors.blueGrey.shade200,
                             fontWeight: FontWeight.w600,
                           ),
@@ -580,6 +611,9 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildToolsCard(BuildContext context, CollectionProvider provider) {
+    final auth = context.watch<AuthProvider>();
+    final currentUser = auth.currentUser;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -607,6 +641,35 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
+          // 1. Staff & Role Management (Super Admin & Office)
+          if (currentUser == null || currentUser.isSuperAdmin || currentUser.isOffice) ...[
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.manage_accounts_rounded, color: Color(0xFF2563EB), size: 20),
+                ),
+                title: const Text('Staff & Role Management', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                subtitle: const Text('Change staff mobile numbers, passwords & roles', style: TextStyle(fontSize: 11.5)),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const UserManagementScreen()),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+
+          // 2. Collection Statement & Ledger
           Material(
             color: Colors.transparent,
             child: ListTile(
@@ -632,6 +695,7 @@ class ProfileScreen extends StatelessWidget {
           ),
           const Divider(height: 1),
 
+          // 3. Automated Cloud Backup (Runs every 4 days)
           Material(
             color: Colors.transparent,
             child: ListTile(
@@ -644,19 +708,65 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 child: const Icon(Icons.cloud_sync_rounded, color: Color(0xFF10B981), size: 20),
               ),
-              title: const Text('Cloud Backup & Sync', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: const Text('Live database sync & offline backup', style: TextStyle(fontSize: 11.5)),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (_) => const FirebaseConfigDialog(),
-                );
-              },
+              title: const Text('Automated Cloud Backup', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              subtitle: Text(
+                provider.lastBackupTime != null
+                    ? 'Auto-runs every 4 days • Last: ${DateFormat('dd MMM, hh:mm a').format(provider.lastBackupTime!)}'
+                    : 'Auto-runs every 4 days • Cloud Active',
+                style: const TextStyle(fontSize: 11.5),
+              ),
+              trailing: ElevatedButton(
+                onPressed: () async {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Creating cloud backup snapshot...')),
+                  );
+                  final ok = await provider.triggerManualBackup();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(ok ? 'Backup completed & verified in cloud!' : 'Backup failed. Check network.'),
+                        backgroundColor: ok ? Colors.green.shade700 : Colors.red.shade700,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: const Size(0, 32),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                child: const Text('Backup Now', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+              ),
             ),
           ),
           const Divider(height: 1),
 
+          // 4. Start Fresh / Clear Transactions
+          if (currentUser == null || currentUser.isSuperAdmin) ...[
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.balanceDueColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.cleaning_services_outlined, color: AppTheme.balanceDueColor, size: 20),
+                ),
+                title: const Text('Start Fresh (Clear Transactions)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppTheme.balanceDueColor)),
+                subtitle: const Text('Clears old records; keeps all Routes & Outlets', style: TextStyle(fontSize: 11.5)),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                onTap: () => _confirmClearTransactions(context, provider),
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+
+          // 5. Staff Log Out
           Material(
             color: Colors.transparent,
             child: ListTile(
@@ -664,18 +774,49 @@ class ProfileScreen extends StatelessWidget {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppTheme.balanceDueColor.withValues(alpha: 0.1),
+                  color: Colors.red.shade50,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.cleaning_services_outlined, color: AppTheme.balanceDueColor, size: 20),
+                child: const Icon(Icons.logout_rounded, color: AppTheme.balanceDueColor, size: 20),
               ),
-              title: const Text('Start Fresh (Clear Transactions)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppTheme.balanceDueColor)),
-              subtitle: const Text('Clears old records; keeps all Routes & Outlets', style: TextStyle(fontSize: 11.5)),
+              title: const Text(
+                'Log Out',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppTheme.balanceDueColor),
+              ),
+              subtitle: Text(
+                'Signed in as ${currentUser?.name ?? provider.salesmanName} (${currentUser?.phone ?? provider.salesmanPhone})',
+                style: const TextStyle(fontSize: 11.5),
+              ),
               trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-              onTap: () => _confirmClearTransactions(context, provider),
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (dCtx) => AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: const Text('Log Out?'),
+                    content: const Text('Are you sure you want to log out of your staff account?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dCtx),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(dCtx);
+                          auth.logout();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.balanceDueColor,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Log Out'),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
-          const Divider(height: 1),
 
           const SizedBox(height: 12),
           Row(

@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/collection_model.dart';
 import '../models/shop_model.dart';
 import '../models/route_model.dart';
+import '../models/pending_bill_model.dart';
+import '../models/user_model.dart';
 
 class FirebaseConfig {
   final String apiKey;
@@ -325,4 +327,103 @@ class FirebaseService {
       return false;
     }
   }
+
+  // --- Pending Bills Sync to Cloud Firestore ---
+  Future<bool> savePendingBill(PendingBillModel bill) async {
+    if (!_isInitialized || _firestore == null) return false;
+    try {
+      await _firestore!.collection('pending_bills').doc(bill.id).set(bill.toJson());
+      return true;
+    } catch (e) {
+      _logError('Error saving pending bill to Firestore', e);
+      return false;
+    }
+  }
+
+  Future<List<PendingBillModel>> fetchPendingBills() async {
+    if (!_isInitialized || _firestore == null) return [];
+    try {
+      final snapshot = await _firestore!.collection('pending_bills').get();
+      return snapshot.docs.map((doc) => PendingBillModel.fromJson(doc.data())).toList();
+    } catch (e) {
+      _logError('Error fetching pending bills from Firestore', e);
+      return [];
+    }
+  }
+
+  Future<bool> deletePendingBill(String id) async {
+    final fs = _firestore;
+    if (fs == null) return false;
+    try {
+      await fs.collection('pending_bills').doc(id).delete();
+      return true;
+    } catch (e) {
+      _logError('Error deleting pending bill from Firestore', e);
+      return false;
+    }
+  }
+
+  // --- Users & Roles Sync to Cloud Firestore ---
+  Future<bool> saveUser(UserModel user) async {
+    if (!_isInitialized || _firestore == null) return false;
+    try {
+      await _firestore!.collection('app_users').doc(user.id).set(user.toJson());
+      return true;
+    } catch (e) {
+      _logError('Error saving user to Firestore', e);
+      return false;
+    }
+  }
+
+  Future<List<UserModel>> fetchUsers() async {
+    if (!_isInitialized || _firestore == null) return [];
+    try {
+      final snapshot = await _firestore!.collection('app_users').get();
+      return snapshot.docs.map((doc) => UserModel.fromJson(doc.data())).toList();
+    } catch (e) {
+      _logError('Error fetching users from Firestore', e);
+      return [];
+    }
+  }
+
+  Future<bool> deleteUser(String id) async {
+    final fs = _firestore;
+    if (fs == null) return false;
+    try {
+      await fs.collection('app_users').doc(id).delete();
+      return true;
+    } catch (e) {
+      _logError('Error deleting user from Firestore', e);
+      return false;
+    }
+  }
+
+  // --- Automated Database Backup Snapshot ---
+  Future<bool> saveBackup(Map<String, dynamic> backupData) async {
+    if (!_isInitialized || _firestore == null) return false;
+    try {
+      final backupId = backupData['id'] as String? ?? 'backup_${DateTime.now().millisecondsSinceEpoch}';
+      await _firestore!.collection('backups').doc(backupId).set(backupData);
+      return true;
+    } catch (e) {
+      _logError('Error saving backup to Firestore', e);
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchBackups() async {
+    if (!_isInitialized || _firestore == null) return [];
+    try {
+      final snapshot = await _firestore!
+          .collection('backups')
+          .orderBy('createdAt', descending: true)
+          .limit(10)
+          .get();
+      return snapshot.docs.map((doc) => doc.data()).toList();
+    } catch (e) {
+      _logError('Error fetching backups from Firestore', e);
+      return [];
+    }
+  }
 }
+

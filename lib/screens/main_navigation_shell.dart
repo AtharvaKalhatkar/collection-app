@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/collection_provider.dart';
 import '../utils/theme.dart';
 import 'home_dashboard_screen.dart';
 import 'collections_list_screen.dart';
 import 'routes_shops_screen.dart';
-
 import 'profile_screen.dart';
 
 class MainNavigationShell extends StatefulWidget {
@@ -15,6 +17,22 @@ class MainNavigationShell extends StatefulWidget {
 
 class _MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthProvider>();
+      if (auth.currentUser != null) {
+        final u = auth.currentUser!;
+        context.read<CollectionProvider>().updateProfile(
+          name: u.name,
+          phone: u.phone,
+          role: u.roleDisplayName,
+        );
+      }
+    });
+  }
 
   void _navigateToTab(int index) {
     setState(() {
