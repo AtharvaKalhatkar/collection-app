@@ -34,7 +34,6 @@ class DefaultFirebaseOptions {
     projectId: 'collection-app-50703',
     authDomain: 'collection-app-50703.firebaseapp.com',
     storageBucket: 'collection-app-50703.firebasestorage.app',
-    measurementId: 'G-0YTCRYR2KN',
   );
 
   static const FirebaseOptions android = FirebaseOptions(

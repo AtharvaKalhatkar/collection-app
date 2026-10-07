@@ -77,7 +77,6 @@ class FirebaseService {
     storageBucket: 'collection-app-50703.firebasestorage.app',
     messagingSenderId: '978582714167',
     appId: '1:978582714167:web:ab1d2afbb26336b8730cb2',
-    measurementId: 'G-0YTCRYR2KN',
   );
 
   bool _isInitialized = false;
