@@ -39,24 +39,64 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
         excel.delete(defaultSheet);
       }
 
-      outletSheet.appendRow([
-        xl.TextCellValue('Sr No'),
-        xl.TextCellValue('Outlet / Store Name'),
-        xl.TextCellValue('Beat Route'),
-        xl.TextCellValue('Mobile Number'),
-        xl.TextCellValue('Address'),
-        xl.TextCellValue('Owner / Contact Person'),
-        xl.TextCellValue('Google Maps URL'),
-        xl.TextCellValue('Latitude'),
-        xl.TextCellValue('Longitude'),
-        xl.TextCellValue('Registration Date'),
-      ]);
+      // Setup professional column widths for Outlets
+      final outletColWidths = <int, double>{
+        0: 8.0,   // Sr No
+        1: 34.0,  // Outlet / Store Name
+        2: 20.0,  // Beat Route
+        3: 16.0,  // Mobile Number
+        4: 32.0,  // Address
+        5: 22.0,  // Owner / Contact Person
+        6: 45.0,  // Google Maps URL
+        7: 14.0,  // Latitude
+        8: 14.0,  // Longitude
+        9: 18.0,  // Registration Date
+      };
+      outletColWidths.forEach((col, w) => outletSheet.setColumnWidth(col, w));
+
+      // Executive Header Style
+      final headerStyle = xl.CellStyle(
+        bold: true,
+        fontColorHex: xl.ExcelColor.fromHexString('#FFFFFF'),
+        backgroundColorHex: xl.ExcelColor.fromHexString('#1E293B'),
+        horizontalAlign: xl.HorizontalAlign.Center,
+        verticalAlign: xl.VerticalAlign.Center,
+        topBorder: xl.Border(borderStyle: xl.BorderStyle.Thin, borderColorHex: xl.ExcelColor.fromHexString('#0F172A')),
+        bottomBorder: xl.Border(borderStyle: xl.BorderStyle.Medium, borderColorHex: xl.ExcelColor.fromHexString('#0F172A')),
+      );
+
+      final thinBorder = xl.Border(
+        borderStyle: xl.BorderStyle.Thin,
+        borderColorHex: xl.ExcelColor.fromHexString('#E2E8F0'),
+      );
+
+      final outletHeaders = [
+        'Sr No',
+        'Outlet / Store Name',
+        'Beat Route',
+        'Mobile Number',
+        'Address',
+        'Owner / Contact Person',
+        'Google Maps URL',
+        'Latitude',
+        'Longitude',
+        'Registration Date',
+      ];
+
+      for (int c = 0; c < outletHeaders.length; c++) {
+        final cell = outletSheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0));
+        cell.value = xl.TextCellValue(outletHeaders[c]);
+        cell.cellStyle = headerStyle;
+      }
 
       final shops = provider.shops;
       for (int i = 0; i < shops.length; i++) {
         final s = shops[i];
         final mapsUrl = s.mapsUrl ?? '';
-        outletSheet.appendRow([
+        final isEven = (i % 2 == 0);
+        final rowBg = isEven ? xl.ExcelColor.fromHexString('#FFFFFF') : xl.ExcelColor.fromHexString('#F8FAFC');
+
+        final rowValues = <xl.CellValue>[
           xl.IntCellValue(i + 1),
           xl.TextCellValue(s.name),
           xl.TextCellValue(s.routeName),
@@ -67,29 +107,71 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
           xl.TextCellValue(s.latitude?.toString() ?? ''),
           xl.TextCellValue(s.longitude?.toString() ?? ''),
           xl.TextCellValue(DateFormat('yyyy-MM-dd').format(s.createdAt)),
-        ]);
+        ];
+
+        for (int c = 0; c < rowValues.length; c++) {
+          final cell = outletSheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: i + 1));
+          cell.value = rowValues[c];
+          final isCenter = (c == 0 || c == 3 || c == 7 || c == 8 || c == 9);
+          cell.cellStyle = xl.CellStyle(
+            horizontalAlign: isCenter ? xl.HorizontalAlign.Center : xl.HorizontalAlign.Left,
+            verticalAlign: xl.VerticalAlign.Center,
+            backgroundColorHex: rowBg,
+            bottomBorder: thinBorder,
+          );
+        }
       }
 
       final routeSheet = excel['Routes'];
-      routeSheet.appendRow([
-        xl.TextCellValue('Sr No'),
-        xl.TextCellValue('Route Name'),
-        xl.TextCellValue('Description / Areas'),
-        xl.TextCellValue('Priority'),
-        xl.TextCellValue('Total Outlets'),
-      ]);
+      final routeColWidths = <int, double>{
+        0: 8.0,   // Sr No
+        1: 24.0,  // Route Name
+        2: 36.0,  // Description / Areas
+        3: 14.0,  // Priority
+        4: 16.0,  // Total Outlets
+      };
+      routeColWidths.forEach((col, w) => routeSheet.setColumnWidth(col, w));
+
+      final routeHeaders = [
+        'Sr No',
+        'Route Name',
+        'Description / Areas',
+        'Priority',
+        'Total Outlets',
+      ];
+
+      for (int c = 0; c < routeHeaders.length; c++) {
+        final cell = routeSheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0));
+        cell.value = xl.TextCellValue(routeHeaders[c]);
+        cell.cellStyle = headerStyle;
+      }
 
       final routes = provider.routes;
       for (int i = 0; i < routes.length; i++) {
         final r = routes[i];
         final count = provider.getShopsForRoute(r.id).length;
-        routeSheet.appendRow([
+        final isEven = (i % 2 == 0);
+        final rowBg = isEven ? xl.ExcelColor.fromHexString('#FFFFFF') : xl.ExcelColor.fromHexString('#F8FAFC');
+
+        final rowValues = <xl.CellValue>[
           xl.IntCellValue(i + 1),
           xl.TextCellValue(r.name),
           xl.TextCellValue(r.description ?? ''),
           xl.IntCellValue(r.priority),
           xl.IntCellValue(count),
-        ]);
+        ];
+
+        for (int c = 0; c < rowValues.length; c++) {
+          final cell = routeSheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: i + 1));
+          cell.value = rowValues[c];
+          final isCenter = (c == 0 || c == 3 || c == 4);
+          cell.cellStyle = xl.CellStyle(
+            horizontalAlign: isCenter ? xl.HorizontalAlign.Center : xl.HorizontalAlign.Left,
+            verticalAlign: xl.VerticalAlign.Center,
+            backgroundColorHex: rowBg,
+            bottomBorder: thinBorder,
+          );
+        }
       }
 
       final bytes = excel.encode();
@@ -798,6 +880,61 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                             ),
                           ],
                         ),
+                        selectedItemBuilder: (ctx) {
+                          if (outletsInSelectedRoute.isEmpty) {
+                            return [
+                              Row(
+                                children: [
+                                  const Icon(Icons.storefront_outlined, size: 18, color: Colors.blueGrey),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'No outlets in ${selectedRoute.name}',
+                                    style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade600),
+                                  ),
+                                ],
+                              ),
+                            ];
+                          }
+                          return [
+                            Row(
+                              children: [
+                                const Icon(Icons.storefront_outlined, size: 18, color: AppTheme.primary),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'All Outlets in ${selectedRoute.name} (${outletsInSelectedRoute.length})',
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF0F172A)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            ...outletsInSelectedRoute.map(
+                              (s) => Row(
+                                children: [
+                                  const Icon(Icons.store_outlined, size: 18, color: AppTheme.primary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text.rich(
+                                      TextSpan(
+                                        text: s.name,
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                        children: [
+                                          if (s.address.trim().isNotEmpty)
+                                            TextSpan(
+                                              text: ' • ${s.address.trim()}',
+                                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.blueGrey.shade600),
+                                            ),
+                                        ],
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ];
+                        },
                         items: outletsInSelectedRoute.isEmpty
                             ? [
                                 DropdownMenuItem<String?>(
@@ -839,10 +976,32 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                         const Icon(Icons.store_outlined, size: 18, color: AppTheme.primary),
                                         const SizedBox(width: 8),
                                         Expanded(
-                                          child: Text(
-                                            '${s.name} (${s.mobileNumber})',
-                                            style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-                                            overflow: TextOverflow.ellipsis,
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                s.name,
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Color(0xFF0F172A),
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              if (s.address.trim().isNotEmpty) ...[
+                                                const SizedBox(height: 1),
+                                                Text(
+                                                  s.address.trim(),
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.blueGrey.shade600,
+                                                    fontWeight: FontWeight.w400,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ],
                                           ),
                                         ),
                                       ],

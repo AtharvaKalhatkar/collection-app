@@ -238,23 +238,63 @@ class _StatementScreenState extends State<StatementScreen> {
       final sheetName = excel.getDefaultSheet() ?? 'Statement';
       final sheet = excel[sheetName];
 
-      // Header row
-      sheet.appendRow([
-        xl.TextCellValue('S.No'),
-        xl.TextCellValue('Date & Time'),
-        xl.TextCellValue('Firm Name'),
-        xl.TextCellValue('Route'),
-        xl.TextCellValue('Outlet / Shop Name'),
-        xl.TextCellValue('Bill Number'),
-        xl.TextCellValue('Bill Date'),
-        xl.TextCellValue('Payment Mode'),
-        xl.TextCellValue('Deposit Bank'),
-        xl.TextCellValue('Collected Amount (INR)'),
-        xl.TextCellValue('Total Bill Amount (INR)'),
-        xl.TextCellValue('Pending Balance (INR)'),
-        xl.TextCellValue('Payment Reference / Cheque'),
-        xl.TextCellValue('Salesman'),
-      ]);
+      // Professional column widths for Collection Statement
+      final colWidths = <int, double>{
+        0: 8.0,   // S.No
+        1: 22.0,  // Date & Time
+        2: 20.0,  // Firm Name
+        3: 18.0,  // Route
+        4: 30.0,  // Outlet / Shop Name
+        5: 16.0,  // Bill Number
+        6: 14.0,  // Bill Date
+        7: 16.0,  // Payment Mode
+        8: 18.0,  // Deposit Bank
+        9: 22.0,  // Collected Amount (INR)
+        10: 22.0, // Total Bill Amount (INR)
+        11: 22.0, // Pending Balance (INR)
+        12: 24.0, // Payment Reference / Cheque
+        13: 16.0, // Salesman
+      };
+      colWidths.forEach((col, w) => sheet.setColumnWidth(col, w));
+
+      // Executive Header Style
+      final headerStyle = xl.CellStyle(
+        bold: true,
+        fontColorHex: xl.ExcelColor.fromHexString('#FFFFFF'),
+        backgroundColorHex: xl.ExcelColor.fromHexString('#1E293B'),
+        horizontalAlign: xl.HorizontalAlign.Center,
+        verticalAlign: xl.VerticalAlign.Center,
+        topBorder: xl.Border(borderStyle: xl.BorderStyle.Thin, borderColorHex: xl.ExcelColor.fromHexString('#0F172A')),
+        bottomBorder: xl.Border(borderStyle: xl.BorderStyle.Medium, borderColorHex: xl.ExcelColor.fromHexString('#0F172A')),
+      );
+
+      final thinBorder = xl.Border(
+        borderStyle: xl.BorderStyle.Thin,
+        borderColorHex: xl.ExcelColor.fromHexString('#E2E8F0'),
+      );
+
+      final headers = [
+        'S.No',
+        'Date & Time',
+        'Firm Name',
+        'Route',
+        'Outlet / Shop Name',
+        'Bill Number',
+        'Bill Date',
+        'Payment Mode',
+        'Deposit Bank',
+        'Collected Amount (INR)',
+        'Total Bill Amount (INR)',
+        'Pending Balance (INR)',
+        'Payment Reference / Cheque',
+        'Salesman',
+      ];
+
+      for (int c = 0; c < headers.length; c++) {
+        final cell = sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0));
+        cell.value = xl.TextCellValue(headers[c]);
+        cell.cellStyle = headerStyle;
+      }
 
       // Data rows
       for (int i = 0; i < records.length; i++) {
@@ -263,8 +303,10 @@ class _StatementScreenState extends State<StatementScreen> {
         final billDateStr = DateFormat('dd-MM-yyyy').format(c.billDate);
         final bank = (c.bankName != null && c.bankName!.trim().isNotEmpty) ? c.bankName!.trim() : '-';
         final ref = c.referenceNumber ?? (c.chequeNumber != null ? 'Chq #${c.chequeNumber}' : '-');
+        final isEven = (i % 2 == 0);
+        final rowBg = isEven ? xl.ExcelColor.fromHexString('#FFFFFF') : xl.ExcelColor.fromHexString('#F8FAFC');
 
-        sheet.appendRow([
+        final rowValues = <xl.CellValue>[
           xl.IntCellValue(i + 1),
           xl.TextCellValue(timeStr),
           xl.TextCellValue(c.businessName),
@@ -279,7 +321,20 @@ class _StatementScreenState extends State<StatementScreen> {
           xl.DoubleCellValue(c.balanceAmount),
           xl.TextCellValue(ref),
           xl.TextCellValue(c.salesmanName),
-        ]);
+        ];
+
+        for (int col = 0; col < rowValues.length; col++) {
+          final cell = sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: i + 1));
+          cell.value = rowValues[col];
+          final isCenter = (col == 0 || col == 1 || col == 6 || col == 7 || col == 8 || col == 13);
+          final isRight = (col == 9 || col == 10 || col == 11);
+          cell.cellStyle = xl.CellStyle(
+            horizontalAlign: isRight ? xl.HorizontalAlign.Right : (isCenter ? xl.HorizontalAlign.Center : xl.HorizontalAlign.Left),
+            verticalAlign: xl.VerticalAlign.Center,
+            backgroundColorHex: rowBg,
+            bottomBorder: thinBorder,
+          );
+        }
       }
 
       final bytes = excel.encode();
