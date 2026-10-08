@@ -548,7 +548,7 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
         collectedAmount: collAmt,
         balanceRemaining: remainingAfter,
         paymentMode: _selectedMode,
-        photoBase64: _photoBase64,
+        photoBase64: remainingAfter <= 0.001 ? null : _photoBase64,
         chequeNumber: _selectedMode == PaymentMode.cheque ? _chequeNoController.text.trim() : null,
         bankName: _selectedMode == PaymentMode.cheque ? _bankNameController.text.trim() : null,
         referenceNumber: (_selectedMode == PaymentMode.upi || _selectedMode == PaymentMode.netBanking)

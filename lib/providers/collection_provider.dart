@@ -222,6 +222,21 @@ class CollectionProvider extends ChangeNotifier {
             }
           }
 
+          // Auto-clean: ensure any already paid/settled bills auto-delete heavy photos to save cloud storage
+          bool hasPurgedCloud = false;
+          for (int i = 0; i < _pendingBills.length; i++) {
+            if (_pendingBills[i].isPaid && _pendingBills[i].photoBase64 != null) {
+              _pendingBills[i] = _pendingBills[i].copyWith(clearPhoto: true);
+              hasPurgedCloud = true;
+              if (_firebase.isInitialized) {
+                _firebase.savePendingBill(_pendingBills[i]);
+              }
+            }
+          }
+          if (hasPurgedCloud) {
+            await _storage.savePendingBills(_pendingBills);
+          }
+
           // Check and perform auto-backup if 4 days have passed
           final authService = AuthService();
           final users = await authService.loadUsers();
@@ -771,7 +786,12 @@ class CollectionProvider extends ChangeNotifier {
 
   // --- Collection Operations ---
   Future<void> addCollection(CollectionModel collection) async {
-    _collections.insert(0, collection);
+    final isSettled = (collection.balanceRemaining ?? 0.0) <= 0.001;
+    final finalCollection = isSettled && collection.photoBase64 != null
+        ? collection.copyWith(clearPhoto: true)
+        : collection;
+
+    _collections.insert(0, finalCollection);
     try {
       await _storage.saveCollections(_collections);
     } catch (e) {
@@ -783,11 +803,75 @@ class CollectionProvider extends ChangeNotifier {
     if (_firebase.isInitialized) {
       () async {
         try {
-          await _firebase.saveCollection(collection);
+          await _firebase.saveCollection(finalCollection);
         } catch (e) {
           debugPrint('Firebase direct sync error: $e');
         }
       }();
+    }
+
+    // Auto-delete bill photos when collection completes to keep storage free forever
+    if (isSettled) {
+      await _syncPendingBillSettlement(finalCollection);
+      await _purgePhotoForSettledBill(finalCollection.billNumber, finalCollection.shopId);
+    }
+  }
+
+  /// Automatically updates matching pending bill to 'paid' and deletes its photo proof
+  Future<void> _syncPendingBillSettlement(CollectionModel coll) async {
+    final cleanBill = coll.billNumber.trim().toLowerCase();
+    final cleanShop = coll.shopId.trim().toLowerCase();
+    bool changed = false;
+
+    for (int i = 0; i < _pendingBills.length; i++) {
+      final b = _pendingBills[i];
+      if (b.billNumber.trim().toLowerCase() == cleanBill &&
+          (cleanShop.isEmpty || b.shopId.trim().toLowerCase() == cleanShop)) {
+        if (!b.isPaid || b.photoBase64 != null) {
+          final updated = b.copyWith(
+            collectedAmount: b.totalAmount,
+            status: 'paid',
+            clearPhoto: true, // Delete photo, all metadata remains permanently!
+          );
+          _pendingBills[i] = updated;
+          changed = true;
+          if (_firebase.isInitialized) {
+            await _firebase.savePendingBill(updated);
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      await _storage.savePendingBills(_pendingBills);
+      notifyListeners();
+    }
+  }
+
+  /// Removes photoBase64 from any existing collections for a settled bill to reclaim storage
+  Future<void> _purgePhotoForSettledBill(String billNumber, String? shopId) async {
+    final cleanBill = billNumber.trim().toLowerCase();
+    final cleanShopId = shopId?.trim().toLowerCase();
+    bool changed = false;
+
+    for (int i = 0; i < _collections.length; i++) {
+      final c = _collections[i];
+      if (c.billNumber.trim().toLowerCase() == cleanBill) {
+        if (cleanShopId == null || cleanShopId.isEmpty || c.shopId.trim().toLowerCase() == cleanShopId) {
+          if (c.photoBase64 != null) {
+            _collections[i] = c.copyWith(clearPhoto: true);
+            changed = true;
+            if (_firebase.isInitialized) {
+              _firebase.saveCollection(_collections[i]);
+            }
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      await _storage.saveCollections(_collections);
+      notifyListeners();
     }
   }
 
@@ -955,6 +1039,10 @@ class CollectionProvider extends ChangeNotifier {
     String? referenceNumber,
   }) async {
     final remainingAfter = pendingBill.balanceDue - collectedAmount;
+    final newCollectedTotal = pendingBill.collectedAmount + collectedAmount;
+    final isFullyPaid = (pendingBill.totalAmount - newCollectedTotal) <= 0.001;
+    final newStatus = isFullyPaid ? 'paid' : 'partial';
+
     final newCollection = CollectionModel(
       id: _uuid.v4(),
       businessName: pendingBill.businessName,
@@ -973,19 +1061,20 @@ class CollectionProvider extends ChangeNotifier {
       salesmanName: _salesmanName,
       collectedAt: collectionDate,
       billDate: pendingBill.invoiceDate,
-      photoBase64: pendingBill.photoBase64,
+      photoBase64: isFullyPaid ? null : pendingBill.photoBase64,
     );
     await addCollection(newCollection);
 
-    final newCollectedTotal = pendingBill.collectedAmount + collectedAmount;
-    final isFullyPaid = (pendingBill.totalAmount - newCollectedTotal) <= 0.001;
-    final newStatus = isFullyPaid ? 'paid' : 'partial';
     final updatedBill = pendingBill.copyWith(
       collectedAmount: newCollectedTotal,
       status: newStatus,
-      clearPhoto: false, // Keep photo proof attached for historical view
+      clearPhoto: isFullyPaid, // Auto-delete photo when collection is done! Bill details remain permanently.
     );
     await updatePendingBill(updatedBill);
+
+    if (isFullyPaid) {
+      await _purgePhotoForSettledBill(pendingBill.billNumber, pendingBill.shopId);
+    }
   }
 
   List<CollectionModel> getCollectionsForMode(PaymentMode mode, {DateTime? forDate, String? business}) {
