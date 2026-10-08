@@ -6,6 +6,12 @@ class ImageCompressHelper {
   /// Compresses raw image bytes to a high-efficiency JPEG base64 string (typically ~25-45 KB).
   /// This prevents localStorage quota overflow on Web and speeds up sync/rendering.
   static String compressToBase64(Uint8List rawBytes, {int maxDimension = 650, int quality = 60}) {
+    // If the image is already lightweight (<= 300 KB), directly encode to avoid heavy pure-Dart CPU
+    // decoding and Out-Of-Memory crashes on mobile browsers (which caused reload to blue screen)
+    if (rawBytes.lengthInBytes <= 300000) {
+      return base64Encode(rawBytes);
+    }
+
     try {
       final decoded = img.decodeImage(rawBytes);
       if (decoded == null) {

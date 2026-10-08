@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -37,17 +38,15 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   final _uuid = const Uuid();
   final _picker = ImagePicker();
 
-  // Static in-memory retention across screen navigations
+  // Static in-memory retention across screen navigations (ONLY Route and Shop - NO Dates!)
   static String? lastUsedRouteId;
   static String? lastUsedShopId;
-  static DateTime? lastUsedInvoiceDate;
-  static DateTime? lastUsedDeliveryDate;
 
   String _selectedBusiness = 'Purva Enterprises';
   String? _selectedRouteId;
   String? _selectedShopId;
 
-  // Invoice Date & Delivery Date
+  // Invoice Date & Delivery Date (NO DEFAULT - Must be freshly selected per bill)
   DateTime? _invoiceDate;
   DateTime? _deliveryDate;
 
@@ -64,12 +63,8 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     _selectedBusiness = widget.initialBusiness ?? 'Purva Enterprises';
     _selectedRouteId = widget.initialRouteId ?? lastUsedRouteId;
     _selectedShopId = widget.initialShopId ?? lastUsedShopId;
-    if (widget.initialInvoiceDate != null) {
-      _invoiceDate = widget.initialInvoiceDate;
-    } else {
-      _invoiceDate = lastUsedInvoiceDate;
-    }
-    _deliveryDate = lastUsedDeliveryDate;
+    _invoiceDate = widget.initialInvoiceDate;
+    _deliveryDate = null;
     _loadPersistedDefaults();
   }
 
@@ -78,8 +73,6 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       final prefs = await SharedPreferences.getInstance();
       final savedRoute = prefs.getString('last_pending_bill_route_id');
       final savedShop = prefs.getString('last_pending_bill_shop_id');
-      final savedInvDateStr = prefs.getString('last_pending_bill_inv_date');
-      final savedDelDateStr = prefs.getString('last_pending_bill_del_date');
 
       if (mounted) {
         setState(() {
@@ -91,14 +84,6 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
             _selectedShopId = savedShop;
             lastUsedShopId = savedShop;
           }
-          if (_invoiceDate == null && savedInvDateStr != null) {
-            _invoiceDate = DateTime.tryParse(savedInvDateStr);
-            lastUsedInvoiceDate = _invoiceDate;
-          }
-          if (_deliveryDate == null && savedDelDateStr != null) {
-            _deliveryDate = DateTime.tryParse(savedDelDateStr);
-            lastUsedDeliveryDate = _deliveryDate;
-          }
         });
       }
     } catch (_) {}
@@ -107,18 +92,10 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   Future<void> _persistDefaults(String routeId, String shopId) async {
     lastUsedRouteId = routeId;
     lastUsedShopId = shopId;
-    lastUsedInvoiceDate = _invoiceDate;
-    lastUsedDeliveryDate = _deliveryDate;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('last_pending_bill_route_id', routeId);
       await prefs.setString('last_pending_bill_shop_id', shopId);
-      if (_invoiceDate != null) {
-        await prefs.setString('last_pending_bill_inv_date', _invoiceDate!.toIso8601String());
-      }
-      if (_deliveryDate != null) {
-        await prefs.setString('last_pending_bill_del_date', _deliveryDate!.toIso8601String());
-      }
     } catch (_) {}
   }
 
@@ -155,15 +132,39 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     }
   }
 
-  Future<void> _openCamera() async {
+  Future<void> _captureBillPhoto() async {
     try {
-      final picked = await _picker.pickImage(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.rear,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 50,
-      );
+      XFile? picked;
+      if (kIsWeb) {
+        // On mobile web, using ImageSource.gallery creates <input type="file" accept="image/*">
+        // which opens the mobile system prompt with BOTH Camera and Gallery,
+        // and crucially prevents Android Chrome from killing the background tab (which caused the reload to blue screen).
+        picked = await _picker.pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 900,
+          maxHeight: 900,
+          imageQuality: 55,
+        );
+      } else {
+        // On native Android/iOS, try camera directly with rear camera preferred, falling back to gallery if needed
+        try {
+          picked = await _picker.pickImage(
+            source: ImageSource.camera,
+            preferredCameraDevice: CameraDevice.rear,
+            maxWidth: 900,
+            maxHeight: 900,
+            imageQuality: 55,
+          );
+        } catch (_) {
+          picked = await _picker.pickImage(
+            source: ImageSource.gallery,
+            maxWidth: 900,
+            maxHeight: 900,
+            imageQuality: 55,
+          );
+        }
+      }
+
       if (picked != null) {
         final bytes = await picked.readAsBytes();
         final compressed = ImageCompressHelper.compressToBase64(bytes);
@@ -174,68 +175,14 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Camera direct error: $e');
+      debugPrint('Error capturing bill photo: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
-              children: const [
-                Icon(Icons.flip_camera_android, color: Colors.white, size: 20),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Camera direct error. Opening gallery...',
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFFD97706),
-            duration: const Duration(seconds: 4),
+            content: Text('Could not open camera/gallery: $e'),
+            backgroundColor: AppTheme.error,
           ),
         );
-        _openGallery();
-      }
-    }
-  }
-
-  Future<void> _openGallery() async {
-    try {
-      final List<XFile> images = await _picker.pickMultiImage(
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 50,
-      );
-      if (images.isNotEmpty) {
-        for (final img in images) {
-          final bytes = await img.readAsBytes();
-          final compressed = ImageCompressHelper.compressToBase64(bytes);
-          if (mounted) {
-            setState(() {
-              _photosBase64.add(compressed);
-            });
-          }
-        }
-      }
-    } catch (_) {
-      try {
-        final fallback = await _picker.pickImage(
-          source: ImageSource.gallery,
-          maxWidth: 800,
-          maxHeight: 800,
-          imageQuality: 50,
-        );
-        if (fallback != null) {
-          final bytes = await fallback.readAsBytes();
-          final compressed = ImageCompressHelper.compressToBase64(bytes);
-          if (mounted) {
-            setState(() {
-              _photosBase64.add(compressed);
-            });
-          }
-        }
-      } catch (inner) {
-        debugPrint('Gallery picker fallback error: $inner');
       }
     }
   }
@@ -388,7 +335,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     );
   }
 
-  Future<void> _savePendingBill({bool autoSwitchFirm = false}) async {
+  Future<void> _savePendingBill() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -476,37 +423,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       await provider.addPendingBill(newPendingBill);
       await _persistDefaults(route.id, shop?.id ?? _selectedShopId!);
 
-      final currentFirm = _selectedBusiness;
-      final nextFirm = currentFirm == 'Purva Enterprises' ? 'Manas Sales' : 'Purva Enterprises';
-      final shopName = shop?.name ?? 'Outlet';
-
-      if (!mounted) return;
-
-      if (autoSwitchFirm) {
-        setState(() {
-          _selectedBusiness = nextFirm;
-          _billNoController.clear();
-          _amountController.clear();
-          _photosBase64.clear();
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Bill #$billNo saved! Switched to $nextFirm for "$shopName".'),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFF10B981),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -518,26 +435,9 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                 ),
               ],
             ),
-            action: SnackBarAction(
-              label: 'Add for $nextFirm',
-              textColor: Colors.yellowAccent,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AddPendingBillScreen(
-                      initialBusiness: nextFirm,
-                      initialRouteId: route.id,
-                      initialShopId: shop?.id ?? _selectedShopId!,
-                      initialInvoiceDate: _invoiceDate,
-                    ),
-                  ),
-                );
-              },
-            ),
             backgroundColor: const Color(0xFF10B981),
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 3),
           ),
         );
         Navigator.pop(context);
@@ -581,8 +481,6 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
 
     final isPurva = _selectedBusiness == 'Purva Enterprises';
     final firmPrimaryColor = isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary;
-    final otherBusiness = isPurva ? 'Manas Sales' : 'Purva Enterprises';
-    final otherBusinessColor = isPurva ? AppTheme.manasPrimary : AppTheme.purvaPrimary;
 
     return Scaffold(
       appBar: AppBar(
@@ -1052,66 +950,36 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               const SizedBox(height: 8),
 
               if (_photosBase64.isEmpty) ...[
-                // Clean Direct Camera & Gallery Card - NO popup dialog!
+                // Clean Single Camera Button (Camera with Gallery in system chooser)
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.grey.shade300),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              icon: const Icon(Icons.camera_alt_rounded, size: 18),
-                              label: const Text(
-                                'Open Camera',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0F172A),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                elevation: 1,
-                              ),
-                              onPressed: _openCamera,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(Icons.photo_library_outlined, size: 18),
-                              label: const Text(
-                                'From Gallery',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.primary,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                side: const BorderSide(color: AppTheme.primary, width: 1.2),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              onPressed: _openGallery,
-                            ),
-                          ),
-                        ],
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.camera_alt_rounded, size: 20),
+                        label: const Text(
+                          'Open Camera',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F172A),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 1,
+                        ),
+                        onPressed: _captureBillPhoto,
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.info_outline, size: 13, color: Colors.blueGrey.shade400),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Click camera to shoot directly, or gallery for saved photos',
-                            style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
-                          ),
-                        ],
+                      Text(
+                        'Tap to capture bill photo (Camera & Gallery)',
+                        style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
                       ),
                     ],
                   ),
@@ -1224,34 +1092,17 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                         ),
                       ),
                       const Divider(height: 18),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(Icons.camera_alt_outlined, size: 16),
-                              label: const Text('+ Add (Camera)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                side: BorderSide(color: Colors.grey.shade400),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: _openCamera,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(Icons.photo_library_outlined, size: 16),
-                              label: const Text('+ From Gallery', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                side: BorderSide(color: Colors.grey.shade400),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: _openGallery,
-                            ),
-                          ),
-                        ],
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                        label: const Text('+ Add Another Photo (Camera / Gallery)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F172A),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          minimumSize: const Size(double.infinity, 42),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: _captureBillPhoto,
                       ),
                     ],
                   ),
@@ -1259,61 +1110,23 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               ],
               const SizedBox(height: 28),
 
-              // ACTION BUTTONS
-              // 1. Dual-firm Quick Save & Switch: Saves current bill, retains Route & Outlet & Dates, switches firm
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: LinearGradient(
-                    colors: isPurva
-                        ? [const Color(0xFF0D9488), const Color(0xFF0F766E)] // Teal for Manas
-                        : [const Color(0xFF4338CA), const Color(0xFF3730A3)], // Indigo for Purva
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: otherBusinessColor.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: ElevatedButton.icon(
-                  icon: _isSaving
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Icon(Icons.sync_alt_rounded, size: 20, color: Colors.white),
-                  label: Text(
-                    _isSaving ? 'Saving...' : 'Save & Add for $otherBusiness (Same Shop)',
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: _isSaving ? null : () => _savePendingBill(autoSwitchFirm: true),
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              // 2. Standard Save & Close
+              // SAVE BUTTON (Single, clean button)
               ElevatedButton.icon(
                 icon: _isSaving
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Icon(Icons.check_circle_outline, size: 20),
                 label: Text(
-                  _isSaving ? 'Saving...' : 'Save & Close ($_selectedBusiness)',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                  _isSaving ? 'Saving...' : 'Save Pending Bill',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: firmPrimaryColor,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   elevation: 2,
                 ),
-                onPressed: _isSaving ? null : () => _savePendingBill(autoSwitchFirm: false),
+                onPressed: _isSaving ? null : _savePendingBill,
               ),
               const SizedBox(height: 20),
             ],
