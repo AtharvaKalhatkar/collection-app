@@ -12,6 +12,7 @@ import '../utils/theme.dart';
 import '../utils/image_compress_helper.dart';
 import 'add_shop_screen.dart';
 import '../widgets/fullscreen_image_viewer.dart';
+import '../widgets/in_app_bill_camera_screen.dart';
 
 class RecordCollectionScreen extends StatefulWidget {
   final String? initialShopId;
@@ -287,7 +288,23 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
   }
 
   Future<void> _openCamera() async {
-    await _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.rear);
+    try {
+      final photoBase64 = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const InAppBillCameraScreen(),
+          fullscreenDialog: true,
+        ),
+      );
+      if (photoBase64 != null && photoBase64.isNotEmpty && mounted) {
+        setState(() {
+          _photoBase64 = photoBase64;
+        });
+      }
+    } catch (e) {
+      debugPrint('Camera open error: $e');
+      await _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.rear);
+    }
   }
 
   Future<void> _openGallery() async {

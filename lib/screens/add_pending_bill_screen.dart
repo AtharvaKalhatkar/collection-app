@@ -1,6 +1,4 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +12,8 @@ import '../utils/image_compress_helper.dart';
 import 'add_shop_screen.dart';
 import 'pending_bills_list_screen.dart';
 import '../utils/marathi_search_helper.dart';
+import '../utils/quick_alert.dart';
+import '../widgets/in_app_bill_camera_screen.dart';
 
 class AddPendingBillScreen extends StatefulWidget {
   final String? initialRouteId;
@@ -36,7 +36,6 @@ class AddPendingBillScreen extends StatefulWidget {
 class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   final _formKey = GlobalKey<FormState>();
   final _uuid = const Uuid();
-  final _picker = ImagePicker();
 
   // Static in-memory retention across screen navigations (ONLY Route and Shop - NO Dates!)
   static String? lastUsedRouteId;
@@ -134,55 +133,24 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
 
   Future<void> _captureBillPhoto() async {
     try {
-      XFile? picked;
-      if (kIsWeb) {
-        // On mobile web, using ImageSource.gallery creates <input type="file" accept="image/*">
-        // which opens the mobile system prompt with BOTH Camera and Gallery,
-        // and crucially prevents Android Chrome from killing the background tab (which caused the reload to blue screen).
-        picked = await _picker.pickImage(
-          source: ImageSource.gallery,
-          maxWidth: 900,
-          maxHeight: 900,
-          imageQuality: 55,
-        );
-      } else {
-        // On native Android/iOS, try camera directly with rear camera preferred, falling back to gallery if needed
-        try {
-          picked = await _picker.pickImage(
-            source: ImageSource.camera,
-            preferredCameraDevice: CameraDevice.rear,
-            maxWidth: 900,
-            maxHeight: 900,
-            imageQuality: 55,
-          );
-        } catch (_) {
-          picked = await _picker.pickImage(
-            source: ImageSource.gallery,
-            maxWidth: 900,
-            maxHeight: 900,
-            imageQuality: 55,
-          );
-        }
-      }
+      final photoBase64 = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const InAppBillCameraScreen(),
+          fullscreenDialog: true,
+        ),
+      );
 
-      if (picked != null) {
-        final bytes = await picked.readAsBytes();
-        final compressed = ImageCompressHelper.compressToBase64(bytes);
-        if (mounted) {
-          setState(() {
-            _photosBase64.add(compressed);
-          });
-        }
+      if (photoBase64 != null && photoBase64.isNotEmpty && mounted) {
+        setState(() {
+          _photosBase64.add(photoBase64);
+        });
+        QuickAlert.success(context, 'Bill photo added');
       }
     } catch (e) {
       debugPrint('Error capturing bill photo: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open camera/gallery: $e'),
-            backgroundColor: AppTheme.error,
-          ),
-        );
+        QuickAlert.error(context, 'Could not open camera: $e');
       }
     }
   }
@@ -341,54 +309,29 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     }
 
     if (_selectedRouteId == null || _selectedRouteId!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a route beat'),
-          backgroundColor: AppTheme.error,
-        ),
-      );
+      QuickAlert.error(context, 'Please select a route beat');
       return;
     }
 
     if (_selectedShopId == null || _selectedShopId!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select an outlet / shop'),
-          backgroundColor: AppTheme.error,
-        ),
-      );
+      QuickAlert.error(context, 'Please select an outlet / shop');
       return;
     }
 
     if (_invoiceDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select Invoice Date'),
-          backgroundColor: AppTheme.error,
-        ),
-      );
+      QuickAlert.error(context, 'Please select Invoice Date');
       return;
     }
 
     if (_deliveryDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select Delivery Date'),
-          backgroundColor: AppTheme.error,
-        ),
-      );
+      QuickAlert.error(context, 'Please select Delivery Date');
       return;
     }
 
     final billNo = _billNoController.text.trim();
     final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
     if (amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid bill amount'),
-          backgroundColor: AppTheme.error,
-        ),
-      );
+      QuickAlert.error(context, 'Please enter a valid bill amount');
       return;
     }
 
@@ -424,29 +367,12 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       await _persistDefaults(route.id, shop?.id ?? _selectedShopId!);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Bill #$billNo (₹${amount.toStringAsFixed(0)}) saved!'),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFF10B981),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        QuickAlert.success(context, 'Bill #$billNo (₹${amount.toStringAsFixed(0)}) saved!');
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving pending bill: $e'), backgroundColor: AppTheme.error),
-        );
+        QuickAlert.error(context, 'Error saving pending bill: $e');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -978,7 +904,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Tap to capture bill photo (Camera & Gallery)',
+                        'Live bill camera with gallery inside',
                         style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
                       ),
                     ],
@@ -1094,7 +1020,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                       const Divider(height: 18),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.camera_alt_outlined, size: 16),
-                        label: const Text('+ Add Another Photo (Camera / Gallery)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                        label: const Text('+ Add Another Photo', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF0F172A),
                           foregroundColor: Colors.white,
