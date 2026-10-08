@@ -240,7 +240,7 @@ class CollectionProvider extends ChangeNotifier {
           // Check and perform auto-backup if 4 days have passed
           final authService = AuthService();
           final users = await authService.loadUsers();
-          _lastBackupTime = await _backupService.getLastBackupTime();
+          _lastBackupTime = await _backupService.getLatestBackupTimeShared();
           await _backupService.checkAndRunAutoBackup(
             routes: _routes,
             shops: _shops,
@@ -248,7 +248,7 @@ class CollectionProvider extends ChangeNotifier {
             pendingBills: _pendingBills,
             users: users,
           );
-          _lastBackupTime = await _backupService.getLastBackupTime();
+          _lastBackupTime = await _backupService.getLatestBackupTimeShared();
 
           notifyListeners();
         }

@@ -30,7 +30,25 @@ class BackupService {
     await prefs.setInt(_keyLastBackupTime, dt.millisecondsSinceEpoch);
   }
 
-  /// Checks if 4 days have elapsed since the last backup, and executes auto backup if needed
+  /// Returns the latest backup timestamp across all devices, querying Cloud Firestore first
+  /// so that Akash, Atharva, and Office devices all share the EXACT same backup reference
+  Future<DateTime?> getLatestBackupTimeShared() async {
+    try {
+      if (_firebase.isInitialized) {
+        final cloudTime = await _firebase.fetchLatestCloudBackupTime();
+        if (cloudTime != null) {
+          await _setLastBackupTime(cloudTime);
+          return cloudTime;
+        }
+      }
+    } catch (e) {
+      debugPrint('Cloud backup time check notice: $e');
+    }
+    return await getLastBackupTime();
+  }
+
+  /// Checks if 4 days have elapsed since the last cloud backup, and executes auto backup if needed.
+  /// Prevents multi-device duplication by verifying Firestore before taking a snapshot.
   Future<bool> checkAndRunAutoBackup({
     required List<RouteModel> routes,
     required List<ShopModel> shops,
@@ -39,10 +57,21 @@ class BackupService {
     required List<UserModel> users,
   }) async {
     try {
-      final lastBackup = await getLastBackupTime();
+      // 1. Check shared cloud backup time across all devices
+      final lastBackup = await getLatestBackupTimeShared();
       final now = DateTime.now();
 
       if (lastBackup == null || now.difference(lastBackup).inDays >= autoBackupIntervalDays) {
+        // 2. Pre-flight concurrency guard: re-verify cloud in case another staff member's device ran it moments ago
+        if (_firebase.isInitialized) {
+          final cloudCheck = await _firebase.fetchLatestCloudBackupTime();
+          if (cloudCheck != null && now.difference(cloudCheck).inDays < autoBackupIntervalDays) {
+            debugPrint('Auto-backup already completed by another staff device at $cloudCheck. Skipping duplication.');
+            await _setLastBackupTime(cloudCheck);
+            return false;
+          }
+        }
+
         debugPrint('Executing scheduled auto-backup (Interval: $autoBackupIntervalDays days)...');
         final success = await createBackup(
           routes: routes,

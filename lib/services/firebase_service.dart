@@ -403,10 +403,52 @@ class FirebaseService {
     try {
       final backupId = backupData['id'] as String? ?? 'backup_${DateTime.now().millisecondsSinceEpoch}';
       await _firestore!.collection('backups').doc(backupId).set(backupData);
+      // Auto-prune old backup snapshots to keep Firestore storage clean
+      pruneOldBackups(keepCount: 10);
       return true;
     } catch (e) {
       _logError('Error saving backup to Firestore', e);
       return false;
+    }
+  }
+
+  Future<DateTime?> fetchLatestCloudBackupTime() async {
+    if (!_isInitialized || _firestore == null) return null;
+    try {
+      final snapshot = await _firestore!
+          .collection('backups')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+      if (snapshot.docs.isNotEmpty) {
+        final data = snapshot.docs.first.data();
+        final createdAtStr = data['createdAt'] as String?;
+        if (createdAtStr != null) {
+          return DateTime.tryParse(createdAtStr);
+        }
+      }
+      return null;
+    } catch (e) {
+      _logError('Error fetching latest cloud backup timestamp', e);
+      return null;
+    }
+  }
+
+  Future<void> pruneOldBackups({int keepCount = 10}) async {
+    if (!_isInitialized || _firestore == null) return;
+    try {
+      final snapshot = await _firestore!
+          .collection('backups')
+          .orderBy('createdAt', descending: true)
+          .get();
+      if (snapshot.docs.length > keepCount) {
+        final toDelete = snapshot.docs.sublist(keepCount);
+        for (final doc in toDelete) {
+          await doc.reference.delete();
+        }
+      }
+    } catch (e) {
+      _logError('Error pruning old backups', e);
     }
   }
 
