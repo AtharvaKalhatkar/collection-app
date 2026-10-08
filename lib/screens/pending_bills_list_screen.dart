@@ -690,15 +690,16 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   // Photo thumbnail if uploaded
-                                  if (bill.photoBase64 != null) ...[
+                                  if (bill.hasPhoto) ...[
                                     InkWell(
                                       onTap: () {
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
                                             builder: (_) => FullScreenImageViewer(
-                                              imageBase64: bill.photoBase64!,
+                                              imagesBase64: bill.allPhotos,
                                               title: 'Bill #${bill.billNumber} - ${bill.shopName}',
+                                              subtitle: bill.photosCount > 1 ? '${bill.photosCount} Photos Attached' : null,
                                             ),
                                           ),
                                         );
@@ -710,7 +711,8 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                             borderRadius: BorderRadius.circular(6),
                                             child: Builder(
                                               builder: (ctx) {
-                                                final bytes = ImageCompressHelper.safeBase64Decode(bill.photoBase64);
+                                                final firstPhoto = bill.allPhotos.isNotEmpty ? bill.allPhotos.first : null;
+                                                final bytes = ImageCompressHelper.safeBase64Decode(firstPhoto);
                                                 if (bytes == null) {
                                                   return Container(
                                                     width: 52,
@@ -734,6 +736,26 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                               },
                                             ),
                                           ),
+                                          if (bill.photosCount > 1)
+                                            Positioned(
+                                              top: 2,
+                                              left: 2,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF0F172A),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  '${bill.photosCount}P',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
                                           Container(
                                             padding: const EdgeInsets.all(2),
                                             decoration: BoxDecoration(

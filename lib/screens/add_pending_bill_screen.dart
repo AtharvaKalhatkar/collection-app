@@ -45,7 +45,8 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   final _billNoController = TextEditingController();
   final _amountController = TextEditingController();
 
-  String? _photoBase64;
+  final List<String> _photosBase64 = [];
+  String? get _photoBase64 => _photosBase64.isNotEmpty ? _photosBase64.first : null;
   bool _isSaving = false;
 
   @override
@@ -91,25 +92,26 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     }
   }
 
-  Future<void> _pickImage(ImageSource source, {CameraDevice preferredCameraDevice = CameraDevice.rear}) async {
+  Future<void> _openCamera() async {
     try {
       final picked = await _picker.pickImage(
-        source: source,
-        preferredCameraDevice: preferredCameraDevice,
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
         maxWidth: 800,
         maxHeight: 800,
         imageQuality: 50,
       );
       if (picked != null) {
         final bytes = await picked.readAsBytes();
+        final compressed = ImageCompressHelper.compressToBase64(bytes);
         if (mounted) {
           setState(() {
-            _photoBase64 = ImageCompressHelper.compressToBase64(bytes);
+            _photosBase64.add(compressed);
           });
         }
       }
     } catch (e) {
-      debugPrint('Camera error: $e');
+      debugPrint('Camera direct error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -119,7 +121,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Direct camera error detected. Opening device camera app with back camera...',
+                    'Camera direct error. Opening gallery...',
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -129,219 +131,50 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
-
-        // Fallback: automatically open device camera chooser so camera still opens after error!
-        try {
-          final fallback = await _picker.pickImage(
-            source: ImageSource.gallery,
-            maxWidth: 800,
-            maxHeight: 800,
-            imageQuality: 50,
-          );
-          if (fallback != null) {
-            final bytes = await fallback.readAsBytes();
-            if (mounted) {
-              setState(() {
-                _photoBase64 = ImageCompressHelper.compressToBase64(bytes);
-              });
-            }
-          }
-        } catch (fallbackError) {
-          debugPrint('Fallback picker error: $fallbackError');
-        }
+        _openGallery();
       }
     }
   }
 
-  void _showImageSourceDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.camera_alt, color: AppTheme.primary, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Upload Bill Photo',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          'Select camera mode or choose from gallery',
-                          style: TextStyle(fontSize: 12, color: Colors.blueGrey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.shade100),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.blue.shade700, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Front camera issue? Use "Back Camera" or "Device Camera App" to switch cameras.',
-                        style: TextStyle(fontSize: 11.5, color: Colors.blue.shade900, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.camera_rear_rounded, color: Colors.green.shade700),
-                ),
-                title: const Text(
-                  'Back Camera (Rear)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                subtitle: const Text(
-                  'Direct back camera (Recommended - avoids front camera)',
-                  style: TextStyle(fontSize: 12),
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    'ID: 0',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.rear);
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.indigo.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.cameraswitch_rounded, color: Colors.indigo.shade700),
-                ),
-                title: const Text(
-                  'Device Camera App (Switchable ⇄)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                subtitle: const Text(
-                  'Opens native camera app with camera switch (<->) button',
-                  style: TextStyle(fontSize: 12),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.gallery);
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.camera_front_rounded, color: Colors.orange.shade700),
-                ),
-                title: const Text(
-                  'Front Camera (Selfie)',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                subtitle: const Text(
-                  'Try front camera (switches automatically if error)',
-                  style: TextStyle(fontSize: 12),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.front);
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blueGrey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.photo_library_outlined, color: Colors.blueGrey.shade700),
-                ),
-                title: const Text(
-                  'Choose from Gallery / Files',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                subtitle: const Text(
-                  'Pick existing invoice photo from storage',
-                  style: TextStyle(fontSize: 12),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.gallery);
-                },
-              ),
-              if (_photoBase64 != null) ...[
-                const Divider(),
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.delete_outline, color: AppTheme.error),
-                  ),
-                  title: const Text(
-                    'Remove Current Photo',
-                    style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() => _photoBase64 = null);
-                  },
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
+  Future<void> _openGallery() async {
+    try {
+      final List<XFile> images = await _picker.pickMultiImage(
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 50,
+      );
+      if (images.isNotEmpty) {
+        for (final img in images) {
+          final bytes = await img.readAsBytes();
+          final compressed = ImageCompressHelper.compressToBase64(bytes);
+          if (mounted) {
+            setState(() {
+              _photosBase64.add(compressed);
+            });
+          }
+        }
+      }
+    } catch (_) {
+      try {
+        final fallback = await _picker.pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 800,
+          maxHeight: 800,
+          imageQuality: 50,
+        );
+        if (fallback != null) {
+          final bytes = await fallback.readAsBytes();
+          final compressed = ImageCompressHelper.compressToBase64(bytes);
+          if (mounted) {
+            setState(() {
+              _photosBase64.add(compressed);
+            });
+          }
+        }
+      } catch (inner) {
+        debugPrint('Gallery picker fallback error: $inner');
+      }
+    }
   }
 
   // Searchable Outlet Picker Dialog / BottomSheet
@@ -569,6 +402,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
         totalAmount: amount,
         collectedAmount: 0.0,
         photoBase64: _photoBase64,
+        photosBase64: _photosBase64,
         status: 'pending',
         createdAt: DateTime.now(),
       );
@@ -1050,95 +884,233 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               ),
               const SizedBox(height: 18),
 
-              // 7. UPLOAD BILL COPY (PHOTO)
-              const Text(
-                '7. UPLOAD BILL PHOTO',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  color: Colors.blueGrey,
-                ),
+              // 7. UPLOAD BILL PHOTOS (Supports Multiple Pages / Proofs)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '7. UPLOAD BILL PHOTOS (${_photosBase64.length})',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
+                  if (_photosBase64.isNotEmpty)
+                    TextButton.icon(
+                      icon: const Icon(Icons.delete_sweep_outlined, size: 16, color: AppTheme.error),
+                      label: const Text('Clear All', style: TextStyle(color: AppTheme.error, fontSize: 12)),
+                      onPressed: () => setState(() => _photosBase64.clear()),
+                    ),
+                ],
               ),
               const SizedBox(height: 8),
-              if (_photoBase64 != null) ...[
+
+              if (_photosBase64.isEmpty) ...[
+                // Clean Direct Camera & Gallery Card - NO popup dialog!
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.grey.shade300),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => FullScreenImageViewer(
-                                  imageBase64: _photoBase64!,
-                                  title: 'Bill Photo Copy',
-                                ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                              label: const Text(
+                                'Open Camera',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
                               ),
-                            );
-                          },
-                          child: Builder(
-                            builder: (ctx) {
-                              final bytes = ImageCompressHelper.safeBase64Decode(_photoBase64);
-                              if (bytes == null) {
-                                return Container(
-                                  width: 60,
-                                  height: 60,
-                                  color: Colors.grey.shade200,
-                                  child: const Icon(Icons.broken_image, size: 24),
-                                );
-                              }
-                              return Image.memory(
-                                bytes,
-                                width: 60,
-                                height: 60,
-                                fit: BoxFit.cover,
-                              );
-                            },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F172A),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                elevation: 1,
+                              ),
+                              onPressed: _openCamera,
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Bill Copy Attached',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.photo_library_outlined, size: 18),
+                              label: const Text(
+                                'From Gallery',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.primary,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                side: const BorderSide(color: AppTheme.primary, width: 1.2),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: _openGallery,
                             ),
-                            Text(
-                              'Tap thumbnail to preview',
-                              style: TextStyle(fontSize: 11, color: Colors.blueGrey),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: AppTheme.error),
-                        onPressed: () => setState(() => _photoBase64 = null),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.info_outline, size: 13, color: Colors.blueGrey.shade400),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Click camera to shoot directly, or gallery for saved photos',
+                            style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ] else ...[
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.add_a_photo_outlined, size: 18),
-                  label: const Text('Upload Bill Photo'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: AppTheme.primary, width: 1.2),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                // Multi-photo horizontal thumbnail preview
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
                   ),
-                  onPressed: _showImageSourceDialog,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: 115,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _photosBase64.length,
+                          itemBuilder: (ctx, idx) {
+                            final photo = _photosBase64[idx];
+                            final bytes = ImageCompressHelper.safeBase64Decode(photo);
+                            return Container(
+                              width: 95,
+                              margin: const EdgeInsets.only(right: 10),
+                              child: Stack(
+                                children: [
+                                  InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => FullScreenImageViewer(
+                                            imagesBase64: _photosBase64,
+                                            initialIndex: idx,
+                                            title: 'Bill Photo Preview',
+                                            subtitle: 'Page ${idx + 1} of ${_photosBase64.length}',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.grey.shade300),
+                                      ),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: Column(
+                                        children: [
+                                          Expanded(
+                                            child: bytes != null
+                                                ? Image.memory(
+                                                    bytes,
+                                                    width: 95,
+                                                    fit: BoxFit.cover,
+                                                  )
+                                                : Container(
+                                                    color: Colors.grey.shade200,
+                                                    child: const Icon(Icons.broken_image, size: 24),
+                                                  ),
+                                          ),
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.symmetric(vertical: 3),
+                                            color: const Color(0xFF0F172A),
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              'Photo ${idx + 1}',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 3,
+                                    right: 3,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _photosBase64.removeAt(idx);
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(3),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          size: 13,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const Divider(height: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                              label: const Text('+ Add (Camera)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                side: BorderSide(color: Colors.grey.shade400),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: _openCamera,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.photo_library_outlined, size: 16),
+                              label: const Text('+ From Gallery', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                side: BorderSide(color: Colors.grey.shade400),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: _openGallery,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
               const SizedBox(height: 28),

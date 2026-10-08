@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../models/collection_model.dart';
 import '../models/shop_model.dart';
-import '../models/payment_mode.dart';
 import '../models/bill_summary.dart';
 import '../providers/collection_provider.dart';
 import '../utils/currency_formatter.dart';
@@ -287,198 +286,12 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
     }
   }
 
-  void _showImagePickerModal() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
-            child: Wrap(
-              runSpacing: 4,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.camera_alt, color: AppTheme.primary, size: 22),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Attach Invoice / Payment Proof',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            'Choose camera mode or pick from gallery',
-                            style: TextStyle(fontSize: 12, color: Colors.blueGrey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.blue.shade100),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.blue.shade700, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Front camera issue? Use "Back Camera" or "Device Camera App" to switch cameras.',
-                          style: TextStyle(fontSize: 11.5, color: Colors.blue.shade900, fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.camera_rear_rounded, color: Colors.green.shade700),
-                  ),
-                  title: const Text(
-                    'Back Camera (Rear)',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  subtitle: const Text(
-                    'Direct back camera (Recommended - avoids front camera)',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade100,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      'ID: 0',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.rear);
-                  },
-                ),
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.cameraswitch_rounded, color: Colors.indigo.shade700),
-                  ),
-                  title: const Text(
-                    'Device Camera App (Switchable ⇄)',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  subtitle: const Text(
-                    'Opens native camera app with camera switch (<->) button',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImage(ImageSource.gallery);
-                  },
-                ),
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.camera_front_rounded, color: Colors.orange.shade700),
-                  ),
-                  title: const Text(
-                    'Front Camera (Selfie)',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  subtitle: const Text(
-                    'Try front camera (switches automatically if error)',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.front);
-                  },
-                ),
-                ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.photo_library_outlined, color: Colors.blueGrey.shade700),
-                  ),
-                  title: const Text(
-                    'Upload from Device Gallery',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                  subtitle: const Text(
-                    'Choose existing photo from storage',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickImage(ImageSource.gallery);
-                  },
-                ),
-                if (_photoBase64 != null) ...[
-                  const Divider(),
-                  ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.delete_outline, color: AppTheme.balanceDueColor),
-                    ),
-                    title: const Text(
-                      'Remove Photo',
-                      style: TextStyle(color: AppTheme.balanceDueColor, fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      setState(() {
-                        _photoBase64 = null;
-                      });
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  Future<void> _openCamera() async {
+    await _pickImage(ImageSource.camera, preferredCameraDevice: CameraDevice.rear);
+  }
+
+  Future<void> _openGallery() async {
+    await _pickImage(ImageSource.gallery);
   }
 
   Future<void> _submit() async {
@@ -1567,34 +1380,67 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                       ),
                       const SizedBox(height: 10),
                       if (_photoBase64 == null)
-                        InkWell(
-                          onTap: _showImagePickerModal,
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            height: 90,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppTheme.border),
-                            ),
-                            child: Center(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
                                 children: [
-                                  Icon(Icons.add_a_photo_outlined, size: 22, color: Colors.blueGrey.shade600),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Attach Photo of Bill / Cheque',
-                                    style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 13, fontWeight: FontWeight.w600),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                                      label: const Text(
+                                        'Open Camera',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF0F172A),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(vertical: 13),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        elevation: 1,
+                                      ),
+                                      onPressed: _openCamera,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      icon: const Icon(Icons.photo_library_outlined, size: 18),
+                                      label: const Text(
+                                        'From Gallery',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppTheme.primary,
+                                        padding: const EdgeInsets.symmetric(vertical: 13),
+                                        side: const BorderSide(color: AppTheme.primary, width: 1.2),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      onPressed: _openGallery,
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
+                              const SizedBox(height: 6),
+                              Center(
+                                child: Text(
+                                  'Tap camera to shoot directly, or gallery for saved photos',
+                                  style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                                ),
+                              ),
+                            ],
                           ),
                         )
                       else
-                        Stack(
-                          alignment: Alignment.topRight,
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             InkWell(
                               onTap: () {
@@ -1664,18 +1510,35 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                                 ],
                               ),
                             ),
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: CircleAvatar(
-                                radius: 16,
-                                backgroundColor: Colors.black54,
-                                child: IconButton(
-                                  padding: EdgeInsets.zero,
-                                  icon: const Icon(Icons.edit, color: Colors.white, size: 16),
-                                  onPressed: _showImagePickerModal,
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                                    label: const Text('Retake (Camera)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 9),
+                                      side: BorderSide(color: Colors.grey.shade400),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    onPressed: _openCamera,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    icon: const Icon(Icons.photo_library_outlined, size: 16),
+                                    label: const Text('Change (Gallery)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 9),
+                                      side: BorderSide(color: Colors.grey.shade400),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    onPressed: _openGallery,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),

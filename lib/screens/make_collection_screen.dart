@@ -746,11 +746,13 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                 ),
                 Builder(
                   builder: (ctx) {
-                    final billPhoto = selectedBill.photoBase64 ??
-                        provider.getPhotoForBill(selectedBill.billNumber, shopId: selectedBill.shopId, shopName: selectedBill.shopName);
-                    final photoBytes = ImageCompressHelper.safeBase64Decode(billPhoto);
+                    final billPhotos = selectedBill.allPhotos.isNotEmpty
+                        ? selectedBill.allPhotos
+                        : provider.getPhotosForBill(selectedBill.billNumber, shopId: selectedBill.shopId, shopName: selectedBill.shopName);
+                    final firstPhoto = billPhotos.isNotEmpty ? billPhotos.first : null;
+                    final photoBytes = ImageCompressHelper.safeBase64Decode(firstPhoto);
 
-                    if (photoBytes == null) return const SizedBox.shrink();
+                    if (photoBytes == null || billPhotos.isEmpty) return const SizedBox.shrink();
 
                     return Container(
                       margin: const EdgeInsets.only(top: 10),
@@ -769,8 +771,9 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                 showDialog(
                                   context: context,
                                   builder: (_) => FullScreenImageViewer(
-                                    imageBase64: billPhoto!,
+                                    imagesBase64: billPhotos,
                                     title: 'Bill #${selectedBill.billNumber} - ${selectedBill.shopName}',
+                                    subtitle: billPhotos.length > 1 ? '${billPhotos.length} Photos Attached' : null,
                                   ),
                                 );
                               },
@@ -795,6 +798,26 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                     color: Colors.black26,
                                     child: const Icon(Icons.zoom_in, color: Colors.white, size: 22),
                                   ),
+                                  if (billPhotos.length > 1)
+                                    Positioned(
+                                      top: 2,
+                                      left: 2,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0F172A),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          '${billPhotos.length}P',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -804,19 +827,21 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Row(
+                                Row(
                                   children: [
-                                    Icon(Icons.receipt_outlined, size: 16, color: AppTheme.primary),
-                                    SizedBox(width: 4),
+                                    const Icon(Icons.receipt_outlined, size: 16, color: AppTheme.primary),
+                                    const SizedBox(width: 4),
                                     Text(
-                                      'Uploaded Bill Copy',
-                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                      billPhotos.length > 1 ? 'Uploaded Bill Copies (${billPhotos.length})' : 'Uploaded Bill Copy',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Tap to inspect full invoice proof. Photo proof is kept attached for payment records.',
+                                  billPhotos.length > 1
+                                      ? 'Tap to inspect all ${billPhotos.length} invoice pages. Stored until bill is fully paid.'
+                                      : 'Tap to inspect full invoice proof. Photo proof is kept attached for payment records.',
                                   style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
                                 ),
                               ],

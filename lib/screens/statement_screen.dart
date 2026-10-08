@@ -7,7 +7,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/collection_model.dart';
-import '../models/payment_mode.dart';
 import '../providers/collection_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';

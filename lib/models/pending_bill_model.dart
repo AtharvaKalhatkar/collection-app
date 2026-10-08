@@ -11,6 +11,7 @@ class PendingBillModel {
   final double totalAmount;
   final double collectedAmount;
   final String? photoBase64;
+  final List<String> photosBase64;
   final String? photoPath;
   final String status; // 'pending', 'partial', 'paid'
   final DateTime createdAt;
@@ -27,11 +28,18 @@ class PendingBillModel {
     required this.billNumber,
     required this.totalAmount,
     this.collectedAmount = 0.0,
-    this.photoBase64,
+    String? photoBase64,
+    List<String>? photosBase64,
     this.photoPath,
     this.status = 'pending',
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+  })  : photosBase64 = (photosBase64 != null && photosBase64.isNotEmpty)
+            ? List.unmodifiable(photosBase64)
+            : (photoBase64 != null && photoBase64.isNotEmpty ? List.unmodifiable([photoBase64]) : const []),
+        photoBase64 = (photosBase64 != null && photosBase64.isNotEmpty)
+            ? photosBase64.first
+            : photoBase64,
+        createdAt = createdAt ?? DateTime.now();
 
   double get balanceDue =>
       (totalAmount - collectedAmount) > 0 ? (totalAmount - collectedAmount) : 0.0;
@@ -43,6 +51,13 @@ class PendingBillModel {
   bool get isPaid => balanceDue <= 0.001;
 
   bool get isPartial => collectedAmount > 0 && balanceDue > 0.001;
+
+  List<String> get allPhotos => photosBase64.isNotEmpty
+      ? photosBase64
+      : (photoBase64 != null && photoBase64!.isNotEmpty ? [photoBase64!] : const []);
+
+  bool get hasPhoto => allPhotos.isNotEmpty;
+  int get photosCount => allPhotos.length;
 
   Map<String, dynamic> toJson() {
     return {
@@ -58,6 +73,7 @@ class PendingBillModel {
       'totalAmount': totalAmount,
       'collectedAmount': collectedAmount,
       'photoBase64': photoBase64,
+      'photosBase64': allPhotos,
       'photoPath': photoPath,
       'status': status,
       'createdAt': createdAt.toIso8601String(),
@@ -65,6 +81,10 @@ class PendingBillModel {
   }
 
   factory PendingBillModel.fromJson(Map<String, dynamic> json) {
+    final rawList = json['photosBase64'] as List<dynamic>?;
+    final parsedPhotos = rawList?.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+    final singlePhoto = json['photoBase64'] as String?;
+
     return PendingBillModel(
       id: json['id'] as String,
       businessName: json['businessName'] as String? ?? 'Purva Enterprises',
@@ -81,7 +101,8 @@ class PendingBillModel {
       billNumber: json['billNumber'] as String? ?? '',
       totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
       collectedAmount: (json['collectedAmount'] as num?)?.toDouble() ?? 0.0,
-      photoBase64: json['photoBase64'] as String?,
+      photoBase64: singlePhoto,
+      photosBase64: parsedPhotos,
       photoPath: json['photoPath'] as String?,
       status: json['status'] as String? ?? 'pending',
       createdAt: json['createdAt'] != null
@@ -103,11 +124,16 @@ class PendingBillModel {
     double? totalAmount,
     double? collectedAmount,
     String? photoBase64,
+    List<String>? photosBase64,
     String? photoPath,
     String? status,
     DateTime? createdAt,
     bool clearPhoto = false,
   }) {
+    final newPhotos = clearPhoto
+        ? const <String>[]
+        : (photosBase64 ?? (photoBase64 != null ? [photoBase64] : this.photosBase64));
+
     return PendingBillModel(
       id: id ?? this.id,
       businessName: businessName ?? this.businessName,
@@ -120,7 +146,8 @@ class PendingBillModel {
       billNumber: billNumber ?? this.billNumber,
       totalAmount: totalAmount ?? this.totalAmount,
       collectedAmount: collectedAmount ?? this.collectedAmount,
-      photoBase64: clearPhoto ? null : (photoBase64 ?? this.photoBase64),
+      photoBase64: clearPhoto ? null : (newPhotos.isNotEmpty ? newPhotos.first : (photoBase64 ?? this.photoBase64)),
+      photosBase64: newPhotos,
       photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,

@@ -10,6 +10,8 @@ enum PaymentMode {
   final IconData icon;
   const PaymentMode(this.label, this.icon);
 
+  String get displayName => label;
+
   static PaymentMode fromString(String val) {
     final v = val.toLowerCase().trim();
     if (v.contains('cash')) return PaymentMode.cash;

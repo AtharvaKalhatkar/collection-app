@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../models/collection_model.dart';
-import '../models/payment_mode.dart';
 import '../providers/collection_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';

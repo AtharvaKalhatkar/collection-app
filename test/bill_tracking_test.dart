@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:daily_collection_app/models/payment_mode.dart';
 import 'package:daily_collection_app/models/collection_model.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
 

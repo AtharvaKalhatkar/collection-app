@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:daily_collection_app/models/collection_model.dart';
-import 'package:daily_collection_app/models/payment_mode.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
 import 'package:daily_collection_app/screens/orders_screen.dart';
 import 'package:daily_collection_app/screens/statement_screen.dart';

@@ -7,7 +7,6 @@ import '../models/shop_model.dart';
 import '../models/collection_model.dart';
 import '../models/pending_bill_model.dart';
 import '../models/bill_summary.dart';
-import '../models/payment_mode.dart';
 import '../models/order_model.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
@@ -827,7 +826,7 @@ class CollectionProvider extends ChangeNotifier {
       final b = _pendingBills[i];
       if (b.billNumber.trim().toLowerCase() == cleanBill &&
           (cleanShop.isEmpty || b.shopId.trim().toLowerCase() == cleanShop)) {
-        if (!b.isPaid || b.photoBase64 != null) {
+        if (!b.isPaid || b.hasPhoto) {
           final updated = b.copyWith(
             collectedAmount: b.totalAmount,
             status: 'paid',
@@ -848,7 +847,7 @@ class CollectionProvider extends ChangeNotifier {
     }
   }
 
-  /// Removes photoBase64 from any existing collections for a settled bill to reclaim storage
+  /// Removes photos from any existing collections for a settled bill to reclaim storage
   Future<void> _purgePhotoForSettledBill(String billNumber, String? shopId) async {
     final cleanBill = billNumber.trim().toLowerCase();
     final cleanShopId = shopId?.trim().toLowerCase();
@@ -858,7 +857,7 @@ class CollectionProvider extends ChangeNotifier {
       final c = _collections[i];
       if (c.billNumber.trim().toLowerCase() == cleanBill) {
         if (cleanShopId == null || cleanShopId.isEmpty || c.shopId.trim().toLowerCase() == cleanShopId) {
-          if (c.photoBase64 != null) {
+          if (c.hasPhoto) {
             _collections[i] = c.copyWith(clearPhoto: true);
             changed = true;
             if (_firebase.isInitialized) {
@@ -910,51 +909,43 @@ class CollectionProvider extends ChangeNotifier {
     return matches;
   }
 
-  String? getPhotoForBill(String billNumber, {String? shopId, String? shopName}) {
+  List<String> getPhotosForBill(String billNumber, {String? shopId, String? shopName}) {
     final cleanBill = billNumber.trim().toLowerCase();
     final cleanShopId = shopId?.trim().toLowerCase();
     final cleanShopName = shopName?.trim().toLowerCase();
 
     // 1. Direct match in pending bills with shop match preferred
     for (final b in _pendingBills) {
-      if (b.billNumber.trim().toLowerCase() == cleanBill &&
-          b.photoBase64 != null &&
-          b.photoBase64!.isNotEmpty) {
+      if (b.billNumber.trim().toLowerCase() == cleanBill && b.hasPhoto) {
         if (cleanShopId != null && b.shopId.trim().toLowerCase() == cleanShopId) {
-          return b.photoBase64;
+          return b.allPhotos;
         }
         if (cleanShopName != null && b.shopName.trim().toLowerCase() == cleanShopName) {
-          return b.photoBase64;
+          return b.allPhotos;
         }
       }
     }
     // Any pending bill with same billNumber
     for (final b in _pendingBills) {
-      if (b.billNumber.trim().toLowerCase() == cleanBill &&
-          b.photoBase64 != null &&
-          b.photoBase64!.isNotEmpty) {
-        return b.photoBase64;
+      if (b.billNumber.trim().toLowerCase() == cleanBill && b.hasPhoto) {
+        return b.allPhotos;
       }
     }
 
     // 2. Direct match in collections
     for (final c in _collections) {
-      if (c.billNumber.trim().toLowerCase() == cleanBill &&
-          c.photoBase64 != null &&
-          c.photoBase64!.isNotEmpty) {
+      if (c.billNumber.trim().toLowerCase() == cleanBill && c.hasPhoto) {
         if (cleanShopId != null && c.shopId.trim().toLowerCase() == cleanShopId) {
-          return c.photoBase64;
+          return c.allPhotos;
         }
         if (cleanShopName != null && c.shopName.trim().toLowerCase() == cleanShopName) {
-          return c.photoBase64;
+          return c.allPhotos;
         }
       }
     }
     for (final c in _collections) {
-      if (c.billNumber.trim().toLowerCase() == cleanBill &&
-          c.photoBase64 != null &&
-          c.photoBase64!.isNotEmpty) {
-        return c.photoBase64;
+      if (c.billNumber.trim().toLowerCase() == cleanBill && c.hasPhoto) {
+        return c.allPhotos;
       }
     }
 
@@ -963,19 +954,24 @@ class CollectionProvider extends ChangeNotifier {
     if (digits.isNotEmpty && digits.length >= 3) {
       for (final b in _pendingBills) {
         final bDigits = b.billNumber.replaceAll(RegExp(r'[^0-9]'), '');
-        if (bDigits == digits && b.photoBase64 != null && b.photoBase64!.isNotEmpty) {
-          return b.photoBase64;
+        if (bDigits == digits && b.hasPhoto) {
+          return b.allPhotos;
         }
       }
       for (final c in _collections) {
         final cDigits = c.billNumber.replaceAll(RegExp(r'[^0-9]'), '');
-        if (cDigits == digits && c.photoBase64 != null && c.photoBase64!.isNotEmpty) {
-          return c.photoBase64;
+        if (cDigits == digits && c.hasPhoto) {
+          return c.allPhotos;
         }
       }
     }
 
-    return null;
+    return const [];
+  }
+
+  String? getPhotoForBill(String billNumber, {String? shopId, String? shopName}) {
+    final photos = getPhotosForBill(billNumber, shopId: shopId, shopName: shopName);
+    return photos.isNotEmpty ? photos.first : null;
   }
 
   // --- Pending Bill Operations ---
@@ -1061,7 +1057,8 @@ class CollectionProvider extends ChangeNotifier {
       salesmanName: _salesmanName,
       collectedAt: collectionDate,
       billDate: pendingBill.invoiceDate,
-      photoBase64: isFullyPaid ? null : pendingBill.photoBase64,
+      photoBase64: isFullyPaid ? null : (pendingBill.allPhotos.isNotEmpty ? pendingBill.allPhotos.first : null),
+      photosBase64: isFullyPaid ? const [] : pendingBill.allPhotos,
     );
     await addCollection(newCollection);
 

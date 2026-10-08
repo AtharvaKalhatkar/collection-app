@@ -9,7 +9,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'package:daily_collection_app/models/collection_model.dart';
-import 'package:daily_collection_app/models/payment_mode.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
 import 'package:daily_collection_app/screens/statement_screen.dart';
 
