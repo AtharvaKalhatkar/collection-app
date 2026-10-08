@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/pending_bill_model.dart';
 import '../models/shop_model.dart';
@@ -17,12 +18,14 @@ class AddPendingBillScreen extends StatefulWidget {
   final String? initialRouteId;
   final String? initialShopId;
   final DateTime? initialInvoiceDate;
+  final String? initialBusiness;
 
   const AddPendingBillScreen({
     super.key,
     this.initialRouteId,
     this.initialShopId,
     this.initialInvoiceDate,
+    this.initialBusiness,
   });
 
   @override
@@ -34,11 +37,17 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   final _uuid = const Uuid();
   final _picker = ImagePicker();
 
+  // Static in-memory retention across screen navigations
+  static String? lastUsedRouteId;
+  static String? lastUsedShopId;
+  static DateTime? lastUsedInvoiceDate;
+  static DateTime? lastUsedDeliveryDate;
+
   String _selectedBusiness = 'Purva Enterprises';
   String? _selectedRouteId;
   String? _selectedShopId;
 
-  // Invoice Date & Delivery Date (NO DEFAULT DATE)
+  // Invoice Date & Delivery Date
   DateTime? _invoiceDate;
   DateTime? _deliveryDate;
 
@@ -52,11 +61,65 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedRouteId = widget.initialRouteId;
-    _selectedShopId = widget.initialShopId;
+    _selectedBusiness = widget.initialBusiness ?? 'Purva Enterprises';
+    _selectedRouteId = widget.initialRouteId ?? lastUsedRouteId;
+    _selectedShopId = widget.initialShopId ?? lastUsedShopId;
     if (widget.initialInvoiceDate != null) {
       _invoiceDate = widget.initialInvoiceDate;
+    } else {
+      _invoiceDate = lastUsedInvoiceDate;
     }
+    _deliveryDate = lastUsedDeliveryDate;
+    _loadPersistedDefaults();
+  }
+
+  Future<void> _loadPersistedDefaults() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedRoute = prefs.getString('last_pending_bill_route_id');
+      final savedShop = prefs.getString('last_pending_bill_shop_id');
+      final savedInvDateStr = prefs.getString('last_pending_bill_inv_date');
+      final savedDelDateStr = prefs.getString('last_pending_bill_del_date');
+
+      if (mounted) {
+        setState(() {
+          if (_selectedRouteId == null && savedRoute != null && savedRoute.isNotEmpty) {
+            _selectedRouteId = savedRoute;
+            lastUsedRouteId = savedRoute;
+          }
+          if (_selectedShopId == null && savedShop != null && savedShop.isNotEmpty) {
+            _selectedShopId = savedShop;
+            lastUsedShopId = savedShop;
+          }
+          if (_invoiceDate == null && savedInvDateStr != null) {
+            _invoiceDate = DateTime.tryParse(savedInvDateStr);
+            lastUsedInvoiceDate = _invoiceDate;
+          }
+          if (_deliveryDate == null && savedDelDateStr != null) {
+            _deliveryDate = DateTime.tryParse(savedDelDateStr);
+            lastUsedDeliveryDate = _deliveryDate;
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistDefaults(String routeId, String shopId) async {
+    lastUsedRouteId = routeId;
+    lastUsedShopId = shopId;
+    lastUsedInvoiceDate = _invoiceDate;
+    lastUsedDeliveryDate = _deliveryDate;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_pending_bill_route_id', routeId);
+      await prefs.setString('last_pending_bill_shop_id', shopId);
+      if (_invoiceDate != null) {
+        await prefs.setString('last_pending_bill_inv_date', _invoiceDate!.toIso8601String());
+      }
+      if (_deliveryDate != null) {
+        await prefs.setString('last_pending_bill_del_date', _deliveryDate!.toIso8601String());
+      }
+    } catch (_) {}
   }
 
   @override
@@ -306,6 +369,9 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                                     setState(() {
                                       _selectedShopId = s.id;
                                     });
+                                    if (_selectedRouteId != null) {
+                                      _persistDefaults(_selectedRouteId!, s.id);
+                                    }
                                     Navigator.pop(ctx);
                                   },
                                 );
@@ -322,7 +388,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     );
   }
 
-  Future<void> _savePendingBill() async {
+  Future<void> _savePendingBill({bool autoSwitchFirm = false}) async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -408,8 +474,22 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       );
 
       await provider.addPendingBill(newPendingBill);
+      await _persistDefaults(route.id, shop?.id ?? _selectedShopId!);
 
-      if (mounted) {
+      final currentFirm = _selectedBusiness;
+      final nextFirm = currentFirm == 'Purva Enterprises' ? 'Manas Sales' : 'Purva Enterprises';
+      final shopName = shop?.name ?? 'Outlet';
+
+      if (!mounted) return;
+
+      if (autoSwitchFirm) {
+        setState(() {
+          _selectedBusiness = nextFirm;
+          _billNoController.clear();
+          _amountController.clear();
+          _photosBase64.clear();
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -417,22 +497,47 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                 const Icon(Icons.check_circle, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('Bill #$billNo (₹${amount.toStringAsFixed(0)}) uploaded!'),
+                  child: Text('Bill #$billNo saved! Switched to $nextFirm for "$shopName".'),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Bill #$billNo (₹${amount.toStringAsFixed(0)}) saved!'),
                 ),
               ],
             ),
             action: SnackBarAction(
-              label: 'View Bills',
-              textColor: Colors.white,
+              label: 'Add for $nextFirm',
+              textColor: Colors.yellowAccent,
               onPressed: () {
-                Navigator.pushReplacement(
+                Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => AddPendingBillScreen(
+                      initialBusiness: nextFirm,
+                      initialRouteId: route.id,
+                      initialShopId: shop?.id ?? _selectedShopId!,
+                      initialInvoiceDate: _invoiceDate,
+                    ),
+                  ),
                 );
               },
             ),
             backgroundColor: const Color(0xFF10B981),
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
           ),
         );
         Navigator.pop(context);
@@ -455,14 +560,29 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
 
     // Set initial route if none selected
     if (_selectedRouteId == null && routes.isNotEmpty) {
-      _selectedRouteId = routes.first.id;
+      if (lastUsedRouteId != null && routes.any((r) => r.id == lastUsedRouteId)) {
+        _selectedRouteId = lastUsedRouteId;
+      } else {
+        _selectedRouteId = routes.first.id;
+      }
     }
 
     final shopsInRoute = provider.getShopsForRoute(_selectedRouteId ?? '');
+    if (_selectedShopId == null && lastUsedShopId != null) {
+      if (shopsInRoute.any((s) => s.id == lastUsedShopId)) {
+        _selectedShopId = lastUsedShopId;
+      }
+    }
+    if (_selectedShopId != null && !shopsInRoute.any((s) => s.id == _selectedShopId)) {
+      _selectedShopId = null;
+    }
+
     final selectedShop = _selectedShopId != null ? provider.getShopById(_selectedShopId!) : null;
 
     final isPurva = _selectedBusiness == 'Purva Enterprises';
     final firmPrimaryColor = isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary;
+    final otherBusiness = isPurva ? 'Manas Sales' : 'Purva Enterprises';
+    final otherBusinessColor = isPurva ? AppTheme.manasPrimary : AppTheme.purvaPrimary;
 
     return Scaffold(
       appBar: AppBar(
@@ -513,7 +633,17 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                   children: [
                     Expanded(
                       child: InkWell(
-                        onTap: () => setState(() => _selectedBusiness = 'Purva Enterprises'),
+                        onTap: () {
+                          setState(() {
+                            _selectedBusiness = 'Purva Enterprises';
+                            if (_selectedRouteId == null && lastUsedRouteId != null) {
+                              _selectedRouteId = lastUsedRouteId;
+                            }
+                            if (_selectedShopId == null && lastUsedShopId != null) {
+                              _selectedShopId = lastUsedShopId;
+                            }
+                          });
+                        },
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -537,7 +667,17 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                     const SizedBox(width: 4),
                     Expanded(
                       child: InkWell(
-                        onTap: () => setState(() => _selectedBusiness = 'Manas Sales'),
+                        onTap: () {
+                          setState(() {
+                            _selectedBusiness = 'Manas Sales';
+                            if (_selectedRouteId == null && lastUsedRouteId != null) {
+                              _selectedRouteId = lastUsedRouteId;
+                            }
+                            if (_selectedShopId == null && lastUsedShopId != null) {
+                              _selectedShopId = lastUsedShopId;
+                            }
+                          });
+                        },
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -609,6 +749,10 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                       setState(() {
                         _selectedRouteId = val;
                         _selectedShopId = null; // reset outlet on route change
+                        if (val != null) {
+                          lastUsedRouteId = val;
+                          lastUsedShopId = null;
+                        }
                       });
                     },
                   ),
@@ -1115,23 +1259,61 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               ],
               const SizedBox(height: 28),
 
-              // SAVE BUTTON
+              // ACTION BUTTONS
+              // 1. Dual-firm Quick Save & Switch: Saves current bill, retains Route & Outlet & Dates, switches firm
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: isPurva
+                        ? [const Color(0xFF0D9488), const Color(0xFF0F766E)] // Teal for Manas
+                        : [const Color(0xFF4338CA), const Color(0xFF3730A3)], // Indigo for Purva
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: otherBusinessColor.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton.icon(
+                  icon: _isSaving
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.sync_alt_rounded, size: 20, color: Colors.white),
+                  label: Text(
+                    _isSaving ? 'Saving...' : 'Save & Add for $otherBusiness (Same Shop)',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _isSaving ? null : () => _savePendingBill(autoSwitchFirm: true),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // 2. Standard Save & Close
               ElevatedButton.icon(
                 icon: _isSaving
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.save_outlined, size: 20),
+                    : const Icon(Icons.check_circle_outline, size: 20),
                 label: Text(
-                  _isSaving ? 'Uploading Bill...' : 'Save Pending Bill',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                  _isSaving ? 'Saving...' : 'Save & Close ($_selectedBusiness)',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: firmPrimaryColor,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   elevation: 2,
                 ),
-                onPressed: _isSaving ? null : _savePendingBill,
+                onPressed: _isSaving ? null : () => _savePendingBill(autoSwitchFirm: false),
               ),
               const SizedBox(height: 20),
             ],
