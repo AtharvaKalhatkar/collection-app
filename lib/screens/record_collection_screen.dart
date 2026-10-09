@@ -289,16 +289,20 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
 
   Future<void> _openCamera() async {
     try {
-      final photoBase64 = await Navigator.push<String>(
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => const InAppBillCameraScreen(),
           fullscreenDialog: true,
         ),
       );
-      if (photoBase64 != null && photoBase64.isNotEmpty && mounted) {
+      if (result != null && mounted) {
         setState(() {
-          _photoBase64 = photoBase64;
+          if (result is List<String> && result.isNotEmpty) {
+            _photoBase64 = result.first;
+          } else if (result is String && result.isNotEmpty) {
+            _photoBase64 = result;
+          }
         });
       }
     } catch (e) {

@@ -1028,34 +1028,60 @@ class CollectionProvider extends ChangeNotifier {
 
   // --- Pending Bill Operations ---
   Future<PendingBillModel> addPendingBill(PendingBillModel bill) async {
+    // 1. Immediately insert at the top of in-memory list
     _pendingBills.insert(0, bill);
-    await _storage.savePendingBills(_pendingBills);
-    if (_firebase.isInitialized) {
-      await _firebase.savePendingBill(bill);
-    }
+    // 2. Immediately notify listeners so the new bill appears in UI in 0ms!
     notifyListeners();
+
+    // 3. Persist to local storage and sync to Firebase asynchronously in background
+    _persistAndSyncPendingBill(bill);
+
     return bill;
+  }
+
+  void _persistAndSyncPendingBill(PendingBillModel bill) {
+    Future.microtask(() async {
+      try {
+        await _storage.savePendingBills(_pendingBills);
+      } catch (e) {
+        debugPrint('Storage savePendingBills error: $e');
+      }
+      try {
+        if (_firebase.isInitialized) {
+          await _firebase.savePendingBill(bill);
+        }
+      } catch (e) {
+        debugPrint('Firebase savePendingBill error: $e');
+      }
+    });
   }
 
   Future<void> updatePendingBill(PendingBillModel updatedBill) async {
     final idx = _pendingBills.indexWhere((b) => b.id == updatedBill.id);
     if (idx != -1) {
       _pendingBills[idx] = updatedBill;
-      await _storage.savePendingBills(_pendingBills);
-      if (_firebase.isInitialized) {
-        await _firebase.savePendingBill(updatedBill);
-      }
       notifyListeners();
+      _persistAndSyncPendingBill(updatedBill);
     }
   }
 
   Future<void> deletePendingBill(String id) async {
     _pendingBills.removeWhere((b) => b.id == id);
-    await _storage.savePendingBills(_pendingBills);
-    if (_firebase.isInitialized) {
-      await _firebase.deletePendingBill(id);
-    }
     notifyListeners();
+    Future.microtask(() async {
+      try {
+        await _storage.savePendingBills(_pendingBills);
+      } catch (e) {
+        debugPrint('Storage deletePendingBill error: $e');
+      }
+      try {
+        if (_firebase.isInitialized) {
+          await _firebase.deletePendingBill(id);
+        }
+      } catch (e) {
+        debugPrint('Firebase deletePendingBill error: $e');
+      }
+    });
   }
 
   List<PendingBillModel> getPendingBillsForRoute(String routeId, {String? businessName}) {

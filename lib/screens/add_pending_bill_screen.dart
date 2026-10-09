@@ -53,7 +53,6 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   final _amountController = TextEditingController();
 
   final List<String> _photosBase64 = [];
-  String? get _photoBase64 => _photosBase64.isNotEmpty ? _photosBase64.first : null;
   bool _isSaving = false;
 
   @override
@@ -133,7 +132,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
 
   Future<void> _captureBillPhoto() async {
     try {
-      final photoBase64 = await Navigator.push<String>(
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => const InAppBillCameraScreen(),
@@ -141,11 +140,16 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
         ),
       );
 
-      if (photoBase64 != null && photoBase64.isNotEmpty && mounted) {
+      if (result != null && mounted) {
         setState(() {
-          _photosBase64.add(photoBase64);
+          if (result is List<String>) {
+            _photosBase64.addAll(result);
+          } else if (result is String && result.isNotEmpty) {
+            _photosBase64.add(result);
+          }
         });
-        QuickAlert.success(context, 'Bill photo added');
+        final count = result is List ? result.length : 1;
+        QuickAlert.success(context, '$count bill photo${count > 1 ? 's' : ''} added');
       }
     } catch (e) {
       debugPrint('Error capturing bill photo: $e');
@@ -357,14 +361,14 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
         billNumber: billNo,
         totalAmount: amount,
         collectedAmount: 0.0,
-        photoBase64: _photoBase64,
+        photoBase64: _photosBase64.isNotEmpty ? _photosBase64.first : null,
         photosBase64: _photosBase64,
         status: 'pending',
         createdAt: DateTime.now(),
       );
 
       await provider.addPendingBill(newPendingBill);
-      await _persistDefaults(route.id, shop?.id ?? _selectedShopId!);
+      _persistDefaults(route.id, shop?.id ?? _selectedShopId!);
 
       if (mounted) {
         QuickAlert.success(context, 'Bill No: $billNo (₹${amount.toStringAsFixed(0)}) saved!');
