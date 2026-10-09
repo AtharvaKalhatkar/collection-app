@@ -323,13 +323,19 @@ class CollectionDetailsDialog extends StatelessWidget {
                 // Photo preview if available (Clickable & Zoomable)
                 Builder(
                   builder: (ctx) {
-                    final docPhoto = collection.photoBase64 ??
-                        provider.getPhotoForBill(collection.billNumber, shopId: collection.shopId, shopName: collection.shopName);
+                    final docPhotos = collection.allPhotos.isNotEmpty
+                        ? collection.allPhotos
+                        : provider.getPhotosForBill(collection.billNumber, shopId: collection.shopId, shopName: collection.shopName);
+                    final firstPhoto = docPhotos.isNotEmpty
+                        ? docPhotos.first
+                        : (collection.photoBase64 ?? provider.getPhotoForBill(collection.billNumber, shopId: collection.shopId, shopName: collection.shopName));
 
-                    final photoBytes = ImageCompressHelper.safeBase64Decode(docPhoto);
+                    final photoBytes = ImageCompressHelper.safeBase64Decode(firstPhoto);
                     if (photoBytes == null) {
                       return const SizedBox.shrink();
                     }
+
+                    final hasMultiple = docPhotos.length > 1;
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,14 +344,38 @@ class CollectionDetailsDialog extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'DOCUMENT PROOF (बिल फोटो)',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 11,
-                                letterSpacing: 0.8,
-                                color: Colors.blueGrey,
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'DOCUMENT PROOF (बिल फोटो)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                    letterSpacing: 0.8,
+                                    color: Colors.blueGrey,
+                                  ),
+                                ),
+                                if (hasMultiple) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.shade100,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: Colors.amber.shade400),
+                                    ),
+                                    child: Text(
+                                      '${docPhotos.length} Photos',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.amber.shade900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             InkWell(
                               onTap: () {
@@ -353,9 +383,11 @@ class CollectionDetailsDialog extends StatelessWidget {
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => FullScreenImageViewer(
-                                      imageBase64: docPhoto!,
+                                      imagesBase64: docPhotos.isNotEmpty ? docPhotos : (firstPhoto != null ? [firstPhoto] : null),
                                       title: 'Invoice Proof #${collection.billNumber}',
-                                      subtitle: '${collection.shopName} • ${collection.businessName}',
+                                      subtitle: hasMultiple
+                                          ? '${docPhotos.length} Photos Attached • ${collection.shopName}'
+                                          : '${collection.shopName} • ${collection.businessName}',
                                     ),
                                   ),
                                 );
@@ -385,9 +417,11 @@ class CollectionDetailsDialog extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => FullScreenImageViewer(
-                                  imageBase64: docPhoto!,
+                                  imagesBase64: docPhotos.isNotEmpty ? docPhotos : (firstPhoto != null ? [firstPhoto] : null),
                                   title: 'Invoice Proof #${collection.billNumber}',
-                                  subtitle: '${collection.shopName} • ${collection.businessName}',
+                                  subtitle: hasMultiple
+                                      ? '${docPhotos.length} Photos Attached • ${collection.shopName}'
+                                      : '${collection.shopName} • ${collection.businessName}',
                                 ),
                               ),
                             );
@@ -424,12 +458,12 @@ class CollectionDetailsDialog extends StatelessWidget {
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
-                                    children: const [
-                                      Icon(Icons.zoom_in, size: 14, color: Colors.white),
-                                      SizedBox(width: 4),
+                                    children: [
+                                      const Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                                      const SizedBox(width: 4),
                                       Text(
-                                        'Tap to Zoom & Enlarge',
-                                        style: TextStyle(
+                                        hasMultiple ? 'Tap to View All ${docPhotos.length} Photos' : 'Tap to Zoom & Enlarge',
+                                        style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,

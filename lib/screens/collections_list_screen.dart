@@ -545,9 +545,11 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                     final modeColor = _getModeColor(item.paymentMode);
                     final timeStr = DateFormat('hh:mm a').format(item.collectedAt);
                     final isPartial = item.isPartial;
-                    final billPhoto = item.photoBase64 ??
-                        provider.getPhotoForBill(item.billNumber, shopId: item.shopId, shopName: item.shopName);
-                    final photoBytes = ImageCompressHelper.safeBase64Decode(billPhoto);
+                    final billPhotos = item.allPhotos.isNotEmpty
+                        ? item.allPhotos
+                        : provider.getPhotosForBill(item.billNumber, shopId: item.shopId, shopName: item.shopName);
+                    final firstPhoto = billPhotos.isNotEmpty ? billPhotos.first : item.photoBase64;
+                    final photoBytes = ImageCompressHelper.safeBase64Decode(firstPhoto);
 
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
@@ -566,6 +568,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                               Builder(
                                 builder: (ctx) {
                                   if (photoBytes != null) {
+                                    final hasMultiple = billPhotos.length > 1;
                                     return Padding(
                                       padding: const EdgeInsets.only(right: 10.0),
                                       child: InkWell(
@@ -574,9 +577,11 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                             context,
                                             MaterialPageRoute(
                                               builder: (_) => FullScreenImageViewer(
-                                                imageBase64: billPhoto!,
+                                                imagesBase64: billPhotos.isNotEmpty ? billPhotos : (firstPhoto != null ? [firstPhoto] : null),
                                                 title: 'Bill #${item.billNumber} - ${item.shopName}',
-                                                subtitle: '${item.businessName} • ${item.routeName}',
+                                                subtitle: hasMultiple
+                                                    ? '${billPhotos.length} Photos Attached • ${item.businessName}'
+                                                    : '${item.businessName} • ${item.routeName}',
                                               ),
                                             ),
                                           );
@@ -600,12 +605,24 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                               ),
                                             ),
                                             Container(
-                                              padding: const EdgeInsets.all(2),
+                                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
                                               decoration: BoxDecoration(
-                                                color: Colors.black54,
+                                                color: Colors.black.withValues(alpha: 0.7),
                                                 borderRadius: BorderRadius.circular(4),
                                               ),
-                                              child: const Icon(Icons.zoom_in, size: 10, color: Colors.white),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (hasMultiple) ...[
+                                                    Text(
+                                                      '${billPhotos.length}',
+                                                      style: const TextStyle(fontSize: 9, color: Colors.amberAccent, fontWeight: FontWeight.bold),
+                                                    ),
+                                                    const SizedBox(width: 2),
+                                                  ],
+                                                  const Icon(Icons.zoom_in, size: 10, color: Colors.white),
+                                                ],
+                                              ),
                                             ),
                                           ],
                                         ),

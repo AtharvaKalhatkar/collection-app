@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../utils/image_compress_helper.dart';
 
 /// Full-screen zoomable image viewer supporting single or multiple images,
-/// pinch-to-zoom, scroll-zoom, pan gestures, and multi-page navigation.
+/// pinch-to-zoom, double-tap zoom, smooth pan gestures, and multi-page navigation.
 class FullScreenImageViewer extends StatefulWidget {
   final String? imageBase64;
   final List<String>? imagesBase64;
@@ -24,10 +24,15 @@ class FullScreenImageViewer extends StatefulWidget {
 }
 
 class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
-  final TransformationController _transformationController = TransformationController();
   late PageController _pageController;
   late int _currentIndex;
-  double _currentScale = 1.0;
+
+  // Zoom state notifiers to prevent rebuilding the full widget tree on every pinch gesture
+  final ValueNotifier<double> _scaleNotifier = ValueNotifier<double>(1.0);
+  final ValueNotifier<bool> _isZoomedNotifier = ValueNotifier<bool>(false);
+
+  // References to page zoom controllers to trigger zoom in/out/reset from AppBar
+  final Map<int, _ZoomableImagePageState> _pageStates = {};
 
   List<String> get _images {
     if (widget.imagesBase64 != null && widget.imagesBase64!.isNotEmpty) {
@@ -42,64 +47,92 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex.clamp(0, (_images.length - 1).clamp(0, 999));
+    final total = _images.length;
+    _currentIndex = total > 0 ? widget.initialIndex.clamp(0, total - 1) : 0;
     _pageController = PageController(initialPage: _currentIndex);
-    _transformationController.addListener(() {
-      final scale = _transformationController.value.getMaxScaleOnAxis();
-      if ((scale - _currentScale).abs() > 0.05) {
-        setState(() {
-          _currentScale = scale;
-        });
-      }
-    });
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _transformationController.dispose();
+    _scaleNotifier.dispose();
+    _isZoomedNotifier.dispose();
     super.dispose();
   }
 
-  void _zoomIn() {
-    final nextScale = (_currentScale * 1.4).clamp(0.5, 6.0);
-    _setZoom(nextScale);
+  void _registerPageState(int index, _ZoomableImagePageState state) {
+    _pageStates[index] = state;
   }
 
-  void _zoomOut() {
-    final nextScale = (_currentScale / 1.4).clamp(0.5, 6.0);
-    _setZoom(nextScale);
+  void _unregisterPageState(int index) {
+    _pageStates.remove(index);
   }
 
-  void _resetZoom() {
-    _setZoom(1.0);
+  void _onScaleChanged(double scale) {
+    _scaleNotifier.value = scale;
+    final isZoomed = scale > 1.08;
+    if (_isZoomedNotifier.value != isZoomed) {
+      _isZoomedNotifier.value = isZoomed;
+    }
   }
 
-  void _setZoom(double targetScale) {
-    setState(() {
-      _currentScale = targetScale;
-      _transformationController.value =
-          Matrix4.diagonal3Values(targetScale, targetScale, 1.0);
-    });
+  void _resetCurrentZoom() {
+    _pageStates[_currentIndex]?.resetZoom();
+    _scaleNotifier.value = 1.0;
+    _isZoomedNotifier.value = false;
+  }
+
+  void _zoomInCurrent() {
+    _pageStates[_currentIndex]?.zoomIn();
+  }
+
+  void _zoomOutCurrent() {
+    _pageStates[_currentIndex]?.zoomOut();
+  }
+
+  void _goToPrevious() {
+    if (_currentIndex > 0) {
+      _resetCurrentZoom();
+      final prevIdx = _currentIndex - 1;
+      if (_pageController.hasClients) {
+        _pageController.animateToPage(
+          prevIdx,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeInOutCubic,
+        );
+      } else {
+        setState(() => _currentIndex = prevIdx);
+      }
+    }
+  }
+
+  void _goToNext() {
+    if (_currentIndex < _images.length - 1) {
+      _resetCurrentZoom();
+      final nextIdx = _currentIndex + 1;
+      if (_pageController.hasClients) {
+        _pageController.animateToPage(
+          nextIdx,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeInOutCubic,
+        );
+      } else {
+        setState(() => _currentIndex = nextIdx);
+      }
+    }
   }
 
   void _onPageChanged(int index) {
+    _resetCurrentZoom();
     setState(() {
       _currentIndex = index;
     });
-    _resetZoom();
   }
 
   @override
   Widget build(BuildContext context) {
     final images = _images;
     final hasMultiple = images.length > 1;
-    final currentImageBase64 = images.isNotEmpty && _currentIndex < images.length
-        ? images[_currentIndex]
-        : null;
-    final imageBytes = currentImageBase64 != null
-        ? ImageCompressHelper.safeBase64Decode(currentImageBase64)
-        : null;
 
     final displayTitle = hasMultiple
         ? '${widget.title} (${_currentIndex + 1}/${images.length})'
@@ -108,7 +141,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0F1D),
       appBar: AppBar(
-        backgroundColor: Colors.black.withValues(alpha: 0.65),
+        backgroundColor: Colors.black.withValues(alpha: 0.75),
         elevation: 0,
         foregroundColor: Colors.white,
         title: Column(
@@ -126,157 +159,385 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
           ],
         ),
         actions: [
-          // Zoom scale badge
-          Container(
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '${(_currentScale * 100).toInt()}%',
-                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-              ),
+          // Zoom scale badge (listens to scaleNotifier without rebuilding the image)
+          Center(
+            child: ValueListenableBuilder<double>(
+              valueListenable: _scaleNotifier,
+              builder: (context, scale, _) {
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Text(
+                    '${(scale * 100).toInt()}%',
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                );
+              },
             ),
           ),
           IconButton(
             icon: const Icon(Icons.zoom_out, size: 22),
             tooltip: 'Zoom Out (-)',
-            onPressed: _zoomOut,
+            onPressed: _zoomOutCurrent,
           ),
           IconButton(
             icon: const Icon(Icons.zoom_in, size: 22),
             tooltip: 'Zoom In (+)',
-            onPressed: _zoomIn,
+            onPressed: _zoomInCurrent,
           ),
           IconButton(
-            icon: const Icon(Icons.restart_alt, size: 20),
+            icon: const Icon(Icons.restart_alt, size: 21),
             tooltip: 'Reset Zoom (100%)',
-            onPressed: _resetZoom,
+            onPressed: _resetCurrentZoom,
           ),
         ],
       ),
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // Center Image View
-          Center(
-            child: imageBytes == null
-                ? const Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.broken_image, size: 54, color: Colors.white54),
-                      SizedBox(height: 12),
-                      Text('Image data corrupted or unavailable', style: TextStyle(color: Colors.white70)),
-                    ],
-                  )
-                : InteractiveViewer(
-                    transformationController: _transformationController,
-                    minScale: 0.5,
-                    maxScale: 6.0,
-                    panEnabled: true,
-                    scaleEnabled: true,
-                    clipBehavior: Clip.none,
-                    child: Image.memory(
-                      imageBytes,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Center(
-                          child: Text('Could not render image', style: TextStyle(color: Colors.white)),
-                        );
+          // 1. PAGEVIEW FOR MULTI-PHOTO SWIPING
+          if (images.isEmpty)
+            const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.broken_image, size: 54, color: Colors.white54),
+                  SizedBox(height: 12),
+                  Text('No image data available', style: TextStyle(color: Colors.white70)),
+                ],
+              ),
+            )
+          else
+            ValueListenableBuilder<bool>(
+              valueListenable: _isZoomedNotifier,
+              builder: (context, isZoomed, _) {
+                return PageView.builder(
+                  controller: _pageController,
+                  physics: isZoomed
+                      ? const NeverScrollableScrollPhysics() // When zoomed, panning pans image rather than swiping page
+                      : const BouncingScrollPhysics(),
+                  itemCount: images.length,
+                  onPageChanged: _onPageChanged,
+                  itemBuilder: (context, index) {
+                    return _ZoomableImagePage(
+                      key: ValueKey('zoom-page-$index'),
+                      imageBase64: images[index],
+                      onScaleChanged: (scale) {
+                        if (_currentIndex == index) {
+                          _onScaleChanged(scale);
+                        }
                       },
-                    ),
-                  ),
-          ),
+                      onStateCreated: (state) => _registerPageState(index, state),
+                      onStateDisposed: () => _unregisterPageState(index),
+                    );
+                  },
+                );
+              },
+            ),
 
-          // Previous / Next overlay buttons for multi-photo navigation
-          if (hasMultiple) ...[
-            if (_currentIndex > 0)
-              Positioned(
-                left: 12,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: IconButton.filled(
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.chevron_left, size: 30),
-                    tooltip: 'Previous Photo',
-                    onPressed: () {
-                      _pageController.previousPage(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeInOut,
-                      );
-                      _onPageChanged(_currentIndex - 1);
-                    },
-                  ),
-                ),
-              ),
-            if (_currentIndex < images.length - 1)
-              Positioned(
-                right: 12,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: IconButton.filled(
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.chevron_right, size: 30),
-                    tooltip: 'Next Photo',
-                    onPressed: () {
-                      _pageController.nextPage(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeInOut,
-                      );
-                      _onPageChanged(_currentIndex + 1);
-                    },
-                  ),
-                ),
-              ),
-          ],
-
-          // Bottom instruction chip & page indicator
-          Positioned(
-            bottom: 24,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.75),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (hasMultiple) ...[
-                      const Icon(Icons.photo_library_outlined, size: 16, color: Colors.amberAccent),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Photo ${_currentIndex + 1} of ${images.length}  •  ',
-                        style: const TextStyle(color: Colors.amberAccent, fontSize: 12, fontWeight: FontWeight.bold),
+          // 2. PREVIOUS BUTTON (Left arrow)
+          if (hasMultiple && _currentIndex > 0)
+            Positioned(
+              left: 14,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: Material(
+                  color: Colors.black.withValues(alpha: 0.65),
+                  shape: const CircleBorder(),
+                  elevation: 6,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _goToPrevious,
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white38, width: 1.2),
                       ),
-                    ],
-                    const Icon(Icons.pinch_outlined, size: 16, color: Colors.white70),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Pinch / Scroll to zoom',
-                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                      child: const Icon(
+                        Icons.chevron_left_rounded,
+                        size: 36,
+                        color: Colors.white,
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
+
+          // 3. NEXT BUTTON (Right arrow)
+          if (hasMultiple && _currentIndex < images.length - 1)
+            Positioned(
+              right: 14,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: Material(
+                  color: Colors.black.withValues(alpha: 0.65),
+                  shape: const CircleBorder(),
+                  elevation: 6,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _goToNext,
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white38, width: 1.2),
+                      ),
+                      child: const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 36,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // 4. BOTTOM INDICATOR & CONTROLS
+          Positioned(
+            bottom: 24,
+            left: 16,
+            right: 16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Multi-page dots indicator if multiple photos
+                if (hasMultiple)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(images.length, (i) {
+                        final isActive = i == _currentIndex;
+                        return GestureDetector(
+                          onTap: () {
+                            if (i != _currentIndex) {
+                              _resetCurrentZoom();
+                              _pageController.animateToPage(
+                                i,
+                                duration: const Duration(milliseconds: 280),
+                                curve: Curves.easeInOutCubic,
+                              );
+                            }
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            width: isActive ? 18 : 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: isActive ? Colors.amberAccent : Colors.white38,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+
+                // Hint chip
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (hasMultiple) ...[
+                        const Icon(Icons.photo_library_outlined, size: 14, color: Colors.amberAccent),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_currentIndex + 1}/${images.length}',
+                          style: const TextStyle(color: Colors.amberAccent, fontSize: 11.5, fontWeight: FontWeight.bold),
+                        ),
+                        const Text(
+                          ' • ',
+                          style: TextStyle(color: Colors.white38, fontSize: 11.5),
+                        ),
+                      ],
+                      const Icon(Icons.touch_app_outlined, size: 14, color: Colors.white70),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Double-tap or pinch to zoom',
+                        style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Dedicated single-page zoomable image container.
+/// Encapsulates its own TransformationController and AnimationController to ensure 60fps
+/// smooth panning, double-tap zoom, and pinch gestures without causing rebuilds of the parent widget tree.
+class _ZoomableImagePage extends StatefulWidget {
+  final String imageBase64;
+  final ValueChanged<double> onScaleChanged;
+  final void Function(_ZoomableImagePageState state) onStateCreated;
+  final VoidCallback onStateDisposed;
+
+  const _ZoomableImagePage({
+    super.key,
+    required this.imageBase64,
+    required this.onScaleChanged,
+    required this.onStateCreated,
+    required this.onStateDisposed,
+  });
+
+  @override
+  State<_ZoomableImagePage> createState() => _ZoomableImagePageState();
+}
+
+class _ZoomableImagePageState extends State<_ZoomableImagePage>
+    with SingleTickerProviderStateMixin {
+  final TransformationController _controller = TransformationController();
+  late AnimationController _animController;
+  Animation<Matrix4>? _anim;
+
+  Offset _doubleTapPosition = Offset.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.onStateCreated(this);
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+
+    _controller.addListener(_handleControllerChange);
+  }
+
+  void _handleControllerChange() {
+    final scale = _controller.value.getMaxScaleOnAxis();
+    widget.onScaleChanged(scale);
+  }
+
+  @override
+  void dispose() {
+    widget.onStateDisposed();
+    _controller.removeListener(_handleControllerChange);
+    _controller.dispose();
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void resetZoom() {
+    _animateToMatrix(Matrix4.identity());
+  }
+
+  void zoomIn() {
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final nextScale = (currentScale * 1.45).clamp(1.0, 6.0);
+    final target = Matrix4.diagonal3Values(nextScale, nextScale, 1.0);
+    _animateToMatrix(target);
+  }
+
+  void zoomOut() {
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final nextScale = (currentScale / 1.45).clamp(1.0, 6.0);
+    final target = Matrix4.diagonal3Values(nextScale, nextScale, 1.0);
+    _animateToMatrix(target);
+  }
+
+  void _animateToMatrix(Matrix4 target) {
+    _animController.stop();
+    final start = _controller.value;
+    _anim = Matrix4Tween(begin: start, end: target).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeInOutCubic),
+    );
+    _anim!.addListener(() {
+      _controller.value = _anim!.value;
+    });
+    _animController.forward(from: 0.0);
+  }
+
+  void _handleDoubleTap() {
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    if (currentScale > 1.15) {
+      // Already zoomed in -> reset to 1.0x
+      _animateToMatrix(Matrix4.identity());
+    } else {
+      // Zoom into tapped point at 2.5x
+      const targetScale = 2.5;
+      final x = -_doubleTapPosition.dx * (targetScale - 1);
+      final y = -_doubleTapPosition.dy * (targetScale - 1);
+      final target = Matrix4.identity()
+        ..storage[0] = targetScale
+        ..storage[5] = targetScale
+        ..storage[12] = x
+        ..storage[13] = y;
+      _animateToMatrix(target);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final imageBytes = ImageCompressHelper.safeBase64Decode(widget.imageBase64);
+
+    if (imageBytes == null) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.broken_image, size: 54, color: Colors.white54),
+            SizedBox(height: 12),
+            Text('Could not decode image', style: TextStyle(color: Colors.white70)),
+          ],
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onDoubleTapDown: (details) {
+        _doubleTapPosition = details.localPosition;
+      },
+      onDoubleTap: _handleDoubleTap,
+      child: Center(
+        child: InteractiveViewer(
+          transformationController: _controller,
+          minScale: 1.0,
+          maxScale: 6.0,
+          panEnabled: true,
+          scaleEnabled: true,
+          clipBehavior: Clip.none,
+          boundaryMargin: const EdgeInsets.all(180.0),
+          child: Image.memory(
+            imageBytes,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              return const Center(
+                child: Text('Could not render image', style: TextStyle(color: Colors.white)),
+              );
+            },
+          ),
+        ),
       ),
     );
   }

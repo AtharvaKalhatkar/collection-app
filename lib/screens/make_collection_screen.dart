@@ -768,12 +768,14 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                             borderRadius: BorderRadius.circular(8),
                             child: InkWell(
                               onTap: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (_) => FullScreenImageViewer(
-                                    imagesBase64: billPhotos,
-                                    title: 'Bill #${selectedBill.billNumber} - ${selectedBill.shopName}',
-                                    subtitle: billPhotos.length > 1 ? '${billPhotos.length} Photos Attached' : null,
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => FullScreenImageViewer(
+                                      imagesBase64: billPhotos,
+                                      title: 'Bill #${selectedBill.billNumber} - ${selectedBill.shopName}',
+                                      subtitle: billPhotos.length > 1 ? '${billPhotos.length} Photos Attached' : null,
+                                    ),
                                   ),
                                 );
                               },
