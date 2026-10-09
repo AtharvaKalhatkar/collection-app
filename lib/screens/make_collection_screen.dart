@@ -237,8 +237,6 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                               itemBuilder: (context, idx) {
                                 final b = filtered[idx];
                                 final isSelected = b.id == _selectedPendingBillId;
-                                final invDateStr = DateFormat('dd MMM').format(b.invoiceDate);
-                                final delDateStr = DateFormat('dd MMM').format(b.deliveryDate);
 
                                 return ListTile(
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -283,8 +281,8 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          'Bill No: ${b.billNumber} • Inv: $invDateStr • Del: $delDateStr',
-                                          style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700),
+                                          'Bill No: ${b.billNumber}',
+                                          style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, fontWeight: FontWeight.w600),
                                         ),
                                         Text(
                                           'Total: ${CurrencyFormatter.format(b.totalAmount)}',
