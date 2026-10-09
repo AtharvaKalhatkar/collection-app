@@ -137,6 +137,11 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
 
   // Searchable Pending Bill Picker
   void _openSearchablePendingBillPicker(List<PendingBillModel> bills) {
+    final provider = context.read<CollectionProvider>();
+    final allBizBills = provider.pendingBills
+        .where((b) => !b.isPaid && b.businessName == _selectedBusiness)
+        .toList();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -145,9 +150,12 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
       ),
       builder: (ctx) {
         String query = '';
+        bool showAllRoutes = bills.isEmpty && allBizBills.isNotEmpty;
+
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final filtered = bills.where((b) {
+            final currentList = showAllRoutes ? allBizBills : bills;
+            final filtered = currentList.where((b) {
               if (query.isEmpty) return true;
               final q = query.toLowerCase();
               return b.billNumber.toLowerCase().contains(q) ||
@@ -163,7 +171,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                 bottom: MediaQuery.of(context).viewInsets.bottom + 16,
               ),
               child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.7,
+                height: MediaQuery.of(context).size.height * 0.75,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -180,9 +188,71 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                         ),
                       ],
                     ),
+                    if (allBizBills.length > bills.length) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => setModalState(() => showAllRoutes = false),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: !showAllRoutes ? AppTheme.primary : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      'Current Beat (${bills.length})',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: !showAllRoutes ? Colors.white : Colors.blueGrey.shade800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => setModalState(() => showAllRoutes = true),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: showAllRoutes ? AppTheme.primary : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      'All Beats (${allBizBills.length})',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: showAllRoutes ? Colors.white : Colors.blueGrey.shade800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     TextField(
-                      autofocus: true,
+                      autofocus: bills.isNotEmpty,
                       decoration: InputDecoration(
                         hintText: 'Search bill, outlet...',
                         prefixIcon: const Icon(Icons.search, size: 20),
@@ -209,7 +279,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                   const SizedBox(height: 8),
                                   Text(
                                     query.isEmpty
-                                        ? 'No pending bills found for this route'
+                                        ? 'No pending bills found for this selection'
                                         : 'No bills match "$query"',
                                     style: TextStyle(color: Colors.blueGrey.shade600),
                                   ),
@@ -218,14 +288,26 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                     icon: const Icon(Icons.add, size: 16),
                                     label: const Text('Add New Bill'),
                                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-                                    onPressed: () {
+                                    onPressed: () async {
                                       Navigator.pop(ctx);
-                                      Navigator.push(
+                                      final added = await Navigator.push<PendingBillModel>(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (_) => AddPendingBillScreen(initialRouteId: _selectedRouteId),
+                                          builder: (_) => AddPendingBillScreen(
+                                            initialRouteId: _selectedRouteId,
+                                            initialBusiness: _selectedBusiness,
+                                          ),
                                         ),
                                       );
+                                      if (added != null && mounted) {
+                                        setState(() {
+                                          _selectedBusiness = added.businessName;
+                                          _selectedRouteId = added.routeId;
+                                          _selectedPendingBillId = added.id;
+                                          _collectedAmountController.text = added.balanceDue.toStringAsFixed(0);
+                                          _persistRoute(added.routeId);
+                                        });
+                                      }
                                     },
                                   ),
                                 ],
@@ -281,7 +363,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          'Bill No: ${b.billNumber}',
+                                          'Bill No: ${b.billNumber}${showAllRoutes ? ' • ${b.routeName}' : ''}',
                                           style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, fontWeight: FontWeight.w600),
                                         ),
                                         Text(
@@ -296,8 +378,10 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                       : null,
                                   onTap: () {
                                     setState(() {
+                                      _selectedRouteId = b.routeId;
                                       _selectedPendingBillId = b.id;
                                       _collectedAmountController.text = b.balanceDue.toStringAsFixed(0);
+                                      _persistRoute(b.routeId);
                                     });
                                     Navigator.pop(ctx);
                                   },

@@ -5,10 +5,10 @@ import 'package:image/image.dart' as img;
 class ImageCompressHelper {
   /// Compresses raw image bytes to a high-clarity JPEG base64 string.
   /// Preserves sharp text readability on paper bills while keeping file sizes optimal.
-  static String compressToBase64(Uint8List rawBytes, {int maxDimension = 1800, int quality = 85}) {
-    // If the image is already lightweight (<= 500 KB), directly encode to preserve 100% original sharpness
+  static String compressToBase64(Uint8List rawBytes, {int maxDimension = 1500, int quality = 80}) {
+    // If the image is already lightweight (<= 200 KB), directly encode to preserve 100% original sharpness
     // and avoid heavy pure-Dart CPU decoding on mobile browsers
-    if (rawBytes.lengthInBytes <= 500000) {
+    if (rawBytes.lengthInBytes <= 200000) {
       return base64Encode(rawBytes);
     }
 

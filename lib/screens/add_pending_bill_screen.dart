@@ -368,7 +368,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
 
       if (mounted) {
         QuickAlert.success(context, 'Bill No: $billNo (₹${amount.toStringAsFixed(0)}) saved!');
-        Navigator.pop(context);
+        Navigator.pop(context, newPendingBill);
       }
     } catch (e) {
       if (mounted) {

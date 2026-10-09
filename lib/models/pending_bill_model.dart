@@ -72,7 +72,7 @@ class PendingBillModel {
       'billNumber': billNumber,
       'totalAmount': totalAmount,
       'collectedAmount': collectedAmount,
-      'photoBase64': photoBase64,
+      'photoBase64': null, // Avoid duplicating large base64 strings in Firestore and local storage
       'photosBase64': allPhotos,
       'photoPath': photoPath,
       'status': status,

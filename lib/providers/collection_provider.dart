@@ -217,16 +217,24 @@ class CollectionProvider extends ChangeNotifier {
             }
           }
 
-          // Synchronize Pending Bills across all devices & logins
+          // Synchronize Pending Bills across all devices & logins safely
           final cloudBills = await _firebase.fetchPendingBills();
-          if (cloudBills.isNotEmpty) {
-            _pendingBills = cloudBills;
-            await _storage.savePendingBills(_pendingBills);
-          } else {
-            for (final b in _pendingBills) {
-              await _firebase.savePendingBill(b);
+          final billMap = <String, PendingBillModel>{};
+          for (final b in cloudBills) {
+            billMap[b.id] = b;
+          }
+          // Merge local bills so newly added bills on this device are NEVER overwritten/lost
+          for (final b in _pendingBills) {
+            if (!billMap.containsKey(b.id)) {
+              billMap[b.id] = b;
+              if (_firebase.isInitialized) {
+                _firebase.savePendingBill(b);
+              }
             }
           }
+          _pendingBills = billMap.values.toList();
+          _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          await _storage.savePendingBills(_pendingBills);
 
           // Auto-clean: ensure any already paid/settled bills auto-delete heavy photos to save cloud storage
           bool hasPurgedCloud = false;

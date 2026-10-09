@@ -58,6 +58,27 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
     });
   }
 
+  Future<void> _navigateToAddBill() async {
+    final added = await Navigator.push<PendingBillModel>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddPendingBillScreen(
+          initialRouteId: _selectedRouteId,
+          initialBusiness: _selectedFirm,
+        ),
+      ),
+    );
+    if (added != null && mounted) {
+      setState(() {
+        _selectedInvoiceDate = null;
+        _selectedFirm = null;
+        _selectedRouteId = null;
+        _statusFilter = 'pending';
+        _searchQuery = '';
+      });
+    }
+  }
+
   Future<void> _confirmDelete(PendingBillModel bill) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -129,7 +150,8 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
       }
 
       return true;
-    }).toList();
+    }).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     // Summary calculations
     final totalPendingAmount = filteredBills.fold(0.0, (sum, b) => sum + b.balanceDue);
@@ -145,12 +167,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
           IconButton(
             icon: const Icon(Icons.note_add_outlined, size: 22),
             tooltip: 'Upload New Bill',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AddPendingBillScreen()),
-              );
-            },
+            onPressed: _navigateToAddBill,
           ),
         ],
       ),
@@ -468,37 +485,70 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.receipt_long_outlined, size: 54, color: Colors.blueGrey.shade200),
+                          Icon(
+                            allBills.isNotEmpty
+                                ? Icons.filter_alt_off_outlined
+                                : Icons.receipt_long_outlined,
+                            size: 54,
+                            color: Colors.blueGrey.shade300,
+                          ),
                           const SizedBox(height: 12),
                           Text(
-                            _selectedInvoiceDate != null
-                                ? 'No pending bills found for ${DateFormat('dd MMM yyyy').format(_selectedInvoiceDate!)}'
+                            allBills.isNotEmpty
+                                ? 'No bills match active filters'
                                 : 'No pending bills recorded yet',
-                            style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 14, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              color: Colors.blueGrey.shade800,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Delivered bills uploaded by delivery staff will appear here for collection.',
-                            style: TextStyle(color: Colors.blueGrey.shade500, fontSize: 12),
+                            allBills.isNotEmpty
+                                ? 'There are ${allBills.length} total bills, but they are filtered out by current date, firm, route or status.'
+                                : 'Delivered bills uploaded by delivery staff will appear here for collection.',
+                            style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 12),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Add Bill'),
-                            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => AddPendingBillScreen(
-                                    initialInvoiceDate: _selectedInvoiceDate,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                          if (allBills.isNotEmpty) ...[
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.clear_all, size: 18),
+                              label: Text('Clear Filters (Show All ${allBills.length} Bills)'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _selectedInvoiceDate = null;
+                                  _selectedFirm = null;
+                                  _selectedRouteId = null;
+                                  _statusFilter = 'pending';
+                                  _searchQuery = '';
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('Add Another Bill'),
+                              onPressed: _navigateToAddBill,
+                            ),
+                          ] else ...[
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('Add Bill'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primary,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: _navigateToAddBill,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -855,16 +905,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
         backgroundColor: AppTheme.primary,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('Add Bill', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => AddPendingBillScreen(
-                initialInvoiceDate: _selectedInvoiceDate,
-              ),
-            ),
-          );
-        },
+        onPressed: _navigateToAddBill,
       ),
     );
   }
