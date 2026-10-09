@@ -28,11 +28,10 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
   late PageController _pageController;
   late int _currentIndex;
 
-  // Zoom state notifiers to prevent rebuilding the full widget tree on every pinch gesture
-  final ValueNotifier<double> _scaleNotifier = ValueNotifier<double>(1.0);
+  // Zoom state notifier to prevent rebuilding the full widget tree on pinch gestures
   final ValueNotifier<bool> _isZoomedNotifier = ValueNotifier<bool>(false);
 
-  // References to page zoom controllers to trigger zoom in/out/reset from AppBar
+  // References to page zoom controllers to trigger zoom reset when page changes
   final Map<int, _ZoomableImagePageState> _pageStates = {};
 
   List<String> get _images {
@@ -56,7 +55,6 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
   @override
   void dispose() {
     _pageController.dispose();
-    _scaleNotifier.dispose();
     _isZoomedNotifier.dispose();
     super.dispose();
   }
@@ -70,8 +68,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
   }
 
   void _onScaleChanged(double scale) {
-    _scaleNotifier.value = scale;
-    final isZoomed = scale > 1.08;
+    final isZoomed = scale > 1.05;
     if (_isZoomedNotifier.value != isZoomed) {
       _isZoomedNotifier.value = isZoomed;
     }
@@ -79,16 +76,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
 
   void _resetCurrentZoom() {
     _pageStates[_currentIndex]?.resetZoom();
-    _scaleNotifier.value = 1.0;
     _isZoomedNotifier.value = false;
-  }
-
-  void _zoomInCurrent() {
-    _pageStates[_currentIndex]?.zoomIn();
-  }
-
-  void _zoomOutCurrent() {
-    _pageStates[_currentIndex]?.zoomOut();
   }
 
   void _goToPrevious() {
@@ -187,47 +175,12 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
           ],
         ),
         actions: [
-          // Zoom scale badge (listens to scaleNotifier without rebuilding the image)
-          Center(
-            child: ValueListenableBuilder<double>(
-              valueListenable: _scaleNotifier,
-              builder: (context, scale, _) {
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: Text(
-                    '${(scale * 100).toInt()}%',
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                );
-              },
-            ),
-          ),
           IconButton(
-            icon: const Icon(Icons.zoom_out, size: 22),
-            tooltip: 'Zoom Out (-)',
-            onPressed: _zoomOutCurrent,
-          ),
-          IconButton(
-            icon: const Icon(Icons.zoom_in, size: 22),
-            tooltip: 'Zoom In (+)',
-            onPressed: _zoomInCurrent,
-          ),
-          IconButton(
-            icon: const Icon(Icons.restart_alt, size: 21),
-            tooltip: 'Reset Zoom (100%)',
-            onPressed: _resetCurrentZoom,
-          ),
-          IconButton(
-            icon: const Icon(Icons.share_outlined, size: 21),
-            tooltip: 'Share Image',
+            icon: const Icon(Icons.share_outlined, size: 22, color: Colors.white),
+            tooltip: 'Share via WhatsApp',
             onPressed: _shareCurrentImage,
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Stack(
@@ -244,6 +197,14 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
                   Text('No image data available', style: TextStyle(color: Colors.white70)),
                 ],
               ),
+            )
+          else if (images.length == 1)
+            _ZoomableImagePage(
+              key: const ValueKey('zoom-single-page'),
+              imageBase64: images.first,
+              onScaleChanged: (_) {},
+              onStateCreated: (state) => _registerPageState(0, state),
+              onStateDisposed: () => _unregisterPageState(0),
             )
           else
             ValueListenableBuilder<bool>(
@@ -464,18 +425,11 @@ class _ZoomableImagePageState extends State<_ZoomableImagePage>
       duration: const Duration(milliseconds: 250),
     );
 
-    _controller.addListener(_handleControllerChange);
-  }
-
-  void _handleControllerChange() {
-    final scale = _controller.value.getMaxScaleOnAxis();
-    widget.onScaleChanged(scale);
   }
 
   @override
   void dispose() {
     widget.onStateDisposed();
-    _controller.removeListener(_handleControllerChange);
     _controller.dispose();
     _animController.dispose();
     super.dispose();
@@ -483,27 +437,14 @@ class _ZoomableImagePageState extends State<_ZoomableImagePage>
 
   void resetZoom() {
     _animateToMatrix(Matrix4.identity());
-  }
-
-  void zoomIn() {
-    final currentScale = _controller.value.getMaxScaleOnAxis();
-    final nextScale = (currentScale * 1.45).clamp(1.0, 6.0);
-    final target = Matrix4.diagonal3Values(nextScale, nextScale, 1.0);
-    _animateToMatrix(target);
-  }
-
-  void zoomOut() {
-    final currentScale = _controller.value.getMaxScaleOnAxis();
-    final nextScale = (currentScale / 1.45).clamp(1.0, 6.0);
-    final target = Matrix4.diagonal3Values(nextScale, nextScale, 1.0);
-    _animateToMatrix(target);
+    widget.onScaleChanged(1.0);
   }
 
   void _animateToMatrix(Matrix4 target) {
     _animController.stop();
     final start = _controller.value;
     _anim = Matrix4Tween(begin: start, end: target).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOutCubic),
+      CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
     );
     _anim!.addListener(() {
       _controller.value = _anim!.value;
@@ -514,10 +455,11 @@ class _ZoomableImagePageState extends State<_ZoomableImagePage>
   void _handleDoubleTap() {
     final currentScale = _controller.value.getMaxScaleOnAxis();
     if (currentScale > 1.15) {
-      // Already zoomed in -> reset to 1.0x
+      // Already zoomed in -> smoothly reset to 1.0x
       _animateToMatrix(Matrix4.identity());
+      widget.onScaleChanged(1.0);
     } else {
-      // Zoom into tapped point at 2.5x
+      // Zoom into tapped point at 2.5x smoothly
       const targetScale = 2.5;
       final x = -_doubleTapPosition.dx * (targetScale - 1);
       final y = -_doubleTapPosition.dy * (targetScale - 1);
@@ -527,6 +469,7 @@ class _ZoomableImagePageState extends State<_ZoomableImagePage>
         ..storage[12] = x
         ..storage[13] = y;
       _animateToMatrix(target);
+      widget.onScaleChanged(targetScale);
     }
   }
 
@@ -548,6 +491,7 @@ class _ZoomableImagePageState extends State<_ZoomableImagePage>
     }
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onDoubleTapDown: (details) {
         _doubleTapPosition = details.localPosition;
       },
@@ -560,7 +504,11 @@ class _ZoomableImagePageState extends State<_ZoomableImagePage>
           panEnabled: true,
           scaleEnabled: true,
           clipBehavior: Clip.none,
-          boundaryMargin: const EdgeInsets.all(180.0),
+          boundaryMargin: EdgeInsets.zero,
+          onInteractionEnd: (_) {
+            final scale = _controller.value.getMaxScaleOnAxis();
+            widget.onScaleChanged(scale);
+          },
           child: Image.memory(
             imageBytes,
             fit: BoxFit.contain,

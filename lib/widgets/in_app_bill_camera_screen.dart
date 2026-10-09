@@ -1,15 +1,19 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import '../utils/image_compress_helper.dart';
 import 'camera/camera_stub_controller.dart'
     if (dart.library.html) 'camera/camera_web_controller.dart';
 
-/// Full-screen in-app camera viewfinder matching WhatsApp/Telegram layout:
-/// - Top-left [✕] close button
-/// - Full-screen live camera stream
-/// - Bottom bar: [Gallery 🖼️] on left, [Shutter ⚪] in center, [Flip Camera 🔄] on right
-/// - Dedicated Photo mode (no video) specifically for crisp bill capturing.
+/// Full-screen in-app camera viewfinder designed exactly like WhatsApp:
+/// - Top-left: [✕] Close button
+/// - Top-right: [⚡] Flash / Torch toggle (Off, On, Auto)
+/// - Tap to focus with authentic yellow animated reticle
+/// - Bottom bar: [Gallery 🖼️] on left, WhatsApp shutter [⚪] in center, [Flip Camera 🔄] on right
+/// - Review screen with 90° rotation tool and iconic WhatsApp Green checkmark button.
 class InAppBillCameraScreen extends StatefulWidget {
   const InAppBillCameraScreen({super.key});
 
@@ -17,7 +21,7 @@ class InAppBillCameraScreen extends StatefulWidget {
   State<InAppBillCameraScreen> createState() => _InAppBillCameraScreenState();
 }
 
-class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
+class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> with SingleTickerProviderStateMixin {
   final WebCameraHelper _cameraHelper = WebCameraHelper();
   final ImagePicker _picker = ImagePicker();
 
@@ -25,6 +29,14 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
   String? _initError;
   String? _capturedPhotoBase64;
   bool _isCapturing = false;
+  bool _showShutterFlash = false;
+
+  // Tap-to-focus animation state
+  Offset? _focusPoint;
+  Timer? _focusTimer;
+
+  // Photo review rotation
+  int _rotationDegrees = 0;
 
   @override
   void initState() {
@@ -39,14 +51,14 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
     });
 
     if (!kIsWeb) {
-      // Non-web fallback: directly use image picker camera
+      // Non-web fallback: directly use image picker camera in HD
       try {
         final picked = await _picker.pickImage(
           source: ImageSource.camera,
           preferredCameraDevice: CameraDevice.rear,
-          maxWidth: 1600,
-          maxHeight: 1600,
-          imageQuality: 80,
+          maxWidth: 2048,
+          maxHeight: 2048,
+          imageQuality: 90,
         );
         if (picked != null) {
           final bytes = await picked.readAsBytes();
@@ -81,15 +93,46 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
     }
   }
 
+  Future<void> _toggleFlash() async {
+    if (_isCapturing) return;
+    await _cameraHelper.cycleFlashMode();
+    if (mounted) setState(() {});
+  }
+
+  void _onViewfinderTap(TapDownDetails details) {
+    if (_isCapturing || _capturedPhotoBase64 != null) return;
+    _focusTimer?.cancel();
+    setState(() {
+      _focusPoint = details.localPosition;
+    });
+    _focusTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) {
+        setState(() {
+          _focusPoint = null;
+        });
+      }
+    });
+  }
+
   Future<void> _takePhoto() async {
     if (_isCapturing || !_cameraHelper.isReady) return;
 
-    setState(() => _isCapturing = true);
+    setState(() {
+      _isCapturing = true;
+      _showShutterFlash = true;
+    });
+
+    // Brief shutter flash feedback
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (mounted) setState(() => _showShutterFlash = false);
+    });
+
     try {
       final b64 = await _cameraHelper.capturePhotoBase64();
       if (b64 != null && b64.isNotEmpty) {
         setState(() {
           _capturedPhotoBase64 = b64;
+          _rotationDegrees = 0;
           _isCapturing = false;
         });
       } else {
@@ -116,9 +159,9 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
     try {
       final picked = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 80,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 90,
       );
       if (picked != null) {
         final bytes = await picked.readAsBytes();
@@ -126,6 +169,7 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
         if (mounted) {
           setState(() {
             _capturedPhotoBase64 = b64;
+            _rotationDegrees = 0;
           });
         }
       }
@@ -134,20 +178,47 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
     }
   }
 
+  void _rotatePhoto() {
+    setState(() {
+      _rotationDegrees = (_rotationDegrees + 90) % 360;
+    });
+  }
+
   void _useCapturedPhoto() {
-    if (_capturedPhotoBase64 != null) {
+    if (_capturedPhotoBase64 == null) return;
+
+    if (_rotationDegrees == 0) {
       Navigator.pop(context, _capturedPhotoBase64);
+      return;
     }
+
+    // Apply rotation before returning
+    try {
+      final bytes = ImageCompressHelper.safeBase64Decode(_capturedPhotoBase64);
+      if (bytes != null) {
+        final decoded = img.decodeImage(bytes);
+        if (decoded != null) {
+          final rotated = img.copyRotate(decoded, angle: _rotationDegrees);
+          final encoded = img.encodeJpg(rotated, quality: 90);
+          Navigator.pop(context, base64Encode(encoded));
+          return;
+        }
+      }
+    } catch (_) {}
+
+    Navigator.pop(context, _capturedPhotoBase64);
   }
 
   void _retakePhoto() {
     setState(() {
       _capturedPhotoBase64 = null;
+      _rotationDegrees = 0;
     });
   }
 
   @override
   void dispose() {
+    _focusTimer?.cancel();
     _cameraHelper.dispose();
     super.dispose();
   }
@@ -160,7 +231,7 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. LIVE CAMERA VIEWFINDER OR REVIEW
+            // 1. LIVE CAMERA VIEWFINDER OR PHOTO REVIEW
             if (_capturedPhotoBase64 != null)
               _buildPhotoReview()
             else if (_isInitializing)
@@ -168,10 +239,10 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(color: Colors.white),
+                    CircularProgressIndicator(color: Color(0xFF25D366)),
                     SizedBox(height: 16),
                     Text(
-                      'Opening camera...',
+                      'Starting camera...',
                       style: TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ],
@@ -181,71 +252,137 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
               _buildErrorFallback()
             else
               Positioned.fill(
-                child: _cameraHelper.buildPreview(),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: _onViewfinderTap,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _cameraHelper.buildPreview(),
+
+                      // Tap-to-focus animation reticle (WhatsApp/iPhone style yellow ring)
+                      if (_focusPoint != null)
+                        Positioned(
+                          left: _focusPoint!.dx - 32,
+                          top: _focusPoint!.dy - 32,
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 1.3, end: 1.0),
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOutBack,
+                            builder: (context, scale, child) {
+                              return Transform.scale(
+                                scale: scale,
+                                child: Container(
+                                  width: 64,
+                                  height: 64,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.amberAccent, width: 1.8),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(Icons.add, size: 14, color: Colors.amberAccent),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
 
-            // 2. TOP CONTROLS (Only visible if not in review mode)
+            // 2. SHUTTER SNAP WHITE FLASH BURST
+            if (_showShutterFlash)
+              Positioned.fill(
+                child: Container(color: Colors.white.withValues(alpha: 0.85)),
+              ),
+
+            // 3. WHATSAPP TOP CONTROLS (Only visible during live camera mode)
             if (_capturedPhotoBase64 == null)
               Positioned(
-                top: 16,
+                top: 14,
                 left: 16,
                 right: 16,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Close button [✕]
+                    // [✕] Close button
                     GestureDetector(
                       onTap: () => Navigator.pop(context, null),
                       child: Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(9),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.5),
+                          color: Colors.black.withValues(alpha: 0.45),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.close, color: Colors.white, size: 24),
                       ),
                     ),
 
-                    // Title pill
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.receipt_long, size: 14, color: Colors.white),
-                          SizedBox(width: 6),
-                          Text(
-                            'Scan Bill Photo',
-                            style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
+                    // WhatsApp Flash Toggle Button [Off / On / Auto]
+                    GestureDetector(
+                      onTap: _toggleFlash,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: _cameraHelper.flashMode == 'on'
+                                ? Colors.amberAccent
+                                : Colors.white24,
+                            width: 1.2,
                           ),
-                        ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _cameraHelper.flashMode == 'on'
+                                  ? Icons.flash_on_rounded
+                                  : _cameraHelper.flashMode == 'auto'
+                                      ? Icons.flash_auto_rounded
+                                      : Icons.flash_off_rounded,
+                              color: _cameraHelper.flashMode == 'on'
+                                  ? Colors.amberAccent
+                                  : Colors.white,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              _cameraHelper.flashMode.toUpperCase(),
+                              style: TextStyle(
+                                color: _cameraHelper.flashMode == 'on'
+                                    ? Colors.amberAccent
+                                    : Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-
-                    const SizedBox(width: 44), // Balances top row
                   ],
                 ),
               ),
 
-            // 3. BOTTOM CONTROLS (Only visible if not in review mode and camera is ready)
+            // 4. WHATSAPP BOTTOM CONTROLS (Gallery | Shutter | Flip Camera)
             if (_capturedPhotoBase64 == null && !_isInitializing && _initError == null)
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
                 child: Container(
-                  padding: const EdgeInsets.only(top: 20, bottom: 28, left: 24, right: 24),
+                  padding: const EdgeInsets.only(top: 24, bottom: 28, left: 24, right: 24),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.85),
+                        Colors.black.withValues(alpha: 0.9),
                         Colors.transparent,
                       ],
                     ),
@@ -253,7 +390,7 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Shutter Row: [Gallery 🖼️]  [⚪ Shutter]  [🔄 Flip]
+                      // Shutter Row: [Gallery 🖼️]  [⚪ WhatsApp Shutter]  [🔄 Flip]
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -277,26 +414,26 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
                             ),
                           ),
 
-                          // Large Shutter Button
+                          // WhatsApp Shutter Button (Outer white ring + Inner solid white circle)
                           GestureDetector(
                             onTap: _takePhoto,
                             child: Container(
-                              width: 78,
-                              height: 78,
+                              width: 80,
+                              height: 80,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 4),
+                                border: Border.all(color: Colors.white, width: 3.5),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.4),
+                                    color: Colors.black.withValues(alpha: 0.5),
                                     blurRadius: 10,
                                   ),
                                 ],
                               ),
                               child: Center(
                                 child: Container(
-                                  width: 62,
-                                  height: 62,
+                                  width: 64,
+                                  height: 64,
                                   decoration: const BoxDecoration(
                                     color: Colors.white,
                                     shape: BoxShape.circle,
@@ -304,8 +441,8 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
                                   child: _isCapturing
                                       ? const Center(
                                           child: SizedBox(
-                                            width: 24,
-                                            height: 24,
+                                            width: 26,
+                                            height: 26,
                                             child: CircularProgressIndicator(
                                               strokeWidth: 2.5,
                                               color: Colors.black,
@@ -347,14 +484,21 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
                           color: Colors.white.withValues(alpha: 0.18),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Text(
-                          'PHOTO',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.2,
-                          ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.circle, size: 7, color: Color(0xFF25D366)),
+                            SizedBox(width: 6),
+                            Text(
+                              'PHOTO',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -372,56 +516,130 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
 
     return Container(
       color: Colors.black,
-      child: Column(
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          // Captured Image preview
-          Expanded(
+          // 1. Captured Photo with rotation
+          Center(
             child: bytes != null
-                ? Image.memory(
-                    bytes,
-                    fit: BoxFit.contain,
-                    width: double.infinity,
+                ? RotatedBox(
+                    quarterTurns: (_rotationDegrees ~/ 90) % 4,
+                    child: Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      filterQuality: FilterQuality.high,
+                    ),
                   )
                 : const Center(
                     child: Icon(Icons.broken_image, size: 60, color: Colors.white54),
                   ),
           ),
 
-          // Bottom Confirmation Bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            color: const Color(0xFF0F172A),
+          // 2. WhatsApp Top Review Bar (Discard / Back on left, Rotate tool on right)
+          Positioned(
+            top: 14,
+            left: 16,
+            right: 16,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('Retake', style: TextStyle(fontWeight: FontWeight.bold)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white38),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                GestureDetector(
+                  onTap: _retakePhoto,
+                  child: Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
                     ),
-                    onPressed: _retakePhoto,
+                    child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.check_circle_rounded, size: 18),
-                    label: const Text('Use Photo', style: TextStyle(fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 2,
+                GestureDetector(
+                  onTap: _rotatePhoto,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white30),
                     ),
-                    onPressed: _useCapturedPhoto,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.rotate_right_rounded, color: Colors.white, size: 20),
+                        SizedBox(width: 6),
+                        Text(
+                          'Rotate',
+                          style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
+            ),
+          ),
+
+          // 3. WhatsApp Bottom Review Bar (Retake on left, Green Send Checkmark on right)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.9),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Retake Button
+                  TextButton.icon(
+                    icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                    label: const Text(
+                      'Retake',
+                      style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                    onPressed: _retakePhoto,
+                  ),
+
+                  // WhatsApp Iconic Green Circular Send / Confirm Button
+                  GestureDetector(
+                    onTap: _useCapturedPhoto,
+                    child: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF25D366), // WhatsApp primary green
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0x6625D366),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -460,7 +678,7 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
               icon: const Icon(Icons.photo_library_rounded, size: 20),
               label: const Text('Choose Photo from Gallery', style: TextStyle(fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
+                backgroundColor: const Color(0xFF25D366),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

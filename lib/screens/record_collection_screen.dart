@@ -230,9 +230,9 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
       final XFile? image = await _picker.pickImage(
         source: source,
         preferredCameraDevice: preferredCameraDevice,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 50,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 90,
       );
       if (image != null) {
         final bytes = await image.readAsBytes();
@@ -268,9 +268,9 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
         try {
           final fallback = await _picker.pickImage(
             source: ImageSource.gallery,
-            maxWidth: 800,
-            maxHeight: 800,
-            imageQuality: 50,
+            maxWidth: 2048,
+            maxHeight: 2048,
+            imageQuality: 90,
           );
           if (fallback != null) {
             final bytes = await fallback.readAsBytes();
