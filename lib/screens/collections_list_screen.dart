@@ -13,6 +13,8 @@ import 'send_reminder_dialog.dart';
 import 'add_shop_screen.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 import '../utils/image_compress_helper.dart';
+import '../models/shop_model.dart';
+import '../utils/marathi_search_helper.dart';
 
 class CollectionsListScreen extends StatefulWidget {
   final int initialTabIndex;
@@ -30,6 +32,8 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
   InvoiceFilterStatus _invoiceStatusFilter = InvoiceFilterStatus.all;
   String _invoiceSearchQuery = '';
   DateTime? _invoiceDateFilter;
+  String? _invoiceRouteIdFilter;
+  String? _invoiceShopIdFilter;
 
   Color _getModeColor(PaymentMode mode) {
     switch (mode) {
@@ -780,10 +784,331 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
     );
   }
 
+  // Searchable Route Picker Dialog / BottomSheet for Invoices
+  void _openInvoiceRoutePicker(CollectionProvider provider) {
+    final routes = provider.routes;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        String routeQuery = '';
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final filteredRoutes = routes.where((r) {
+              if (routeQuery.trim().isEmpty) return true;
+              return MarathiSearchHelper.matches(r.name, routeQuery.trim().toLowerCase());
+            }).toList();
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  top: 16,
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                ),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.65,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Filter by Route',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Search route...',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                        ),
+                        onChanged: (val) => setModalState(() => routeQuery = val),
+                      ),
+                      const SizedBox(height: 8),
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.all_inclusive, color: AppTheme.primary, size: 20),
+                        title: const Text('All Routes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        selected: _invoiceRouteIdFilter == null,
+                        trailing: _invoiceRouteIdFilter == null
+                            ? const Icon(Icons.check, color: AppTheme.primary, size: 18)
+                            : null,
+                        onTap: () {
+                          setState(() {
+                            _invoiceRouteIdFilter = null;
+                          });
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: filteredRoutes.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(20.0),
+                                  child: Text('No routes found', style: TextStyle(color: Colors.blueGrey.shade600)),
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: filteredRoutes.length,
+                                separatorBuilder: (_, _) => const Divider(height: 1),
+                                itemBuilder: (context, idx) {
+                                  final r = filteredRoutes[idx];
+                                  final isSelected = _invoiceRouteIdFilter == r.id;
+                                  final shopCount = provider.getShopsForRoute(r.id).length;
+                                  return ListTile(
+                                    dense: true,
+                                    leading: CircleAvatar(
+                                      radius: 14,
+                                      backgroundColor: isSelected ? AppTheme.primary : Colors.grey.shade200,
+                                      child: Icon(Icons.alt_route, size: 15, color: isSelected ? Colors.white : Colors.blueGrey),
+                                    ),
+                                    title: Text(
+                                      r.name,
+                                      style: TextStyle(
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                        fontSize: 13,
+                                        color: isSelected ? AppTheme.primary : Colors.black87,
+                                      ),
+                                    ),
+                                    subtitle: Text('$shopCount outlets', style: const TextStyle(fontSize: 11)),
+                                    trailing: isSelected
+                                        ? const Icon(Icons.check, color: AppTheme.primary, size: 18)
+                                        : null,
+                                    onTap: () {
+                                      setState(() {
+                                        _invoiceRouteIdFilter = r.id;
+                                        if (_invoiceShopIdFilter != null) {
+                                          final currentShop = provider.getShopById(_invoiceShopIdFilter!);
+                                          if (currentShop != null && currentShop.routeId != r.id) {
+                                            _invoiceShopIdFilter = null;
+                                          }
+                                        }
+                                      });
+                                      Navigator.pop(ctx);
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Searchable Outlet Picker Dialog / BottomSheet for Invoices
+  void _openInvoiceShopPicker(CollectionProvider provider) {
+    final List<ShopModel> availableShops = _invoiceRouteIdFilter != null
+        ? provider.getShopsForRoute(_invoiceRouteIdFilter!)
+        : provider.shops;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        String query = '';
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final filtered = availableShops.where((s) {
+              if (query.trim().isEmpty) return true;
+              final q = query.trim().toLowerCase();
+              return MarathiSearchHelper.matches(s.name, q) ||
+                  s.mobileNumber.contains(q) ||
+                  MarathiSearchHelper.matches(s.address, q);
+            }).toList();
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  top: 16,
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                ),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Filter by Outlet',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                              ),
+                              if (_invoiceRouteIdFilter != null)
+                                Text(
+                                  'Route: ${provider.getRouteName(_invoiceRouteIdFilter!)}',
+                                  style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700),
+                                ),
+                            ],
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Search outlet by name, phone...',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                        ),
+                        onChanged: (val) {
+                          setModalState(() => query = val);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.all_inclusive, color: AppTheme.primary, size: 20),
+                        title: const Text('All Outlets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        selected: _invoiceShopIdFilter == null,
+                        trailing: _invoiceShopIdFilter == null
+                            ? const Icon(Icons.check, color: AppTheme.primary, size: 18)
+                            : null,
+                        onTap: () {
+                          setState(() {
+                            _invoiceShopIdFilter = null;
+                          });
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: filtered.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(20.0),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.storefront_outlined, size: 40, color: Colors.blueGrey.shade300),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        query.isEmpty
+                                            ? 'No outlets found'
+                                            : 'No outlets match "$query"',
+                                        style: TextStyle(color: Colors.blueGrey.shade600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: filtered.length,
+                                separatorBuilder: (_, _) => const Divider(height: 1),
+                                itemBuilder: (context, idx) {
+                                  final s = filtered[idx];
+                                  final isSelected = s.id == _invoiceShopIdFilter;
+                                  return ListTile(
+                                    dense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    leading: CircleAvatar(
+                                      radius: 14,
+                                      backgroundColor: isSelected ? AppTheme.primary : Colors.grey.shade200,
+                                      foregroundColor: isSelected ? Colors.white : Colors.blueGrey.shade800,
+                                      child: Text(
+                                        s.name.isNotEmpty ? s.name[0].toUpperCase() : 'S',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                      ),
+                                    ),
+                                    title: Text(
+                                      s.name,
+                                      style: TextStyle(
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                        fontSize: 13,
+                                        color: isSelected ? AppTheme.primary : const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      '${s.mobileNumber} • ${provider.getRouteName(s.routeId)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                                    ),
+                                    trailing: isSelected
+                                        ? const Icon(Icons.check_circle, color: AppTheme.primary, size: 18)
+                                        : null,
+                                    onTap: () {
+                                      setState(() {
+                                        _invoiceShopIdFilter = s.id;
+                                        if (_invoiceRouteIdFilter == null && s.routeId.isNotEmpty) {
+                                          _invoiceRouteIdFilter = s.routeId;
+                                        }
+                                      });
+                                      Navigator.pop(ctx);
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // --- TAB 2: INVOICE STATUS TRACKER (PENDING VS PAID) ---
   Widget _buildInvoiceStatusTab(BuildContext context, CollectionProvider provider) {
     var allSummaries = provider.getAllBillSummaries(forBusiness: provider.filterBusiness);
 
+    // Apply Route filter
+    if (_invoiceRouteIdFilter != null && _invoiceRouteIdFilter!.isNotEmpty) {
+      allSummaries = allSummaries.where((b) => b.routeId == _invoiceRouteIdFilter).toList();
+    }
+
+    // Apply Shop filter
+    if (_invoiceShopIdFilter != null && _invoiceShopIdFilter!.isNotEmpty) {
+      allSummaries = allSummaries.where((b) => b.shopId == _invoiceShopIdFilter).toList();
+    }
+
+    // Apply Date filter
     if (_invoiceDateFilter != null) {
       final filterDateStr = DateFormat('yyyy-MM-dd').format(_invoiceDateFilter!);
       allSummaries = allSummaries.where((b) {
@@ -811,9 +1136,9 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
     if (_invoiceSearchQuery.trim().isNotEmpty) {
       final q = _invoiceSearchQuery.toLowerCase().trim();
       displayedList = displayedList.where((b) {
-        return b.shopName.toLowerCase().contains(q) ||
+        return MarathiSearchHelper.matches(b.shopName, q) ||
             b.billNumber.toLowerCase().contains(q) ||
-            b.routeName.toLowerCase().contains(q);
+            MarathiSearchHelper.matches(b.routeName, q);
       }).toList();
     }
 
@@ -829,7 +1154,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
           child: Column(
             children: [
               _buildFirmFilterBar(provider),
-              // Date Filter Row for Invoices
+              // Date & Reset Filters Row
               Row(
                 children: [
                   InkWell(
@@ -880,7 +1205,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                     ),
                   ),
                   if (_invoiceDateFilter != null) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4),
                     InkWell(
                       onTap: () => setState(() => _invoiceDateFilter = null),
                       child: Container(
@@ -893,6 +1218,160 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       ),
                     ),
                   ],
+                  const Spacer(),
+                  if (_invoiceRouteIdFilter != null || _invoiceShopIdFilter != null || _invoiceDateFilter != null)
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _invoiceDateFilter = null;
+                          _invoiceRouteIdFilter = null;
+                          _invoiceShopIdFilter = null;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.refresh, size: 12, color: Colors.red.shade700),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Reset Filters',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              // Route & Outlet Filters Row
+              Row(
+                children: [
+                  // Route Filter
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => _openInvoiceRoutePicker(provider),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _invoiceRouteIdFilter != null
+                              ? AppTheme.primary.withValues(alpha: 0.1)
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: _invoiceRouteIdFilter != null ? AppTheme.primary : AppTheme.border,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.alt_route,
+                              size: 15,
+                              color: _invoiceRouteIdFilter != null ? AppTheme.primary : Colors.blueGrey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _invoiceRouteIdFilter != null
+                                    ? provider.getRouteName(_invoiceRouteIdFilter!)
+                                    : 'All Routes',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: _invoiceRouteIdFilter != null ? AppTheme.primary : Colors.blueGrey.shade800,
+                                ),
+                              ),
+                            ),
+                            if (_invoiceRouteIdFilter != null)
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() => _invoiceRouteIdFilter = null);
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.only(left: 4),
+                                  child: Icon(Icons.close, size: 14, color: AppTheme.primary),
+                                ),
+                              )
+                            else
+                              const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Outlet Filter
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => _openInvoiceShopPicker(provider),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _invoiceShopIdFilter != null
+                              ? AppTheme.primary.withValues(alpha: 0.1)
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: _invoiceShopIdFilter != null ? AppTheme.primary : AppTheme.border,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.storefront_outlined,
+                              size: 15,
+                              color: _invoiceShopIdFilter != null ? AppTheme.primary : Colors.blueGrey,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _invoiceShopIdFilter != null
+                                    ? (provider.getShopById(_invoiceShopIdFilter!)?.name ?? 'Selected Outlet')
+                                    : 'All Outlets',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: _invoiceShopIdFilter != null ? AppTheme.primary : Colors.blueGrey.shade800,
+                                ),
+                              ),
+                            ),
+                            if (_invoiceShopIdFilter != null)
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() => _invoiceShopIdFilter = null);
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.only(left: 4),
+                                  child: Icon(Icons.close, size: 14, color: AppTheme.primary),
+                                ),
+                              )
+                            else
+                              const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),

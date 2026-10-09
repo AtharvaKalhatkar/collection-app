@@ -4,6 +4,7 @@ class BillSummary {
   final String billNumber;
   final String shopId;
   final String shopName;
+  final String? routeId;
   final String routeName;
   final String businessName;
   final double billTotal;
@@ -15,6 +16,7 @@ class BillSummary {
     required this.billNumber,
     required this.shopId,
     required this.shopName,
+    this.routeId,
     required this.routeName,
     required this.businessName,
     required this.billTotal,

@@ -47,6 +47,13 @@ class CollectionProvider extends ChangeNotifier {
     list.sort((a, b) => a.priority.compareTo(b.priority));
     return list;
   }
+
+  String getRouteName(String routeId) {
+    return _routes.firstWhere(
+      (r) => r.id == routeId,
+      orElse: () => RouteModel(id: routeId, name: 'Unknown Route'),
+    ).name;
+  }
   List<ShopModel> get shops => _shops;
   List<CollectionModel> get collections => _collections;
   List<PendingBillModel> get pendingBills => _pendingBills;
@@ -405,11 +412,18 @@ class CollectionProvider extends ChangeNotifier {
         totalCollected += c.collectedAmount;
       }
 
+      final effectiveRouteId = (first.routeId.isNotEmpty)
+          ? first.routeId
+          : (_shops.any((s) => s.id == first.shopId)
+              ? _shops.firstWhere((s) => s.id == first.shopId).routeId
+              : '');
+
       list.add(BillSummary(
         billNumber: first.billNumber,
         shopId: first.shopId,
         shopName: first.shopName,
-        routeName: first.routeName,
+        routeId: effectiveRouteId,
+        routeName: first.routeName.isNotEmpty ? first.routeName : getRouteName(effectiveRouteId),
         businessName: first.businessName,
         billTotal: maxBill,
         totalCollected: totalCollected,
@@ -417,6 +431,36 @@ class CollectionProvider extends ChangeNotifier {
         lastPaymentDate: first.collectedAt,
       ));
     });
+
+    // Also include any standalone pending bills from _pendingBills that haven't had collections yet
+    final Set<String> processedKeys = Set<String>.from(grouped.keys);
+    for (final pb in _pendingBills) {
+      if (forShopId != null && pb.shopId != forShopId) continue;
+      if (forBusiness != null && forBusiness != 'All' && pb.businessName != forBusiness) continue;
+
+      final key = '${pb.shopId}_${pb.billNumber.trim().toLowerCase()}';
+      if (!processedKeys.contains(key)) {
+        final effectiveRouteId = (pb.routeId.isNotEmpty)
+            ? pb.routeId
+            : (_shops.any((s) => s.id == pb.shopId)
+                ? _shops.firstWhere((s) => s.id == pb.shopId).routeId
+                : '');
+
+        list.add(BillSummary(
+          billNumber: pb.billNumber,
+          shopId: pb.shopId,
+          shopName: pb.shopName,
+          routeId: effectiveRouteId,
+          routeName: pb.routeName.isNotEmpty ? pb.routeName : getRouteName(effectiveRouteId),
+          businessName: pb.businessName,
+          billTotal: pb.totalAmount,
+          totalCollected: pb.collectedAmount,
+          collections: const [],
+          lastPaymentDate: pb.invoiceDate,
+        ));
+        processedKeys.add(key);
+      }
+    }
 
     list.sort((a, b) => b.lastPaymentDate.compareTo(a.lastPaymentDate));
     return list;
