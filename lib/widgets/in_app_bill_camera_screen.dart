@@ -44,9 +44,9 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
         final picked = await _picker.pickImage(
           source: ImageSource.camera,
           preferredCameraDevice: CameraDevice.rear,
-          maxWidth: 1024,
-          maxHeight: 1024,
-          imageQuality: 60,
+          maxWidth: 2048,
+          maxHeight: 2048,
+          imageQuality: 88,
         );
         if (picked != null) {
           final bytes = await picked.readAsBytes();
@@ -116,9 +116,9 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
     try {
       final picked = await _picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 60,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 88,
       );
       if (picked != null) {
         final bytes = await picked.readAsBytes();

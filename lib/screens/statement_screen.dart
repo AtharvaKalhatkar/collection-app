@@ -492,7 +492,7 @@ class _StatementScreenState extends State<StatementScreen> {
 
               // Table
               pw.TableHelper.fromTextArray(
-                headers: ['#', 'Outlet / Shop', 'Firm', 'Route', 'Bill #', 'Mode', 'Deposit Bank', 'Collected', 'Balance'],
+                headers: ['#', 'Outlet / Shop', 'Firm', 'Route', 'Bill No', 'Mode', 'Deposit Bank', 'Collected', 'Balance'],
                 headerStyle: headerTextStyle,
                 headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo900),
                 cellStyle: baseStyle,

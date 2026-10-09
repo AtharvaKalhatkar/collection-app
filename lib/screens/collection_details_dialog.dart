@@ -384,7 +384,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                                   MaterialPageRoute(
                                     builder: (_) => FullScreenImageViewer(
                                       imagesBase64: docPhotos.isNotEmpty ? docPhotos : (firstPhoto != null ? [firstPhoto] : null),
-                                      title: 'Invoice Proof #${collection.billNumber}',
+                                      title: 'Bill Photo - Bill No: ${collection.billNumber}',
                                       subtitle: hasMultiple
                                           ? '${docPhotos.length} Photos Attached • ${collection.shopName}'
                                           : '${collection.shopName} • ${collection.businessName}',
@@ -418,7 +418,7 @@ class CollectionDetailsDialog extends StatelessWidget {
                               MaterialPageRoute(
                                 builder: (_) => FullScreenImageViewer(
                                   imagesBase64: docPhotos.isNotEmpty ? docPhotos : (firstPhoto != null ? [firstPhoto] : null),
-                                  title: 'Invoice Proof #${collection.billNumber}',
+                                  title: 'Bill Photo - Bill No: ${collection.billNumber}',
                                   subtitle: hasMultiple
                                       ? '${docPhotos.length} Photos Attached • ${collection.shopName}'
                                       : '${collection.shopName} • ${collection.businessName}',

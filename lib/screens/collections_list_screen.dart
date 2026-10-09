@@ -582,7 +582,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                             MaterialPageRoute(
                                               builder: (_) => FullScreenImageViewer(
                                                 imagesBase64: billPhotos.isNotEmpty ? billPhotos : (firstPhoto != null ? [firstPhoto] : null),
-                                                title: 'Bill #${item.billNumber} - ${item.shopName}',
+                                                title: 'Bill No: ${item.billNumber} - ${item.shopName}',
                                                 subtitle: hasMultiple
                                                     ? '${billPhotos.length} Photos Attached • ${item.businessName}'
                                                     : '${item.businessName} • ${item.routeName}',
@@ -682,7 +682,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                     Row(
                                       children: [
                                         Text(
-                                          'Bill: ${item.billNumber}',
+                                          'Bill No: ${item.billNumber}',
                                           style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700),
                                         ),
                                         const SizedBox(width: 8),
@@ -1563,7 +1563,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                       Row(
                                         children: [
                                           Text(
-                                            'Invoice #${bill.billNumber}',
+                                            'Bill No: ${bill.billNumber}',
                                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade800),
                                           ),
                                           const SizedBox(width: 6),

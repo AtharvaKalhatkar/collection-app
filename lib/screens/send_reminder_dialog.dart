@@ -50,7 +50,7 @@ class _SendReminderDialogState extends State<SendReminderDialog> {
     if (templateIndex == 0) {
       if (widget.billNumber != null && widget.billNumber!.isNotEmpty) {
         return 'Dear ${widget.shopName},\n'
-            'Payment reminder: Bill #${widget.billNumber} has a pending balance of $balanceStr with ${widget.businessName}. Kindly arrange payment.\n'
+            'Payment reminder: Bill No: ${widget.billNumber} has a pending balance of $balanceStr with ${widget.businessName}. Kindly arrange payment.\n'
             '- ${widget.salesmanName}';
       } else {
         return 'Dear ${widget.shopName},\n'
@@ -59,7 +59,7 @@ class _SendReminderDialogState extends State<SendReminderDialog> {
       }
     } else {
       final billTotalStr = widget.billTotal != null ? CurrencyFormatter.format(widget.billTotal!) : '';
-      final billLine = widget.billNumber != null ? 'Bill No: #${widget.billNumber}\n' : '';
+      final billLine = widget.billNumber != null ? 'Bill No: ${widget.billNumber}\n' : '';
       final totalLine = billTotalStr.isNotEmpty ? 'Total: $billTotalStr\n' : '';
 
       return 'Payment Reminder\n'

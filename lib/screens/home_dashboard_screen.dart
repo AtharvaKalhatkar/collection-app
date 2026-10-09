@@ -151,7 +151,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               subtitle: Padding(
                                 padding: const EdgeInsets.only(top: 2.0),
                                 child: Text(
-                                  'Bill #${item.billNumber} • ${item.routeName} • $timeStr',
+                                  'Bill No: ${item.billNumber} • ${item.routeName} • $timeStr',
                                   style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                                 ),
                               ),

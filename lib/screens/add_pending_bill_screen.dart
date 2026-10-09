@@ -367,7 +367,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       await _persistDefaults(route.id, shop?.id ?? _selectedShopId!);
 
       if (mounted) {
-        QuickAlert.success(context, 'Bill #$billNo (₹${amount.toStringAsFixed(0)}) saved!');
+        QuickAlert.success(context, 'Bill No: $billNo (₹${amount.toStringAsFixed(0)}) saved!');
         Navigator.pop(context);
       }
     } catch (e) {

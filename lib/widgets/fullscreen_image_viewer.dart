@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/image_compress_helper.dart';
+import '../utils/image_share_helper.dart';
 
 /// Full-screen zoomable image viewer supporting single or multiple images,
 /// pinch-to-zoom, double-tap zoom, smooth pan gestures, and multi-page navigation.
@@ -129,6 +130,33 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
     });
   }
 
+  Future<void> _shareCurrentImage() async {
+    final images = _images;
+    if (images.isEmpty || _currentIndex >= images.length) return;
+    final b64 = images[_currentIndex];
+    final bytes = ImageCompressHelper.safeBase64Decode(b64);
+    if (bytes == null) return;
+
+    final sanitizedTitle = widget.title.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+    final filename = '${sanitizedTitle}_${_currentIndex + 1}.jpg';
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sharing photo...'),
+          duration: Duration(milliseconds: 1000),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    await ImageShareHelper.shareOrDownloadImage(
+      bytes,
+      filename: filename,
+      title: widget.title,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final images = _images;
@@ -194,6 +222,11 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
             icon: const Icon(Icons.restart_alt, size: 21),
             tooltip: 'Reset Zoom (100%)',
             onPressed: _resetCurrentZoom,
+          ),
+          IconButton(
+            icon: const Icon(Icons.share_outlined, size: 21),
+            tooltip: 'Share Image',
+            onPressed: _shareCurrentImage,
           ),
         ],
       ),
@@ -531,6 +564,7 @@ class _ZoomableImagePageState extends State<_ZoomableImagePage>
           child: Image.memory(
             imageBytes,
             fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
             errorBuilder: (context, error, stackTrace) {
               return const Center(
                 child: Text('Could not render image', style: TextStyle(color: Colors.white)),

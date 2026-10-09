@@ -458,7 +458,7 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Clearing Due Balance: Invoice #${widget.initialBillNumber ?? ""}',
+                              'Clearing Due Balance: Bill No: ${widget.initialBillNumber ?? ""}',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
                             ),
                             Text(
@@ -856,7 +856,7 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                                                 Row(
                                                   children: [
                                                     Text(
-                                                      'Bill #${b.billNumber}',
+                                                      'Bill No: ${b.billNumber}',
                                                       style: const TextStyle(
                                                         fontSize: 13,
                                                         fontWeight: FontWeight.bold,
@@ -1467,7 +1467,7 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                                     builder: (_) => FullScreenImageViewer(
                                       imageBase64: _photoBase64!,
                                       title: 'Invoice Photo Preview',
-                                      subtitle: _billNoController.text.isNotEmpty ? 'Bill #${_billNoController.text}' : null,
+                                      subtitle: _billNoController.text.isNotEmpty ? 'Bill No: ${_billNoController.text}' : null,
                                     ),
                                   ),
                                 );

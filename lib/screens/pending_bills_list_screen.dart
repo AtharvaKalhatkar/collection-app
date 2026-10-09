@@ -63,7 +63,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Bill?'),
-        content: Text('Delete Bill #${bill.billNumber} for "${bill.shopName}"?\nThis cannot be undone.'),
+        content: Text('Delete Bill No: ${bill.billNumber} for "${bill.shopName}"?\nThis cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -83,7 +83,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Bill #${bill.billNumber} deleted'),
+            content: Text('Bill No: ${bill.billNumber} deleted'),
             backgroundColor: AppTheme.error,
           ),
         );
@@ -556,7 +556,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
 
                                   // Bill Number
                                   Text(
-                                    'Bill #${bill.billNumber}',
+                                    'Bill No: ${bill.billNumber}',
                                     style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w800,
@@ -698,7 +698,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                           MaterialPageRoute(
                                             builder: (_) => FullScreenImageViewer(
                                               imagesBase64: bill.allPhotos,
-                                              title: 'Bill #${bill.billNumber} - ${bill.shopName}',
+                                              title: 'Bill No: ${bill.billNumber} - ${bill.shopName}',
                                               subtitle: bill.photosCount > 1 ? '${bill.photosCount} Photos Attached' : null,
                                             ),
                                           ),

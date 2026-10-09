@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/payment_mode.dart';
 import '../models/pending_bill_model.dart';
 import '../providers/collection_provider.dart';
@@ -30,6 +31,7 @@ class MakeCollectionScreen extends StatefulWidget {
 }
 
 class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
+  static String? lastUsedRouteId;
   final _formKey = GlobalKey<FormState>();
 
   String _selectedBusiness = 'Purva Enterprises';
@@ -74,6 +76,29 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
     }
   }
 
+  Future<void> _loadLastUsedRoute() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedRoute = prefs.getString('last_collection_route_id') ??
+          prefs.getString('last_pending_bill_route_id');
+      if (mounted && _selectedRouteId == null && savedRoute != null && savedRoute.isNotEmpty) {
+        setState(() {
+          _selectedRouteId = savedRoute;
+          lastUsedRouteId = savedRoute;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistRoute(String routeId) async {
+    lastUsedRouteId = routeId;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_collection_route_id', routeId);
+      await prefs.setString('last_pending_bill_route_id', routeId);
+    } catch (_) {}
+  }
+
   bool _isSaving = false;
 
   @override
@@ -82,9 +107,10 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
     if (widget.initialBusiness != null) {
       _selectedBusiness = widget.initialBusiness!;
     }
-    _selectedRouteId = widget.initialRouteId;
+    _selectedRouteId = widget.initialRouteId ?? lastUsedRouteId;
     _selectedPendingBillId = widget.initialPendingBillId;
     _syncDefaultBank();
+    _loadLastUsedRoute();
   }
 
   @override
@@ -257,7 +283,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          'Bill #${b.billNumber} • Inv: $invDateStr • Del: $delDateStr',
+                                          'Bill No: ${b.billNumber} • Inv: $invDateStr • Del: $delDateStr',
                                           style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700),
                                         ),
                                         Text(
@@ -374,6 +400,9 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
             behavior: SnackBarBehavior.floating,
           ),
         );
+        if (_selectedRouteId != null) {
+          _persistRoute(_selectedRouteId!);
+        }
         Navigator.pop(context);
       }
     } catch (e) {
@@ -392,8 +421,21 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
     final provider = context.watch<CollectionProvider>();
     final routes = provider.routes;
 
-    if (_selectedRouteId == null && routes.isNotEmpty) {
-      _selectedRouteId = routes.first.id;
+    if ((_selectedRouteId == null || !routes.any((r) => r.id == _selectedRouteId)) && routes.isNotEmpty) {
+      if (lastUsedRouteId != null && routes.any((r) => r.id == lastUsedRouteId)) {
+        _selectedRouteId = lastUsedRouteId;
+      } else {
+        // Look for any route that actually has pending bills for the selected business
+        final routeWithPending = routes.where((r) {
+          return provider.getPendingBillsForRoute(r.id, businessName: _selectedBusiness).isNotEmpty;
+        }).firstOrNull;
+
+        if (routeWithPending != null) {
+          _selectedRouteId = routeWithPending.id;
+        } else {
+          _selectedRouteId = routes.first.id;
+        }
+      }
     }
 
     final pendingBills = provider.getPendingBillsForRoute(
@@ -556,6 +598,9 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                       );
                     }).toList(),
                     onChanged: (val) {
+                      if (val != null) {
+                        _persistRoute(val);
+                      }
                       setState(() {
                         _selectedRouteId = val;
                         _selectedPendingBillId = null;
@@ -660,7 +705,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Bill #${selectedBill.billNumber} • Total: ${CurrencyFormatter.format(selectedBill.totalAmount)}',
+                                    'Bill No: ${selectedBill.billNumber} • Total: ${CurrencyFormatter.format(selectedBill.totalAmount)}',
                                     style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                                   ),
                                 ],
@@ -773,7 +818,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                                   MaterialPageRoute(
                                     builder: (_) => FullScreenImageViewer(
                                       imagesBase64: billPhotos,
-                                      title: 'Bill #${selectedBill.billNumber} - ${selectedBill.shopName}',
+                                      title: 'Bill No: ${selectedBill.billNumber} - ${selectedBill.shopName}',
                                       subtitle: billPhotos.length > 1 ? '${billPhotos.length} Photos Attached' : null,
                                     ),
                                   ),

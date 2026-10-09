@@ -3,12 +3,12 @@ import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 
 class ImageCompressHelper {
-  /// Compresses raw image bytes to a high-efficiency JPEG base64 string (typically ~25-45 KB).
-  /// This prevents localStorage quota overflow on Web and speeds up sync/rendering.
-  static String compressToBase64(Uint8List rawBytes, {int maxDimension = 650, int quality = 60}) {
-    // If the image is already lightweight (<= 300 KB), directly encode to avoid heavy pure-Dart CPU
-    // decoding and Out-Of-Memory crashes on mobile browsers (which caused reload to blue screen)
-    if (rawBytes.lengthInBytes <= 300000) {
+  /// Compresses raw image bytes to a high-clarity JPEG base64 string.
+  /// Preserves sharp text readability on paper bills while keeping file sizes optimal.
+  static String compressToBase64(Uint8List rawBytes, {int maxDimension = 1800, int quality = 85}) {
+    // If the image is already lightweight (<= 500 KB), directly encode to preserve 100% original sharpness
+    // and avoid heavy pure-Dart CPU decoding on mobile browsers
+    if (rawBytes.lengthInBytes <= 500000) {
       return base64Encode(rawBytes);
     }
 
@@ -20,7 +20,7 @@ class ImageCompressHelper {
 
       img.Image processed = decoded;
 
-      // Downscale if dimensions exceed maxDimension
+      // Downscale if dimensions exceed maxDimension (1800px ensures crystal-clear invoice text)
       if (processed.width > maxDimension || processed.height > maxDimension) {
         if (processed.width >= processed.height) {
           processed = img.copyResize(processed, width: maxDimension);

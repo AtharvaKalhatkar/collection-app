@@ -85,8 +85,8 @@ class WebCameraHelper {
 
     ctx.drawImage(_videoElement!, 0, 0);
 
-    // High quality JPEG
-    final dataUrl = canvas.toDataUrl('image/jpeg', 0.85);
+    // High quality JPEG (0.92 preserves ultra-sharp text and numbers)
+    final dataUrl = canvas.toDataUrl('image/jpeg', 0.92);
     final clean = dataUrl.split(',').last;
     return clean;
   }
