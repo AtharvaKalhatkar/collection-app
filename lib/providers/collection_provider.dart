@@ -11,8 +11,8 @@ import '../models/bill_summary.dart';
 import '../models/order_model.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
-import '../services/sample_data_service.dart';
 import '../services/firebase_service.dart';
+import '../services/supabase_service.dart';
 import '../services/backup_service.dart';
 import '../services/auth_service.dart';
 import '../utils/currency_formatter.dart';
@@ -21,6 +21,7 @@ import '../utils/marathi_search_helper.dart';
 class CollectionProvider extends ChangeNotifier {
   final StorageService _storage = StorageService();
   final FirebaseService _firebase = FirebaseService();
+  final SupabaseService _supabase = SupabaseService();
   final BackupService _backupService = BackupService();
   final Uuid _uuid = const Uuid();
   DateTime? _lastBackupTime;
@@ -71,8 +72,8 @@ class CollectionProvider extends ChangeNotifier {
   String? get filterBusiness => _filterBusiness;
   String? get filterRouteId => _filterRouteId;
   String get searchQuery => _searchQuery;
-  bool get isFirebaseConnected => _firebase.isInitialized;
-  String? get firebaseError => _firebase.lastError;
+  bool get isFirebaseConnected => _supabase.isInitialized || _firebase.isInitialized;
+  String? get firebaseError => _supabase.lastError ?? _firebase.lastError;
   DateTime? get lastBackupTime => _lastBackupTime;
 
   Future<bool> triggerManualBackup() async {
@@ -104,17 +105,13 @@ class CollectionProvider extends ChangeNotifier {
     // 1. Initialize local cache first for instant UI availability
     final isFirst = await _storage.isFirstLaunch();
     if (isFirst) {
-      _routes = SampleDataService.getInitialRoutes();
-      _shops = SampleDataService.getInitialShops();
-      _collections = SampleDataService.getInitialCollections();
-      _pendingBills = SampleDataService.getInitialPendingBills();
+      _routes = [];
+      _shops = [];
+      _collections = [];
+      _pendingBills = [];
       _businesses = ['Purva Enterprises', 'Manas Sales'];
       _salesmanName = 'Akash';
 
-      await _storage.saveRoutes(_routes);
-      await _storage.saveShops(_shops);
-      await _storage.saveCollections(_collections);
-      await _storage.savePendingBills(_pendingBills);
       await _storage.saveBusinesses(_businesses);
       await _storage.saveSalesmanName(_salesmanName);
       await _storage.markInitialized();
@@ -192,63 +189,77 @@ class CollectionProvider extends ChangeNotifier {
       await _storage.saveRoutes(_routes);
     }
 
-    // Instant UI load from local cache
+    // Fast check: if local storage has no routes or shops yet (e.g. fresh launch or new device),
+    // pre-fetch routes and shops from Supabase before unlocking UI
+    try {
+      await _supabase.init();
+      if (_supabase.isInitialized && (_routes.isEmpty || _shops.isEmpty)) {
+        final initialCloudRoutes = await _supabase.fetchRoutes();
+        if (initialCloudRoutes.isNotEmpty) {
+          _routes = initialCloudRoutes;
+          _routes.sort((a, b) => a.priority.compareTo(b.priority));
+          await _storage.saveRoutes(_routes);
+        }
+        final initialCloudShops = await _supabase.fetchShops();
+        if (initialCloudShops.isNotEmpty) {
+          _shops = _deduplicateShops(initialCloudShops);
+          await _storage.saveShops(_shops);
+        }
+      }
+    } catch (e) {
+      debugPrint('Supabase initial fetch notice: $e');
+    }
+
+    // Instant UI load from local cache / prefetch
     _isLoading = false;
     notifyListeners();
 
-    // 2. Initialize Firebase in background if configured (non-blocking)
+    // 2. Initialize Supabase & Firebase in background (non-blocking)
     () async {
       try {
-        await _firebase.init();
-        if (_firebase.isInitialized) {
-          final cloudCollections = await _firebase.fetchCollections();
-          // Always synchronize local with cloud.
-          // If cloud collections are empty (e.g. wiped), ensure local is also empty!
+        if (!_supabase.isInitialized) {
+          await _supabase.init();
+        }
+        if (_supabase.isInitialized) {
+          final cloudCollections = await _supabase.fetchCollections();
           _collections = cloudCollections;
           await _storage.saveCollections(_collections);
-          final cloudShops = await _firebase.fetchShops();
+
+          final cloudShops = await _supabase.fetchShops();
           if (cloudShops.isNotEmpty) {
             final cleanCloudShops = <ShopModel>[];
             for (final s in cloudShops) {
               if (_isDummyShop(s)) {
-                await _firebase.deleteShop(s.id);
+                await _supabase.deleteShop(s.id);
               } else {
                 cleanCloudShops.add(s);
               }
             }
             _shops = _deduplicateShops(cleanCloudShops);
             await _storage.saveShops(_shops);
-          } else {
-            for (final s in _shops) {
-              if (!_isDummyShop(s)) {
-                await _firebase.saveShop(s);
-              }
-            }
           }
-          final cloudRoutes = await _firebase.fetchRoutes();
+
+          final cloudRoutes = await _supabase.fetchRoutes();
           if (cloudRoutes.isNotEmpty) {
             _routes = cloudRoutes;
+            _routes.sort((a, b) => a.priority.compareTo(b.priority));
             await _storage.saveRoutes(_routes);
-          } else {
-            for (final r in _routes) {
-              await _firebase.saveRoute(r);
-            }
           }
 
           // Synchronize Pending Bills across all devices & logins safely
-          final cloudBills = await _firebase.fetchPendingBills();
+          final cloudBills = await _supabase.fetchPendingBills();
           final billMap = <String, PendingBillModel>{};
           for (final b in cloudBills) {
-            // CRITICAL: Skip bills that were deleted locally but Firebase delete hasn't completed
+            // CRITICAL: Skip bills that were deleted locally but delete hasn't completed
             if (_locallyDeletedBillIds.contains(b.id)) continue;
             billMap[b.id] = b;
           }
           // Local bills ALWAYS win over cloud (preserves just-added or locally-updated bills)
           for (final b in _pendingBills) {
             billMap[b.id] = b;
-            // If bill exists locally but not in cloud, push it to Firebase
-            if (!cloudBills.any((cb) => cb.id == b.id) && _firebase.isInitialized) {
-              _firebase.savePendingBill(b);
+            // If bill exists locally but not in cloud, push it to Supabase
+            if (!cloudBills.any((cb) => cb.id == b.id)) {
+              _supabase.savePendingBill(b);
             }
           }
           _pendingBills = billMap.values.toList();
@@ -257,11 +268,11 @@ class CollectionProvider extends ChangeNotifier {
           await _storage.savePendingBills(_pendingBills);
           _listenToPendingBillsStream();
 
-          // Retry Firebase deletes for any locally tracked deleted IDs
-          if (_locallyDeletedBillIds.isNotEmpty && _firebase.isInitialized) {
+          // Retry Supabase deletes for any locally tracked deleted IDs
+          if (_locallyDeletedBillIds.isNotEmpty) {
             for (final id in _locallyDeletedBillIds.toList()) {
               try {
-                await _firebase.deletePendingBill(id);
+                await _supabase.deletePendingBill(id);
                 _locallyDeletedBillIds.remove(id);
               } catch (_) {}
             }
@@ -274,14 +285,29 @@ class CollectionProvider extends ChangeNotifier {
             if (_pendingBills[i].isPaid && _pendingBills[i].photoBase64 != null) {
               _pendingBills[i] = _pendingBills[i].copyWith(clearPhoto: true);
               hasPurgedCloud = true;
-              if (_firebase.isInitialized) {
-                _firebase.savePendingBill(_pendingBills[i]);
-              }
+              _supabase.savePendingBill(_pendingBills[i]);
             }
           }
           if (hasPurgedCloud) {
             await _storage.savePendingBills(_pendingBills);
           }
+        }
+      } catch (e) {
+        debugPrint('Supabase background sync notice: $e');
+      }
+
+      try {
+        await _firebase.init();
+        if (_firebase.isInitialized) {
+          final cloudCollections = await _firebase.fetchCollections();
+          if (_collections.isEmpty && cloudCollections.isNotEmpty) {
+            _collections = cloudCollections;
+            await _storage.saveCollections(_collections);
+          }
+        }
+      } catch (e) {
+        debugPrint('Firebase background sync notice: $e');
+      }
 
           // Check and perform auto-backup if 4 days have passed
           final authService = AuthService();
@@ -296,11 +322,7 @@ class CollectionProvider extends ChangeNotifier {
           );
           _lastBackupTime = await _backupService.getLatestBackupTimeShared();
 
-          notifyListeners();
-        }
-      } catch (e) {
-        debugPrint('Firebase load error: $e');
-      }
+      notifyListeners();
     }();
   }
 
@@ -638,6 +660,9 @@ class CollectionProvider extends ChangeNotifier {
     _routes.sort((a, b) => a.priority.compareTo(b.priority));
     await _storage.saveRoutes(_routes);
     notifyListeners();
+    if (_supabase.isInitialized) {
+      _supabase.saveRoute(newRoute);
+    }
     if (_firebase.isInitialized) {
       _firebase.saveRoute(newRoute);
     }
@@ -652,6 +677,9 @@ class CollectionProvider extends ChangeNotifier {
       for (int i = 0; i < _shops.length; i++) {
         if (_shops[i].routeId == updatedRoute.id) {
           _shops[i] = _shops[i].copyWith(routeName: updatedRoute.name);
+          if (_supabase.isInitialized) {
+            _supabase.saveShop(_shops[i]);
+          }
           if (_firebase.isInitialized) {
             _firebase.saveShop(_shops[i]);
           }
@@ -661,6 +689,9 @@ class CollectionProvider extends ChangeNotifier {
       await _storage.saveRoutes(_routes);
       await _storage.saveShops(_shops);
       notifyListeners();
+      if (_supabase.isInitialized) {
+        _supabase.saveRoute(updatedRoute);
+      }
       if (_firebase.isInitialized) {
         _firebase.saveRoute(updatedRoute);
       }
@@ -675,6 +706,9 @@ class CollectionProvider extends ChangeNotifier {
       _routes.sort((a, b) => a.priority.compareTo(b.priority));
       for (int i = 0; i < _routes.length; i++) {
         _routes[i] = _routes[i].copyWith(priority: i + 1);
+        if (_supabase.isInitialized) {
+          _supabase.saveRoute(_routes[i]);
+        }
         if (_firebase.isInitialized) {
           _firebase.saveRoute(_routes[i]);
         }
@@ -690,6 +724,9 @@ class CollectionProvider extends ChangeNotifier {
       final idx = _routes.indexWhere((r) => r.id == id);
       if (idx != -1) {
         _routes[idx] = _routes[idx].copyWith(priority: i + 1);
+        if (_supabase.isInitialized) {
+          _supabase.saveRoute(_routes[idx]);
+        }
         if (_firebase.isInitialized) {
           _firebase.saveRoute(_routes[idx]);
         }
@@ -730,6 +767,9 @@ class CollectionProvider extends ChangeNotifier {
     _routes.insert(newIndex, item);
     for (int i = 0; i < _routes.length; i++) {
       _routes[i] = _routes[i].copyWith(priority: i + 1);
+      if (_supabase.isInitialized) {
+        _supabase.saveRoute(_routes[i]);
+      }
       if (_firebase.isInitialized) {
         _firebase.saveRoute(_routes[i]);
       }
@@ -742,6 +782,9 @@ class CollectionProvider extends ChangeNotifier {
     _routes.removeWhere((r) => r.id == routeId);
     await _storage.saveRoutes(_routes);
     notifyListeners();
+    if (_supabase.isInitialized) {
+      _supabase.deleteRoute(routeId);
+    }
     if (_firebase.isInitialized) {
       _firebase.deleteRoute(routeId);
     }
@@ -775,6 +818,9 @@ class CollectionProvider extends ChangeNotifier {
     _shops.insert(0, newShop);
     await _storage.saveShops(_shops);
     notifyListeners();
+    if (_supabase.isInitialized) {
+      _supabase.saveShop(newShop);
+    }
     if (_firebase.isInitialized) {
       _firebase.saveShop(newShop);
     }
@@ -797,6 +843,9 @@ class CollectionProvider extends ChangeNotifier {
       _shops[idx] = updated;
       await _storage.saveShops(_shops);
       notifyListeners();
+      if (_supabase.isInitialized) {
+        _supabase.saveShop(updated);
+      }
       if (_firebase.isInitialized) {
         _firebase.saveShop(updated);
       }
@@ -812,6 +861,9 @@ class CollectionProvider extends ChangeNotifier {
       _shops[idx] = updated;
       await _storage.saveShops(_shops);
       notifyListeners();
+      if (_supabase.isInitialized) {
+        _supabase.saveShop(updated);
+      }
       if (_firebase.isInitialized) {
         _firebase.saveShop(updated);
       }
@@ -839,6 +891,9 @@ class CollectionProvider extends ChangeNotifier {
         await _storage.saveCollections(_collections);
       } catch (_) {}
       notifyListeners();
+      if (_supabase.isInitialized) {
+        _supabase.saveShop(updatedShop);
+      }
       if (_firebase.isInitialized) {
         _firebase.saveShop(updatedShop);
       }
@@ -850,6 +905,9 @@ class CollectionProvider extends ChangeNotifier {
     _shops.removeWhere((s) => s.id == shopId);
     await _storage.saveShops(_shops);
     notifyListeners();
+    if (_supabase.isInitialized) {
+      _supabase.deleteShop(shopId);
+    }
     if (_firebase.isInitialized) {
       _firebase.deleteShop(shopId);
     }
@@ -882,7 +940,16 @@ class CollectionProvider extends ChangeNotifier {
     }
     notifyListeners();
 
-    // Background Firebase Sync (instant write directly to Cloud Firestore)
+    // Background Supabase & Firebase Sync (instant write directly to database)
+    if (_supabase.isInitialized) {
+      () async {
+        try {
+          await _supabase.saveCollection(finalCollection);
+        } catch (e) {
+          debugPrint('Supabase direct sync error: $e');
+        }
+      }();
+    }
     if (_firebase.isInitialized) {
       () async {
         try {
@@ -918,6 +985,9 @@ class CollectionProvider extends ChangeNotifier {
           );
           _pendingBills[i] = updated;
           changed = true;
+          if (_supabase.isInitialized) {
+            await _supabase.savePendingBill(updated);
+          }
           if (_firebase.isInitialized) {
             await _firebase.savePendingBill(updated);
           }
@@ -944,6 +1014,9 @@ class CollectionProvider extends ChangeNotifier {
           if (c.hasPhoto) {
             _collections[i] = c.copyWith(clearPhoto: true);
             changed = true;
+            if (_supabase.isInitialized) {
+              _supabase.saveCollection(_collections[i]);
+            }
             if (_firebase.isInitialized) {
               _firebase.saveCollection(_collections[i]);
             }
@@ -962,6 +1035,9 @@ class CollectionProvider extends ChangeNotifier {
     _collections.removeWhere((c) => c.id == id);
     await _storage.saveCollections(_collections);
     notifyListeners();
+    if (_supabase.isInitialized) {
+      _supabase.deleteCollection(id);
+    }
     if (_firebase.isInitialized) {
       _firebase.deleteCollection(id);
     }
@@ -1078,7 +1154,13 @@ class CollectionProvider extends ChangeNotifier {
       debugPrint('Storage savePendingBills error: $e');
     }
 
-    // 4. Sync to Firebase in background without blocking UI
+    // 4. Sync to Supabase & Firebase in background without blocking UI
+    if (_supabase.isInitialized) {
+      _supabase.savePendingBill(bill).catchError((e) {
+        debugPrint('Supabase savePendingBill error: $e');
+        return false;
+      });
+    }
     if (_firebase.isInitialized) {
       _firebase.savePendingBill(bill).catchError((e) {
         debugPrint('Firebase savePendingBill error: $e');
@@ -1099,6 +1181,12 @@ class CollectionProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('Storage updatePendingBill error: $e');
       }
+      if (_supabase.isInitialized) {
+        _supabase.savePendingBill(updatedBill).catchError((e) {
+          debugPrint('Supabase updatePendingBill error: $e');
+          return false;
+        });
+      }
       if (_firebase.isInitialized) {
         _firebase.savePendingBill(updatedBill).catchError((e) {
           debugPrint('Firebase updatePendingBill error: $e');
@@ -1109,7 +1197,7 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   Future<void> deletePendingBill(String id) async {
-    // 1. Mark as locally deleted so background Firebase sync won't resurrect it
+    // 1. Mark as locally deleted so background cloud sync won't resurrect it
     _locallyDeletedBillIds.add(id);
     _pendingBills.removeWhere((b) => b.id == id);
     notifyListeners();
@@ -1122,7 +1210,15 @@ class CollectionProvider extends ChangeNotifier {
       debugPrint('Storage deletePendingBill error: $e');
     }
 
-    // 3. Delete from Firebase in background; on success, clean up tracking set
+    // 3. Delete from Supabase & Firebase in background; on success, clean up tracking set
+    if (_supabase.isInitialized) {
+      _supabase.deletePendingBill(id).then((_) {
+        _locallyDeletedBillIds.remove(id);
+        _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+      }).catchError((e) {
+        debugPrint('Supabase deletePendingBill error: $e');
+      });
+    }
     if (_firebase.isInitialized) {
       _firebase.deletePendingBill(id).then((_) {
         _locallyDeletedBillIds.remove(id);
@@ -1135,7 +1231,9 @@ class CollectionProvider extends ChangeNotifier {
 
   void _listenToPendingBillsStream() {
     _pendingBillsSubscription?.cancel();
-    final stream = _firebase.streamPendingBills();
+    final stream = _supabase.isInitialized
+        ? _supabase.streamPendingBills()
+        : _firebase.streamPendingBills();
     if (stream == null) return;
 
     _pendingBillsSubscription = stream.listen((cloudBills) async {
@@ -1161,6 +1259,36 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   Future<void> syncPendingBillsFromCloud() async {
+    if (!_supabase.isInitialized) {
+      await _supabase.init();
+    }
+    if (_supabase.isInitialized) {
+      try {
+        final cloudBills = await _supabase.fetchPendingBills();
+        final billMap = <String, PendingBillModel>{};
+        for (final b in cloudBills) {
+          if (_locallyDeletedBillIds.contains(b.id)) continue;
+          billMap[b.id] = b;
+        }
+        for (final b in _pendingBills) {
+          if (!_locallyDeletedBillIds.contains(b.id)) {
+            billMap[b.id] = b;
+            if (!cloudBills.any((cb) => cb.id == b.id)) {
+              _supabase.savePendingBill(b);
+            }
+          }
+        }
+        _pendingBills = billMap.values.toList();
+        _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        notifyListeners();
+        await _storage.savePendingBills(_pendingBills);
+        _listenToPendingBillsStream();
+        return;
+      } catch (e) {
+        debugPrint('syncPendingBillsFromCloud Supabase notice: $e');
+      }
+    }
+
     if (!_firebase.isInitialized) {
       await _firebase.init();
     }
@@ -1393,6 +1521,13 @@ _Generated via Daily Collection Pro_
     await _storage.saveCollections(_collections);
     await _storage.savePendingBills(_pendingBills);
     await _storage.saveSalesOrders(_salesOrders);
+    if (_supabase.isInitialized) {
+      for (final c in oldCollections) {
+        try {
+          await _supabase.deleteCollection(c.id);
+        } catch (_) {}
+      }
+    }
     if (_firebase.isInitialized) {
       for (final c in oldCollections) {
         try {
