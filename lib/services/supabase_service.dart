@@ -236,6 +236,51 @@ class SupabaseService {
     }
   }
 
+  Stream<List<CollectionModel>>? streamCollections() {
+    if (!_isInitialized) return null;
+
+    try {
+      return client
+          .from('collections')
+          .stream(primaryKey: ['id'])
+          .order('collectedAt', ascending: false)
+          .map((rows) => rows
+              .map((r) => CollectionModel.fromJson(Map<String, dynamic>.from(r)))
+              .toList());
+    } catch (e) {
+      debugPrint('Error streaming collections from Supabase: $e');
+      return null;
+    }
+  }
+
+  Future<bool> savePendingBillsBulk(List<PendingBillModel> bills) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized || bills.isEmpty) return false;
+
+    try {
+      await client.from('pending_bills').upsert(bills.map((b) => b.toJson()).toList());
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error bulk saving pending bills to Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<bool> saveCollectionsBulk(List<CollectionModel> collections) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized || collections.isEmpty) return false;
+
+    try {
+      await client.from('collections').upsert(collections.map((c) => c.toJson()).toList());
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error bulk saving collections to Supabase: $e');
+      return false;
+    }
+  }
+
   Future<bool> deleteCollection(String id) async {
     if (!_isInitialized) await init();
     if (!_isInitialized) return false;

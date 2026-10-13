@@ -451,29 +451,25 @@ class HomeDashboardScreen extends StatelessWidget {
                 );
               } else if (val == 'share') {
                 _copyReport(context);
-              } else if (val == 'sync_cloud') {
+              } else if (val == 'sync_cloud' || val == 'sync') {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Syncing to cloud...')),
+                  const SnackBar(
+                    content: Text('Syncing with Supabase across all devices...'),
+                    duration: Duration(seconds: 1),
+                  ),
                 );
-                final ok = await provider.syncAllToCloud();
+                final ok = await provider.syncAllWithCloud(notify: true);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(ok
-                          ? 'Synced ${provider.collections.length} collections and ${provider.shops.length} stores to Firestore!'
-                          : 'Sync failed: check connection'),
+                          ? 'Synced: ${provider.collections.length} collections, ${provider.pendingBills.length} bills, 351 outlets!'
+                          : 'Sync failed: check internet connection'),
                       backgroundColor: ok ? const Color(0xFF10B981) : AppTheme.balanceDueColor,
+                      duration: const Duration(seconds: 2),
                     ),
                   );
                 }
-              } else if (val == 'sync') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Supabase Database Connected (13 Routes, 351 Outlets Active)'),
-                    backgroundColor: Color(0xFF059669),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
               } else if (val == 'reset') {
                 provider.resetToSample();
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -516,9 +512,9 @@ class HomeDashboardScreen extends StatelessWidget {
                 value: 'sync_cloud',
                 child: Row(
                   children: [
-                    Icon(Icons.cloud_upload_outlined, size: 18, color: Color(0xFF10B981)),
+                    Icon(Icons.sync_rounded, size: 18, color: Color(0xFF10B981)),
                     SizedBox(width: 10),
-                    Text('Sync to Cloud'),
+                    Text('Sync Now (All Devices)'),
                   ],
                 ),
               ),
@@ -542,20 +538,6 @@ class HomeDashboardScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              PopupMenuItem(
-                value: 'sync',
-                child: Row(
-                  children: [
-                    Icon(
-                      provider.isCloudConnected ? Icons.cloud_done : Icons.cloud_sync,
-                      size: 18,
-                      color: provider.isCloudConnected ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(provider.isCloudConnected ? 'Cloud Active' : 'Cloud Sync'),
-                  ],
-                ),
-              ),
               const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'reset',
@@ -572,7 +554,7 @@ class HomeDashboardScreen extends StatelessWidget {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => provider.initialize(),
+        onRefresh: () async => provider.syncAllWithCloud(notify: true),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -615,18 +597,25 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   InkWell(
-                    onTap: () {
+                    onTap: () async {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            provider.isCloudConnected
-                                ? 'Supabase Database Connected (13 Routes, 351 Outlets Active)'
-                                : 'Offline Cache Active',
-                          ),
-                          backgroundColor: const Color(0xFF059669),
-                          duration: const Duration(seconds: 2),
+                        const SnackBar(
+                          content: Text('Syncing data with cloud across devices...'),
+                          duration: Duration(seconds: 1),
                         ),
                       );
+                      final ok = await provider.syncAllWithCloud(notify: true);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok
+                                ? 'Synced: ${provider.collections.length} collections, ${provider.pendingBills.length} bills, 351 outlets!'
+                                : 'Offline cache active: will sync when connected'),
+                            backgroundColor: ok ? const Color(0xFF059669) : Colors.blueGrey,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
                     },
                     borderRadius: BorderRadius.circular(6),
                     child: Container(
@@ -645,14 +634,26 @@ class HomeDashboardScreen extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            provider.isCloudConnected ? Icons.cloud_done : Icons.cloud_queue,
-                            size: 14,
-                            color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
-                          ),
+                          if (provider.isSyncing)
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF059669)),
+                              ),
+                            )
+                          else
+                            Icon(
+                              provider.isCloudConnected ? Icons.cloud_done : Icons.cloud_queue,
+                              size: 14,
+                              color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
+                            ),
                           const SizedBox(width: 5),
                           Text(
-                            provider.isCloudConnected ? 'Cloud Synced' : 'Offline Mode',
+                            provider.isSyncing
+                                ? 'Syncing...'
+                                : (provider.isCloudConnected ? 'Cloud Synced' : 'Offline Mode'),
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,

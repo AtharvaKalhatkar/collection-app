@@ -87,6 +87,30 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
           title: const Text('Ledger'),
           actions: [
             IconButton(
+              icon: const Icon(Icons.sync_rounded, size: 21),
+              tooltip: 'Sync across Devices',
+              onPressed: () async {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Syncing across all devices...'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+                final ok = await context.read<CollectionProvider>().syncAllWithCloud(notify: true);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(ok
+                          ? 'Synced collections and bills across all devices!'
+                          : 'Sync failed: check internet connection'),
+                      backgroundColor: ok ? const Color(0xFF10B981) : AppTheme.balanceDueColor,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+            ),
+            IconButton(
               icon: const Icon(Icons.add_business_outlined, size: 21),
               tooltip: 'Add Outlet',
               onPressed: () {

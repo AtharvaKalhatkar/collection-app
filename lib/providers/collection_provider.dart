@@ -25,6 +25,10 @@ class CollectionProvider extends ChangeNotifier {
   DateTime? _lastBackupTime;
 
   StreamSubscription<List<PendingBillModel>>? _pendingBillsSubscription;
+  StreamSubscription<List<CollectionModel>>? _collectionsSubscription;
+  Timer? _autoSyncTimer;
+  bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
   List<RouteModel> _routes = [];
   List<ShopModel> _shops = [];
   List<CollectionModel> _collections = [];
@@ -215,103 +219,9 @@ class CollectionProvider extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
 
-    // 2. Initialize Supabase in background (non-blocking)
-    () async {
-      try {
-        if (!_supabase.isInitialized) {
-          await _supabase.init();
-        }
-        if (_supabase.isInitialized) {
-          final cloudCollections = await _supabase.fetchCollections();
-          _collections = cloudCollections;
-          await _storage.saveCollections(_collections);
-
-          final cloudShops = await _supabase.fetchShops();
-          if (cloudShops.isNotEmpty) {
-            final cleanCloudShops = <ShopModel>[];
-            for (final s in cloudShops) {
-              if (_isDummyShop(s)) {
-                await _supabase.deleteShop(s.id);
-              } else {
-                cleanCloudShops.add(s);
-              }
-            }
-            _shops = _deduplicateShops(cleanCloudShops);
-            await _storage.saveShops(_shops);
-          }
-
-          final cloudRoutes = await _supabase.fetchRoutes();
-          if (cloudRoutes.isNotEmpty) {
-            _routes = cloudRoutes;
-            _routes.sort((a, b) => a.priority.compareTo(b.priority));
-            await _storage.saveRoutes(_routes);
-          }
-
-          // Synchronize Pending Bills across all devices & logins safely
-          final cloudBills = await _supabase.fetchPendingBills();
-          final billMap = <String, PendingBillModel>{};
-          for (final b in cloudBills) {
-            // CRITICAL: Skip bills that were deleted locally but delete hasn't completed
-            if (_locallyDeletedBillIds.contains(b.id)) continue;
-            billMap[b.id] = b;
-          }
-          // Local bills ALWAYS win over cloud (preserves just-added or locally-updated bills)
-          for (final b in _pendingBills) {
-            billMap[b.id] = b;
-            // If bill exists locally but not in cloud, push it to Supabase
-            if (!cloudBills.any((cb) => cb.id == b.id)) {
-              _supabase.savePendingBill(b);
-            }
-          }
-          _pendingBills = billMap.values.toList();
-          _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-          notifyListeners();
-          await _storage.savePendingBills(_pendingBills);
-          _listenToPendingBillsStream();
-
-          // Retry Supabase deletes for any locally tracked deleted IDs
-          if (_locallyDeletedBillIds.isNotEmpty) {
-            for (final id in _locallyDeletedBillIds.toList()) {
-              try {
-                await _supabase.deletePendingBill(id);
-                _locallyDeletedBillIds.remove(id);
-              } catch (_) {}
-            }
-            await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
-          }
-
-          // Auto-clean: ensure any already paid/settled bills auto-delete heavy photos to save cloud storage
-          bool hasPurgedCloud = false;
-          for (int i = 0; i < _pendingBills.length; i++) {
-            if (_pendingBills[i].isPaid && _pendingBills[i].photoBase64 != null) {
-              _pendingBills[i] = _pendingBills[i].copyWith(clearPhoto: true);
-              hasPurgedCloud = true;
-              _supabase.savePendingBill(_pendingBills[i]);
-            }
-          }
-          if (hasPurgedCloud) {
-            await _storage.savePendingBills(_pendingBills);
-          }
-        }
-      } catch (e) {
-        debugPrint('Supabase background sync notice: $e');
-      }
-
-          // Check and perform auto-backup if 4 days have passed
-          final authService = AuthService();
-          final users = await authService.loadUsers();
-          _lastBackupTime = await _backupService.getLatestBackupTimeShared();
-          await _backupService.checkAndRunAutoBackup(
-            routes: _routes,
-            shops: _shops,
-            collections: _collections,
-            pendingBills: _pendingBills,
-            users: users,
-          );
-          _lastBackupTime = await _backupService.getLatestBackupTimeShared();
-
-      notifyListeners();
-    }();
+    // 2. Initialize Supabase in background, perform 2-way sync, and start real-time sync timer
+    syncAllWithCloud(notify: false);
+    _startAutoSyncTimer();
   }
 
   bool _isDummyShop(ShopModel s) {
@@ -339,27 +249,188 @@ class CollectionProvider extends ChangeNotifier {
     return result;
   }
 
-  Future<bool> syncAllToCloud() async {
+  void _startAutoSyncTimer() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      syncAllWithCloud(notify: false);
+    });
+  }
+
+  void _setupRealtimeListeners() {
+    if (!_supabase.isInitialized) return;
+
+    if (_pendingBillsSubscription == null) {
+      final billStream = _supabase.streamPendingBills();
+      if (billStream != null) {
+        _pendingBillsSubscription = billStream.listen((cloudBills) async {
+          final billMap = <String, PendingBillModel>{};
+          for (final b in cloudBills) {
+            if (_locallyDeletedBillIds.contains(b.id)) continue;
+            billMap[b.id] = b;
+          }
+          for (final b in _pendingBills) {
+            if (!_locallyDeletedBillIds.contains(b.id) && !billMap.containsKey(b.id)) {
+              billMap[b.id] = b;
+            }
+          }
+          _pendingBills = billMap.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          notifyListeners();
+          await _storage.savePendingBills(_pendingBills);
+        }, onError: (e) {
+          debugPrint('Realtime pending_bills error: $e');
+        });
+      }
+    }
+
+    if (_collectionsSubscription == null) {
+      final collStream = _supabase.streamCollections();
+      if (collStream != null) {
+        _collectionsSubscription = collStream.listen((cloudColls) async {
+          final collMap = <String, CollectionModel>{};
+          for (final c in cloudColls) {
+            collMap[c.id] = c;
+          }
+          for (final c in _collections) {
+            if (!collMap.containsKey(c.id)) {
+              collMap[c.id] = c;
+            }
+          }
+          _collections = collMap.values.toList()..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+          notifyListeners();
+          await _storage.saveCollections(_collections);
+        }, onError: (e) {
+          debugPrint('Realtime collections error: $e');
+        });
+      }
+    }
+  }
+
+  Future<bool> syncAllWithCloud({bool notify = true}) async {
+    if (_isSyncing) return true;
+    _isSyncing = true;
+    if (notify) notifyListeners();
+
     try {
       if (!_supabase.isInitialized) {
         await _supabase.init();
       }
-      for (final r in _routes) {
-        await _supabase.saveRoute(r);
+      if (!_supabase.isInitialized) {
+        _isSyncing = false;
+        if (notify) notifyListeners();
+        return false;
       }
-      for (final s in _shops) {
-        await _supabase.saveShop(s);
+
+      // 1. Synchronize Collections across all devices
+      final cloudCollections = await _supabase.fetchCollections();
+      final collMap = <String, CollectionModel>{};
+      for (final c in cloudCollections) {
+        collMap[c.id] = c;
       }
+      final unsyncedColls = <CollectionModel>[];
       for (final c in _collections) {
-        await _supabase.saveCollection(c);
+        if (!collMap.containsKey(c.id)) {
+          collMap[c.id] = c;
+          unsyncedColls.add(c);
+        }
       }
+      _collections = collMap.values.toList()..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+      await _storage.saveCollections(_collections);
+      if (unsyncedColls.isNotEmpty) {
+        await _supabase.saveCollectionsBulk(unsyncedColls);
+      }
+
+      // 2. Synchronize Pending Bills across all devices
+      final cloudBills = await _supabase.fetchPendingBills();
+      final billMap = <String, PendingBillModel>{};
+      for (final b in cloudBills) {
+        if (_locallyDeletedBillIds.contains(b.id)) continue;
+        billMap[b.id] = b;
+      }
+      final unsyncedBills = <PendingBillModel>[];
+      for (final b in _pendingBills) {
+        if (_locallyDeletedBillIds.contains(b.id)) continue;
+        if (!billMap.containsKey(b.id)) {
+          billMap[b.id] = b;
+          unsyncedBills.add(b);
+        } else {
+          // If local has marked as paid or updated amount that cloud hasn't recorded
+          final cb = billMap[b.id]!;
+          if ((b.isPaid && !cb.isPaid) || (b.collectedAmount > cb.collectedAmount)) {
+            billMap[b.id] = b;
+            unsyncedBills.add(b);
+          }
+        }
+      }
+      _pendingBills = billMap.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      await _storage.savePendingBills(_pendingBills);
+      if (unsyncedBills.isNotEmpty) {
+        await _supabase.savePendingBillsBulk(unsyncedBills);
+      }
+
+      // 3. Synchronize Shops & Routes
+      final cloudShops = await _supabase.fetchShops();
+      if (cloudShops.isNotEmpty) {
+        final cleanCloudShops = <ShopModel>[];
+        for (final s in cloudShops) {
+          if (_isDummyShop(s)) {
+            _supabase.deleteShop(s.id);
+          } else {
+            cleanCloudShops.add(s);
+          }
+        }
+        _shops = _deduplicateShops(cleanCloudShops);
+        await _storage.saveShops(_shops);
+      }
+
+      final cloudRoutes = await _supabase.fetchRoutes();
+      if (cloudRoutes.isNotEmpty) {
+        _routes = cloudRoutes..sort((a, b) => a.priority.compareTo(b.priority));
+        await _storage.saveRoutes(_routes);
+      }
+
+      // 4. Retry deletes for locally tracked deleted IDs
+      if (_locallyDeletedBillIds.isNotEmpty) {
+        for (final id in _locallyDeletedBillIds.toList()) {
+          try {
+            await _supabase.deletePendingBill(id);
+            _locallyDeletedBillIds.remove(id);
+          } catch (_) {}
+        }
+        await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+      }
+
+      // 5. Ensure Realtime subscriptions are active
+      _setupRealtimeListeners();
+
+      // 6. Check and perform auto-backup if 4 days have passed
+      try {
+        final authService = AuthService();
+        final users = await authService.loadUsers();
+        _lastBackupTime = await _backupService.getLatestBackupTimeShared();
+        await _backupService.checkAndRunAutoBackup(
+          routes: _routes,
+          shops: _shops,
+          collections: _collections,
+          pendingBills: _pendingBills,
+          users: users,
+        );
+        _lastBackupTime = await _backupService.getLatestBackupTimeShared();
+      } catch (e) {
+        debugPrint('Auto backup notice: $e');
+      }
+
+      _isSyncing = false;
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Sync all error: $e');
+      debugPrint('syncAllWithCloud notice: $e');
+      _isSyncing = false;
+      if (notify) notifyListeners();
       return false;
     }
   }
+
+  Future<bool> syncAllToCloud() => syncAllWithCloud();
 
   Future<bool> connectCloud([dynamic config]) async {
     if (!_supabase.isInitialized) {
@@ -899,15 +970,13 @@ class CollectionProvider extends ChangeNotifier {
     notifyListeners();
 
     // Background Supabase Sync (instant write directly to database)
-    if (_supabase.isInitialized) {
-      () async {
-        try {
-          await _supabase.saveCollection(finalCollection);
-        } catch (e) {
-          debugPrint('Supabase direct sync error: $e');
-        }
-      }();
-    }
+    () async {
+      try {
+        await _supabase.saveCollection(finalCollection);
+      } catch (e) {
+        debugPrint('Supabase direct sync error: $e');
+      }
+    }();
     
 
     // Auto-delete bill photos when collection completes to keep storage free forever
@@ -1099,13 +1168,10 @@ class CollectionProvider extends ChangeNotifier {
     }
 
     // 4. Sync to Supabase in background without blocking UI
-    if (_supabase.isInitialized) {
-      _supabase.savePendingBill(bill).catchError((e) {
-        debugPrint('Supabase savePendingBill error: $e');
-        return false;
-      });
-    }
-    
+    _supabase.savePendingBill(bill).catchError((e) {
+      debugPrint('Supabase savePendingBill error: $e');
+      return false;
+    });
 
     return bill;
   }
@@ -1120,13 +1186,10 @@ class CollectionProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('Storage updatePendingBill error: $e');
       }
-      if (_supabase.isInitialized) {
-        _supabase.savePendingBill(updatedBill).catchError((e) {
-          debugPrint('Supabase updatePendingBill error: $e');
-          return false;
-        });
-      }
-      
+      _supabase.savePendingBill(updatedBill).catchError((e) {
+        debugPrint('Supabase updatePendingBill error: $e');
+        return false;
+      });
     }
   }
 
@@ -1145,78 +1208,23 @@ class CollectionProvider extends ChangeNotifier {
     }
 
     // 3. Delete from Supabase in background; on success, clean up tracking set
-    if (_supabase.isInitialized) {
-      _supabase.deletePendingBill(id).then((_) {
-        _locallyDeletedBillIds.remove(id);
-        _storage.saveDeletedBillIds(_locallyDeletedBillIds);
-      }).catchError((e) {
-        debugPrint('Supabase deletePendingBill error: $e');
-      });
-    }
-    
-  }
-
-  void _listenToPendingBillsStream() {
-    _pendingBillsSubscription?.cancel();
-    final stream = _supabase.isInitialized ? _supabase.streamPendingBills() : null;
-    if (stream == null) return;
-
-    _pendingBillsSubscription = stream.listen((cloudBills) async {
-      final billMap = <String, PendingBillModel>{};
-      for (final b in cloudBills) {
-        if (_locallyDeletedBillIds.contains(b.id)) continue;
-        billMap[b.id] = b;
-      }
-      for (final b in _pendingBills) {
-        if (!_locallyDeletedBillIds.contains(b.id)) {
-          if (!billMap.containsKey(b.id)) {
-            billMap[b.id] = b;
-          }
-        }
-      }
-      _pendingBills = billMap.values.toList();
-      _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      notifyListeners();
-      await _storage.savePendingBills(_pendingBills);
-    }, onError: (e) {
-      debugPrint('Error in pending bills stream: $e');
+    _supabase.deletePendingBill(id).then((_) {
+      _locallyDeletedBillIds.remove(id);
+      _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+    }).catchError((e) {
+      debugPrint('Supabase deletePendingBill error: $e');
     });
   }
 
   Future<void> syncPendingBillsFromCloud() async {
-    try {
-      if (!_supabase.isInitialized) {
-        await _supabase.init();
-      }
-      if (_supabase.isInitialized) {
-        final cloudBills = await _supabase.fetchPendingBills();
-        final billMap = <String, PendingBillModel>{};
-        for (final b in cloudBills) {
-          if (_locallyDeletedBillIds.contains(b.id)) continue;
-          billMap[b.id] = b;
-        }
-        for (final b in _pendingBills) {
-          if (!_locallyDeletedBillIds.contains(b.id)) {
-            billMap[b.id] = b;
-            if (!cloudBills.any((cb) => cb.id == b.id)) {
-              _supabase.savePendingBill(b);
-            }
-          }
-        }
-        _pendingBills = billMap.values.toList();
-        _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        notifyListeners();
-        await _storage.savePendingBills(_pendingBills);
-        _listenToPendingBillsStream();
-      }
-    } catch (e) {
-      debugPrint('syncPendingBillsFromCloud error: $e');
-    }
+    await syncAllWithCloud(notify: true);
   }
 
   @override
   void dispose() {
+    _autoSyncTimer?.cancel();
     _pendingBillsSubscription?.cancel();
+    _collectionsSubscription?.cancel();
     super.dispose();
   }
 
