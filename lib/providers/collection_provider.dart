@@ -28,6 +28,7 @@ class CollectionProvider extends ChangeNotifier {
   List<ShopModel> _shops = [];
   List<CollectionModel> _collections = [];
   List<PendingBillModel> _pendingBills = [];
+  Set<String> _locallyDeletedBillIds = {};
   List<SalesOrderModel> _salesOrders = [];
   List<CatalogProduct> _customProducts = [];
   List<String> _businesses = ['Purva Enterprises', 'Manas Sales'];
@@ -120,6 +121,7 @@ class CollectionProvider extends ChangeNotifier {
       _shops = await _storage.loadShops();
       _collections = await _storage.loadCollections();
       _pendingBills = await _storage.loadPendingBills();
+      _locallyDeletedBillIds = await _storage.loadDeletedBillIds();
 
       // Auto-purge any legacy sample dummy records (col-1..col-6, pb-1..pb-4, shop-*)
       final hadDummyCol = _collections.any((c) => c.id.startsWith('col-'));
@@ -221,20 +223,32 @@ class CollectionProvider extends ChangeNotifier {
           final cloudBills = await _firebase.fetchPendingBills();
           final billMap = <String, PendingBillModel>{};
           for (final b in cloudBills) {
+            // CRITICAL: Skip bills that were deleted locally but Firebase delete hasn't completed
+            if (_locallyDeletedBillIds.contains(b.id)) continue;
             billMap[b.id] = b;
           }
-          // Merge local bills so newly added bills on this device are NEVER overwritten/lost
+          // Local bills ALWAYS win over cloud (preserves just-added or locally-updated bills)
           for (final b in _pendingBills) {
-            if (!billMap.containsKey(b.id)) {
-              billMap[b.id] = b;
-              if (_firebase.isInitialized) {
-                _firebase.savePendingBill(b);
-              }
+            billMap[b.id] = b;
+            // If bill exists locally but not in cloud, push it to Firebase
+            if (!cloudBills.any((cb) => cb.id == b.id) && _firebase.isInitialized) {
+              _firebase.savePendingBill(b);
             }
           }
           _pendingBills = billMap.values.toList();
           _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           await _storage.savePendingBills(_pendingBills);
+
+          // Retry Firebase deletes for any locally tracked deleted IDs
+          if (_locallyDeletedBillIds.isNotEmpty && _firebase.isInitialized) {
+            for (final id in _locallyDeletedBillIds.toList()) {
+              try {
+                await _firebase.deletePendingBill(id);
+                _locallyDeletedBillIds.remove(id);
+              } catch (_) {}
+            }
+            await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+          }
 
           // Auto-clean: ensure any already paid/settled bills auto-delete heavy photos to save cloud storage
           bool hasPurgedCloud = false;
@@ -1028,32 +1042,33 @@ class CollectionProvider extends ChangeNotifier {
 
   // --- Pending Bill Operations ---
   Future<PendingBillModel> addPendingBill(PendingBillModel bill) async {
+    // Clear from deleted tracking if re-added
+    if (_locallyDeletedBillIds.contains(bill.id)) {
+      _locallyDeletedBillIds.remove(bill.id);
+      await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+    }
+
     // 1. Immediately insert at the top of in-memory list
     _pendingBills.insert(0, bill);
     // 2. Immediately notify listeners so the new bill appears in UI in 0ms!
     notifyListeners();
 
-    // 3. Persist to local storage and sync to Firebase asynchronously in background
-    _persistAndSyncPendingBill(bill);
+    // 3. Persist to local storage synchronously so it survives page reloads and screen transitions
+    try {
+      await _storage.savePendingBills(_pendingBills);
+    } catch (e) {
+      debugPrint('Storage savePendingBills error: $e');
+    }
+
+    // 4. Sync to Firebase in background without blocking UI
+    if (_firebase.isInitialized) {
+      _firebase.savePendingBill(bill).catchError((e) {
+        debugPrint('Firebase savePendingBill error: $e');
+        return false;
+      });
+    }
 
     return bill;
-  }
-
-  void _persistAndSyncPendingBill(PendingBillModel bill) {
-    Future.microtask(() async {
-      try {
-        await _storage.savePendingBills(_pendingBills);
-      } catch (e) {
-        debugPrint('Storage savePendingBills error: $e');
-      }
-      try {
-        if (_firebase.isInitialized) {
-          await _firebase.savePendingBill(bill);
-        }
-      } catch (e) {
-        debugPrint('Firebase savePendingBill error: $e');
-      }
-    });
   }
 
   Future<void> updatePendingBill(PendingBillModel updatedBill) async {
@@ -1061,27 +1076,43 @@ class CollectionProvider extends ChangeNotifier {
     if (idx != -1) {
       _pendingBills[idx] = updatedBill;
       notifyListeners();
-      _persistAndSyncPendingBill(updatedBill);
+      try {
+        await _storage.savePendingBills(_pendingBills);
+      } catch (e) {
+        debugPrint('Storage updatePendingBill error: $e');
+      }
+      if (_firebase.isInitialized) {
+        _firebase.savePendingBill(updatedBill).catchError((e) {
+          debugPrint('Firebase updatePendingBill error: $e');
+          return false;
+        });
+      }
     }
   }
 
   Future<void> deletePendingBill(String id) async {
+    // 1. Mark as locally deleted so background Firebase sync won't resurrect it
+    _locallyDeletedBillIds.add(id);
     _pendingBills.removeWhere((b) => b.id == id);
     notifyListeners();
-    Future.microtask(() async {
-      try {
-        await _storage.savePendingBills(_pendingBills);
-      } catch (e) {
-        debugPrint('Storage deletePendingBill error: $e');
-      }
-      try {
-        if (_firebase.isInitialized) {
-          await _firebase.deletePendingBill(id);
-        }
-      } catch (e) {
+
+    // 2. Save both pending bills and deleted ID set to local storage
+    try {
+      await _storage.savePendingBills(_pendingBills);
+      await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+    } catch (e) {
+      debugPrint('Storage deletePendingBill error: $e');
+    }
+
+    // 3. Delete from Firebase in background; on success, clean up tracking set
+    if (_firebase.isInitialized) {
+      _firebase.deletePendingBill(id).then((_) {
+        _locallyDeletedBillIds.remove(id);
+        _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+      }).catchError((e) {
         debugPrint('Firebase deletePendingBill error: $e');
-      }
-    });
+      });
+    }
   }
 
   List<PendingBillModel> getPendingBillsForRoute(String routeId, {String? businessName}) {

@@ -18,6 +18,7 @@ class StorageService {
   static const String _keySalesmanPhone = 'app_salesman_phone_v1';
   static const String _keySalesmanRole = 'app_salesman_role_v1';
   static const String _keyInitialized = 'app_sample_data_initialized_v1';
+  static const String _keyDeletedBillIds = 'deleted_bill_ids_v1';
 
   Future<bool> isFirstLaunch() async {
     final prefs = await SharedPreferences.getInstance();
@@ -157,11 +158,10 @@ class StorageService {
       await prefs.setStringList(_keyPendingBills, rawList);
     } catch (e) {
       try {
-        await prefs.remove(_keyPendingBills);
-        // Keep photos for recent 15 bills, only trim older ones if storage limit hit
+        // Fallback 1: Keep photos for recent 5 bills, strip older photos to stay within localStorage quota
         final trimmed = <PendingBillModel>[];
         for (int i = 0; i < bills.length; i++) {
-          if (i < 15) {
+          if (i < 5) {
             trimmed.add(bills[i]);
           } else {
             trimmed.add(bills[i].copyWith(photoBase64: null));
@@ -170,10 +170,31 @@ class StorageService {
         final rawList = trimmed.map((b) => jsonEncode(b.toJson())).toList();
         await prefs.setStringList(_keyPendingBills, rawList);
       } catch (inner) {
-        // ignore: avoid_print
-        print('LocalStorage pending bills save notice: $inner');
+        try {
+          // Fallback 2: Strip ALL photos so bill records, bill numbers, amounts are NEVER lost
+          final noPhotos = bills
+              .map((b) => b.copyWith(photoBase64: null))
+              .map((b) => jsonEncode(b.toJson()))
+              .toList();
+          await prefs.setStringList(_keyPendingBills, noPhotos);
+        } catch (inner2) {
+          // ignore: avoid_print
+          print('LocalStorage pending bills save notice: $inner2');
+        }
       }
     }
+  }
+
+  // --- Deleted Bill IDs Tracking ---
+  Future<Set<String>> loadDeletedBillIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_keyDeletedBillIds) ?? [];
+    return list.toSet();
+  }
+
+  Future<void> saveDeletedBillIds(Set<String> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyDeletedBillIds, ids.toList());
   }
 
   // --- Sales Orders ---
