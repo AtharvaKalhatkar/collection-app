@@ -1,0 +1,1 @@
+ /home/aathu/daily_collection_app/.dart_tool/flutter_build/19ed989bcdc5dda97411b20e30f0c1d4/build_hooks_result.json: 

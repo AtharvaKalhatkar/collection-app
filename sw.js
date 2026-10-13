@@ -41,8 +41,8 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Exclude Firebase Firestore/Storage API requests from local caching
-  if (url.hostname.includes('firebase') || url.hostname.includes('googleapis.com')) {
+  // Exclude Supabase API requests from local caching
+  if (url.hostname.includes('supabase.co')) {
     return;
   }
 
