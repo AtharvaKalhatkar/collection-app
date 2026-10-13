@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -53,6 +54,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   final _amountController = TextEditingController();
 
   final List<String> _photosBase64 = [];
+  final Map<String, Uint8List> _photoBytesCache = {};
   bool _isSaving = false;
 
   @override
@@ -367,7 +369,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
         createdAt: DateTime.now(),
       );
 
-      await provider.addPendingBill(newPendingBill);
+      provider.addPendingBill(newPendingBill);
       _persistDefaults(route.id, shop?.id ?? _selectedShopId!);
 
       if (mounted) {
@@ -933,7 +935,10 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                           itemCount: _photosBase64.length,
                           itemBuilder: (ctx, idx) {
                             final photo = _photosBase64[idx];
-                            final bytes = ImageCompressHelper.safeBase64Decode(photo);
+                            final bytes = _photoBytesCache.putIfAbsent(
+                              photo,
+                              () => ImageCompressHelper.safeBase64Decode(photo) ?? Uint8List(0),
+                            );
                             return Container(
                               width: 95,
                               margin: const EdgeInsets.only(right: 10),
@@ -963,7 +968,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                                       child: Column(
                                         children: [
                                           Expanded(
-                                            child: bytes != null
+                                            child: bytes.isNotEmpty
                                                 ? Image.memory(
                                                     bytes,
                                                     width: 95,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -54,13 +55,13 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
         final picked = await _picker.pickImage(
           source: ImageSource.camera,
           preferredCameraDevice: CameraDevice.rear,
-          maxWidth: 2048,
-          maxHeight: 2048,
-          imageQuality: 90,
+          maxWidth: 1600,
+          maxHeight: 1600,
+          imageQuality: 82,
         );
         if (picked != null) {
           final bytes = await picked.readAsBytes();
-          final b64 = ImageCompressHelper.compressToBase64(bytes);
+          final b64 = base64Encode(bytes);
           if (mounted) Navigator.pop(context, [b64]);
         } else {
           if (mounted) Navigator.pop(context, null);
@@ -157,14 +158,14 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
     if (_isCapturing) return;
     try {
       final List<XFile> pickedList = await _picker.pickMultiImage(
-        maxWidth: 2048,
-        maxHeight: 2048,
-        imageQuality: 90,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 82,
       );
       if (pickedList.isNotEmpty) {
         for (final picked in pickedList) {
           final bytes = await picked.readAsBytes();
-          final b64 = ImageCompressHelper.compressToBase64(bytes);
+          final b64 = base64Encode(bytes);
           _capturedPhotos.add(b64);
         }
         if (mounted) {
@@ -177,13 +178,13 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
       try {
         final picked = await _picker.pickImage(
           source: ImageSource.gallery,
-          maxWidth: 2048,
-          maxHeight: 2048,
-          imageQuality: 90,
+          maxWidth: 1600,
+          maxHeight: 1600,
+          imageQuality: 82,
         );
         if (picked != null) {
           final bytes = await picked.readAsBytes();
-          final b64 = ImageCompressHelper.compressToBase64(bytes);
+          final b64 = base64Encode(bytes);
           if (mounted) {
             setState(() {
               _capturedPhotos.add(b64);

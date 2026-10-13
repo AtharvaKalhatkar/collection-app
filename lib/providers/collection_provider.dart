@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -24,6 +25,7 @@ class CollectionProvider extends ChangeNotifier {
   final Uuid _uuid = const Uuid();
   DateTime? _lastBackupTime;
 
+  StreamSubscription<List<PendingBillModel>>? _pendingBillsSubscription;
   List<RouteModel> _routes = [];
   List<ShopModel> _shops = [];
   List<CollectionModel> _collections = [];
@@ -135,6 +137,20 @@ class CollectionProvider extends ChangeNotifier {
         await _storage.savePendingBills(_pendingBills);
         await _storage.saveShops(_shops);
       }
+
+      // Auto-sanitize any legacy bloated test photos (>600KB base64) so they don't freeze localStorage
+      bool hadBloatedPhotos = false;
+      for (int i = 0; i < _pendingBills.length; i++) {
+        final b = _pendingBills[i];
+        if (b.photoBase64 != null && b.photoBase64!.length > 600000) {
+          _pendingBills[i] = b.copyWith(photoBase64: null, clearPhoto: true);
+          hadBloatedPhotos = true;
+        }
+      }
+      if (hadBloatedPhotos) {
+        await _storage.savePendingBills(_pendingBills);
+      }
+
       final deduped = _deduplicateShops(_shops);
       if (deduped.length != _shops.length) {
         _shops = deduped;
@@ -237,7 +253,9 @@ class CollectionProvider extends ChangeNotifier {
           }
           _pendingBills = billMap.values.toList();
           _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          notifyListeners();
           await _storage.savePendingBills(_pendingBills);
+          _listenToPendingBillsStream();
 
           // Retry Firebase deletes for any locally tracked deleted IDs
           if (_locallyDeletedBillIds.isNotEmpty && _firebase.isInitialized) {
@@ -1113,6 +1131,70 @@ class CollectionProvider extends ChangeNotifier {
         debugPrint('Firebase deletePendingBill error: $e');
       });
     }
+  }
+
+  void _listenToPendingBillsStream() {
+    _pendingBillsSubscription?.cancel();
+    final stream = _firebase.streamPendingBills();
+    if (stream == null) return;
+
+    _pendingBillsSubscription = stream.listen((cloudBills) async {
+      final billMap = <String, PendingBillModel>{};
+      for (final b in cloudBills) {
+        if (_locallyDeletedBillIds.contains(b.id)) continue;
+        billMap[b.id] = b;
+      }
+      for (final b in _pendingBills) {
+        if (!_locallyDeletedBillIds.contains(b.id)) {
+          if (!billMap.containsKey(b.id)) {
+            billMap[b.id] = b;
+          }
+        }
+      }
+      _pendingBills = billMap.values.toList();
+      _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      notifyListeners();
+      await _storage.savePendingBills(_pendingBills);
+    }, onError: (e) {
+      debugPrint('Error in pending bills stream: $e');
+    });
+  }
+
+  Future<void> syncPendingBillsFromCloud() async {
+    if (!_firebase.isInitialized) {
+      await _firebase.init();
+    }
+    if (!_firebase.isInitialized) return;
+
+    try {
+      final cloudBills = await _firebase.fetchPendingBills();
+      final billMap = <String, PendingBillModel>{};
+      for (final b in cloudBills) {
+        if (_locallyDeletedBillIds.contains(b.id)) continue;
+        billMap[b.id] = b;
+      }
+      for (final b in _pendingBills) {
+        if (!_locallyDeletedBillIds.contains(b.id)) {
+          billMap[b.id] = b;
+          if (!cloudBills.any((cb) => cb.id == b.id)) {
+            _firebase.savePendingBill(b);
+          }
+        }
+      }
+      _pendingBills = billMap.values.toList();
+      _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      notifyListeners();
+      await _storage.savePendingBills(_pendingBills);
+      _listenToPendingBillsStream();
+    } catch (e) {
+      debugPrint('syncPendingBillsFromCloud error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _pendingBillsSubscription?.cancel();
+    super.dispose();
   }
 
   List<PendingBillModel> getPendingBillsForRoute(String routeId, {String? businessName}) {

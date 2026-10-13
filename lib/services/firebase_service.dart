@@ -329,13 +329,44 @@ class FirebaseService {
 
   // --- Pending Bills Sync to Cloud Firestore ---
   Future<bool> savePendingBill(PendingBillModel bill) async {
-    if (!_isInitialized || _firestore == null) return false;
+    final fs = _firestore;
+    if (fs == null) return false;
     try {
-      await _firestore!.collection('pending_bills').doc(bill.id).set(bill.toJson());
+      await fs.collection('pending_bills').doc(bill.id).set(bill.toJson());
       return true;
     } catch (e) {
-      _logError('Error saving pending bill to Firestore', e);
-      return false;
+      _logError('Error saving pending bill to Firestore, attempting trimmed payload fallback', e);
+      try {
+        // Fallback 1: Keep only the first photo to ensure document fits well below 1MB limit
+        final trimmed = bill.copyWith(
+          photosBase64: bill.allPhotos.isNotEmpty ? [bill.allPhotos.first] : const [],
+        );
+        await fs.collection('pending_bills').doc(bill.id).set(trimmed.toJson());
+        return true;
+      } catch (inner) {
+        try {
+          // Fallback 2: Clear photo completely so bill details (number, amount, dates) are NEVER lost across devices
+          final noPhoto = bill.copyWith(clearPhoto: true);
+          await fs.collection('pending_bills').doc(bill.id).set(noPhoto.toJson());
+          return true;
+        } catch (inner2) {
+          _logError('Error saving pending bill fallback to Firestore', inner2);
+          return false;
+        }
+      }
+    }
+  }
+
+  Stream<List<PendingBillModel>>? streamPendingBills() {
+    final fs = _firestore;
+    if (fs == null) return null;
+    try {
+      return fs.collection('pending_bills').snapshots().map((snapshot) {
+        return snapshot.docs.map((doc) => PendingBillModel.fromJson(doc.data())).toList();
+      });
+    } catch (e) {
+      _logError('Error streaming pending bills from Firestore', e);
+      return null;
     }
   }
 

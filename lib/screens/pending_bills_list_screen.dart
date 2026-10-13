@@ -10,6 +10,7 @@ import '../utils/image_compress_helper.dart';
 import 'add_pending_bill_screen.dart';
 import 'make_collection_screen.dart';
 import '../utils/marathi_search_helper.dart';
+import '../utils/quick_alert.dart';
 
 class PendingBillsListScreen extends StatefulWidget {
   final DateTime? initialInvoiceDate;
@@ -164,6 +165,17 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
       appBar: AppBar(
         title: const Text('Pending Bills'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.sync_rounded),
+            tooltip: 'Sync Bills across Devices',
+            onPressed: () async {
+              QuickAlert.show(context, 'Syncing with cloud...', duration: const Duration(seconds: 1));
+              await context.read<CollectionProvider>().syncPendingBillsFromCloud();
+              if (context.mounted) {
+                QuickAlert.success(context, 'Synced successfully!');
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.note_add_outlined, size: 22),
             tooltip: 'Upload New Bill',
@@ -478,84 +490,95 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
 
           // List of Pending Bills
           Expanded(
-            child: filteredBills.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            allBills.isNotEmpty
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.receipt_long_outlined,
-                            size: 54,
-                            color: Colors.blueGrey.shade300,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            allBills.isNotEmpty
-                                ? 'No bills match active filters'
-                                : 'No pending bills recorded yet',
-                            style: TextStyle(
-                              color: Colors.blueGrey.shade800,
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            allBills.isNotEmpty
-                                ? 'There are ${allBills.length} total bills, but they are filtered out by current date, firm, route or status.'
-                                : 'Delivered bills uploaded by delivery staff will appear here for collection.',
-                            style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                          if (allBills.isNotEmpty) ...[
-                            ElevatedButton.icon(
-                              icon: const Icon(Icons.clear_all, size: 18),
-                              label: Text('Clear Filters (Show All ${allBills.length} Bills)'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primary,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: RefreshIndicator(
+              onRefresh: () => context.read<CollectionProvider>().syncPendingBillsFromCloud(),
+              child: filteredBills.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.45,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24.0),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    allBills.isNotEmpty
+                                        ? Icons.filter_alt_off_outlined
+                                        : Icons.receipt_long_outlined,
+                                    size: 54,
+                                    color: Colors.blueGrey.shade300,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    allBills.isNotEmpty
+                                        ? 'No bills match active filters'
+                                        : 'No pending bills recorded yet',
+                                    style: TextStyle(
+                                      color: Colors.blueGrey.shade800,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    allBills.isNotEmpty
+                                        ? 'There are ${allBills.length} total bills, but they are filtered out by current date, firm, route or status.'
+                                        : 'Delivered bills uploaded by delivery staff will appear here for collection.',
+                                    style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 12),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  if (allBills.isNotEmpty) ...[
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.clear_all, size: 18),
+                                      label: Text('Clear Filters (Show All ${allBills.length} Bills)'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primary,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _selectedInvoiceDate = null;
+                                          _selectedFirm = null;
+                                          _selectedRouteId = null;
+                                          _statusFilter = 'pending';
+                                          _searchQuery = '';
+                                        });
+                                      },
+                                    ),
+                                    const SizedBox(height: 10),
+                                    OutlinedButton.icon(
+                                      icon: const Icon(Icons.add, size: 16),
+                                      label: const Text('Add Another Bill'),
+                                      onPressed: _navigateToAddBill,
+                                    ),
+                                  ] else ...[
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.add, size: 18),
+                                      label: const Text('Add Bill'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primary,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      onPressed: _navigateToAddBill,
+                                    ),
+                                  ],
+                                ],
                               ),
-                              onPressed: () {
-                                setState(() {
-                                  _selectedInvoiceDate = null;
-                                  _selectedFirm = null;
-                                  _selectedRouteId = null;
-                                  _statusFilter = 'pending';
-                                  _searchQuery = '';
-                                });
-                              },
                             ),
-                            const SizedBox(height: 10),
-                            OutlinedButton.icon(
-                              icon: const Icon(Icons.add, size: 16),
-                              label: const Text('Add Another Bill'),
-                              onPressed: _navigateToAddBill,
-                            ),
-                          ] else ...[
-                            ElevatedButton.icon(
-                              icon: const Icon(Icons.add, size: 18),
-                              label: const Text('Add Bill'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primary,
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: _navigateToAddBill,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: filteredBills.length,
+                          ),
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      itemCount: filteredBills.length,
                     itemBuilder: (context, index) {
                       final bill = filteredBills[index];
                       final isPurva = bill.firmName == 'Purva Enterprises';
@@ -897,6 +920,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                       );
                     },
                   ),
+            ),
           ),
         ],
       ),
