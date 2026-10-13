@@ -2,13 +2,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
-import 'firebase_service.dart';
 import 'supabase_service.dart';
 
 class AuthService {
   static const String _keyUsers = 'app_users_cache_v1';
   static const String _keyCurrentUserId = 'current_logged_in_user_id_v1';
-  final FirebaseService _firebase = FirebaseService();
   final SupabaseService _supabase = SupabaseService();
 
   Future<List<UserModel>> loadUsers() async {
@@ -32,7 +30,7 @@ class AuthService {
       await saveUsersLocally(users);
     }
 
-    // 3. Sync from Supabase (or Firestore fallback) in background / online
+    // 3. Sync from Supabase in background / online
     try {
       if (_supabase.isInitialized) {
         final cloudUsers = await _supabase.fetchUsers();
@@ -43,16 +41,6 @@ class AuthService {
           // Push initial users to Supabase
           for (final u in users) {
             await _supabase.saveUser(u);
-          }
-        }
-      } else if (_firebase.isInitialized) {
-        final cloudUsers = await _firebase.fetchUsers();
-        if (cloudUsers.isNotEmpty) {
-          users = cloudUsers;
-          await saveUsersLocally(users);
-        } else {
-          for (final u in users) {
-            await _firebase.saveUser(u);
           }
         }
       }
@@ -108,9 +96,6 @@ class AuthService {
     if (_supabase.isInitialized) {
       await _supabase.saveUser(user);
     }
-    if (_firebase.isInitialized) {
-      await _firebase.saveUser(user);
-    }
   }
 
   Future<void> deleteUser(String userId) async {
@@ -120,9 +105,6 @@ class AuthService {
 
     if (_supabase.isInitialized) {
       await _supabase.deleteUser(userId);
-    }
-    if (_firebase.isInitialized) {
-      await _firebase.deleteUser(userId);
     }
   }
 

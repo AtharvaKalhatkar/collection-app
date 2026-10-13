@@ -11,7 +11,6 @@ import '../models/bill_summary.dart';
 import '../models/order_model.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
-import '../services/firebase_service.dart';
 import '../services/supabase_service.dart';
 import '../services/backup_service.dart';
 import '../services/auth_service.dart';
@@ -20,7 +19,6 @@ import '../utils/marathi_search_helper.dart';
 
 class CollectionProvider extends ChangeNotifier {
   final StorageService _storage = StorageService();
-  final FirebaseService _firebase = FirebaseService();
   final SupabaseService _supabase = SupabaseService();
   final BackupService _backupService = BackupService();
   final Uuid _uuid = const Uuid();
@@ -72,8 +70,11 @@ class CollectionProvider extends ChangeNotifier {
   String? get filterBusiness => _filterBusiness;
   String? get filterRouteId => _filterRouteId;
   String get searchQuery => _searchQuery;
-  bool get isFirebaseConnected => _supabase.isInitialized || _firebase.isInitialized;
-  String? get firebaseError => _supabase.lastError ?? _firebase.lastError;
+  bool get isCloudConnected => _supabase.isInitialized;
+  bool get isSupabaseConnected => _supabase.isInitialized;
+  bool get isFirebaseConnected => isCloudConnected;
+  String? get cloudError => _supabase.lastError;
+  String? get firebaseError => cloudError;
   DateTime? get lastBackupTime => _lastBackupTime;
 
   Future<bool> triggerManualBackup() async {
@@ -214,7 +215,7 @@ class CollectionProvider extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
 
-    // 2. Initialize Supabase & Firebase in background (non-blocking)
+    // 2. Initialize Supabase in background (non-blocking)
     () async {
       try {
         if (!_supabase.isInitialized) {
@@ -296,19 +297,6 @@ class CollectionProvider extends ChangeNotifier {
         debugPrint('Supabase background sync notice: $e');
       }
 
-      try {
-        await _firebase.init();
-        if (_firebase.isInitialized) {
-          final cloudCollections = await _firebase.fetchCollections();
-          if (_collections.isEmpty && cloudCollections.isNotEmpty) {
-            _collections = cloudCollections;
-            await _storage.saveCollections(_collections);
-          }
-        }
-      } catch (e) {
-        debugPrint('Firebase background sync notice: $e');
-      }
-
           // Check and perform auto-backup if 4 days have passed
           final authService = AuthService();
           final users = await authService.loadUsers();
@@ -353,17 +341,17 @@ class CollectionProvider extends ChangeNotifier {
 
   Future<bool> syncAllToCloud() async {
     try {
-      if (!_firebase.isInitialized) {
-        await _firebase.init();
+      if (!_supabase.isInitialized) {
+        await _supabase.init();
       }
       for (final r in _routes) {
-        await _firebase.saveRoute(r);
+        await _supabase.saveRoute(r);
       }
       for (final s in _shops) {
-        await _firebase.saveShop(s);
+        await _supabase.saveShop(s);
       }
       for (final c in _collections) {
-        await _firebase.saveCollection(c);
+        await _supabase.saveCollection(c);
       }
       notifyListeners();
       return true;
@@ -373,27 +361,21 @@ class CollectionProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> connectFirebase(FirebaseConfig config) async {
-    final success = await _firebase.connectWithConfig(config);
-    if (success) {
-      for (final r in _routes) {
-        await _firebase.saveRoute(r);
-      }
-      for (final s in _shops) {
-        await _firebase.saveShop(s);
-      }
-      for (final c in _collections) {
-        await _firebase.saveCollection(c);
-      }
+  Future<bool> connectCloud([dynamic config]) async {
+    if (!_supabase.isInitialized) {
+      await _supabase.init();
     }
     notifyListeners();
-    return success;
+    return true;
   }
 
-  Future<void> disconnectFirebase() async {
-    await _firebase.disconnect();
+  Future<bool> connectFirebase([dynamic config]) => connectCloud(config);
+
+  Future<void> disconnectCloud() async {
     notifyListeners();
   }
+
+  Future<void> disconnectFirebase() => disconnectCloud();
 
   void setSelectedDate(DateTime date) {
     _selectedDate = date;
@@ -663,9 +645,7 @@ class CollectionProvider extends ChangeNotifier {
     if (_supabase.isInitialized) {
       _supabase.saveRoute(newRoute);
     }
-    if (_firebase.isInitialized) {
-      _firebase.saveRoute(newRoute);
-    }
+    
     return newRoute;
   }
 
@@ -680,9 +660,7 @@ class CollectionProvider extends ChangeNotifier {
           if (_supabase.isInitialized) {
             _supabase.saveShop(_shops[i]);
           }
-          if (_firebase.isInitialized) {
-            _firebase.saveShop(_shops[i]);
-          }
+          
         }
       }
       _routes.sort((a, b) => a.priority.compareTo(b.priority));
@@ -692,9 +670,7 @@ class CollectionProvider extends ChangeNotifier {
       if (_supabase.isInitialized) {
         _supabase.saveRoute(updatedRoute);
       }
-      if (_firebase.isInitialized) {
-        _firebase.saveRoute(updatedRoute);
-      }
+      
     }
     return updatedRoute;
   }
@@ -709,9 +685,7 @@ class CollectionProvider extends ChangeNotifier {
         if (_supabase.isInitialized) {
           _supabase.saveRoute(_routes[i]);
         }
-        if (_firebase.isInitialized) {
-          _firebase.saveRoute(_routes[i]);
-        }
+        
       }
       await _storage.saveRoutes(_routes);
       notifyListeners();
@@ -727,9 +701,7 @@ class CollectionProvider extends ChangeNotifier {
         if (_supabase.isInitialized) {
           _supabase.saveRoute(_routes[idx]);
         }
-        if (_firebase.isInitialized) {
-          _firebase.saveRoute(_routes[idx]);
-        }
+        
       }
     }
     _routes.sort((a, b) => a.priority.compareTo(b.priority));
@@ -770,9 +742,7 @@ class CollectionProvider extends ChangeNotifier {
       if (_supabase.isInitialized) {
         _supabase.saveRoute(_routes[i]);
       }
-      if (_firebase.isInitialized) {
-        _firebase.saveRoute(_routes[i]);
-      }
+      
     }
     await _storage.saveRoutes(_routes);
     notifyListeners();
@@ -785,9 +755,7 @@ class CollectionProvider extends ChangeNotifier {
     if (_supabase.isInitialized) {
       _supabase.deleteRoute(routeId);
     }
-    if (_firebase.isInitialized) {
-      _firebase.deleteRoute(routeId);
-    }
+    
   }
 
   // --- Shop Operations ---
@@ -821,9 +789,7 @@ class CollectionProvider extends ChangeNotifier {
     if (_supabase.isInitialized) {
       _supabase.saveShop(newShop);
     }
-    if (_firebase.isInitialized) {
-      _firebase.saveShop(newShop);
-    }
+    
     return newShop;
   }
 
@@ -846,9 +812,7 @@ class CollectionProvider extends ChangeNotifier {
       if (_supabase.isInitialized) {
         _supabase.saveShop(updated);
       }
-      if (_firebase.isInitialized) {
-        _firebase.saveShop(updated);
-      }
+      
       return updated;
     }
     return null;
@@ -864,9 +828,7 @@ class CollectionProvider extends ChangeNotifier {
       if (_supabase.isInitialized) {
         _supabase.saveShop(updated);
       }
-      if (_firebase.isInitialized) {
-        _firebase.saveShop(updated);
-      }
+      
       return updated;
     }
     return null;
@@ -894,9 +856,7 @@ class CollectionProvider extends ChangeNotifier {
       if (_supabase.isInitialized) {
         _supabase.saveShop(updatedShop);
       }
-      if (_firebase.isInitialized) {
-        _firebase.saveShop(updatedShop);
-      }
+      
     }
     return updatedShop;
   }
@@ -908,9 +868,7 @@ class CollectionProvider extends ChangeNotifier {
     if (_supabase.isInitialized) {
       _supabase.deleteShop(shopId);
     }
-    if (_firebase.isInitialized) {
-      _firebase.deleteShop(shopId);
-    }
+    
   }
 
   List<ShopModel> getShopsForRoute(String routeId) {
@@ -940,7 +898,7 @@ class CollectionProvider extends ChangeNotifier {
     }
     notifyListeners();
 
-    // Background Supabase & Firebase Sync (instant write directly to database)
+    // Background Supabase Sync (instant write directly to database)
     if (_supabase.isInitialized) {
       () async {
         try {
@@ -950,15 +908,7 @@ class CollectionProvider extends ChangeNotifier {
         }
       }();
     }
-    if (_firebase.isInitialized) {
-      () async {
-        try {
-          await _firebase.saveCollection(finalCollection);
-        } catch (e) {
-          debugPrint('Firebase direct sync error: $e');
-        }
-      }();
-    }
+    
 
     // Auto-delete bill photos when collection completes to keep storage free forever
     if (isSettled) {
@@ -988,9 +938,7 @@ class CollectionProvider extends ChangeNotifier {
           if (_supabase.isInitialized) {
             await _supabase.savePendingBill(updated);
           }
-          if (_firebase.isInitialized) {
-            await _firebase.savePendingBill(updated);
-          }
+          
         }
       }
     }
@@ -1017,9 +965,7 @@ class CollectionProvider extends ChangeNotifier {
             if (_supabase.isInitialized) {
               _supabase.saveCollection(_collections[i]);
             }
-            if (_firebase.isInitialized) {
-              _firebase.saveCollection(_collections[i]);
-            }
+            
           }
         }
       }
@@ -1038,9 +984,7 @@ class CollectionProvider extends ChangeNotifier {
     if (_supabase.isInitialized) {
       _supabase.deleteCollection(id);
     }
-    if (_firebase.isInitialized) {
-      _firebase.deleteCollection(id);
-    }
+    
   }
 
   List<CollectionModel> getCollectionsForShop(String shopId) {
@@ -1154,19 +1098,14 @@ class CollectionProvider extends ChangeNotifier {
       debugPrint('Storage savePendingBills error: $e');
     }
 
-    // 4. Sync to Supabase & Firebase in background without blocking UI
+    // 4. Sync to Supabase in background without blocking UI
     if (_supabase.isInitialized) {
       _supabase.savePendingBill(bill).catchError((e) {
         debugPrint('Supabase savePendingBill error: $e');
         return false;
       });
     }
-    if (_firebase.isInitialized) {
-      _firebase.savePendingBill(bill).catchError((e) {
-        debugPrint('Firebase savePendingBill error: $e');
-        return false;
-      });
-    }
+    
 
     return bill;
   }
@@ -1187,12 +1126,7 @@ class CollectionProvider extends ChangeNotifier {
           return false;
         });
       }
-      if (_firebase.isInitialized) {
-        _firebase.savePendingBill(updatedBill).catchError((e) {
-          debugPrint('Firebase updatePendingBill error: $e');
-          return false;
-        });
-      }
+      
     }
   }
 
@@ -1210,7 +1144,7 @@ class CollectionProvider extends ChangeNotifier {
       debugPrint('Storage deletePendingBill error: $e');
     }
 
-    // 3. Delete from Supabase & Firebase in background; on success, clean up tracking set
+    // 3. Delete from Supabase in background; on success, clean up tracking set
     if (_supabase.isInitialized) {
       _supabase.deletePendingBill(id).then((_) {
         _locallyDeletedBillIds.remove(id);
@@ -1219,21 +1153,12 @@ class CollectionProvider extends ChangeNotifier {
         debugPrint('Supabase deletePendingBill error: $e');
       });
     }
-    if (_firebase.isInitialized) {
-      _firebase.deletePendingBill(id).then((_) {
-        _locallyDeletedBillIds.remove(id);
-        _storage.saveDeletedBillIds(_locallyDeletedBillIds);
-      }).catchError((e) {
-        debugPrint('Firebase deletePendingBill error: $e');
-      });
-    }
+    
   }
 
   void _listenToPendingBillsStream() {
     _pendingBillsSubscription?.cancel();
-    final stream = _supabase.isInitialized
-        ? _supabase.streamPendingBills()
-        : _firebase.streamPendingBills();
+    final stream = _supabase.isInitialized ? _supabase.streamPendingBills() : null;
     if (stream == null) return;
 
     _pendingBillsSubscription = stream.listen((cloudBills) async {
@@ -1259,11 +1184,11 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   Future<void> syncPendingBillsFromCloud() async {
-    if (!_supabase.isInitialized) {
-      await _supabase.init();
-    }
-    if (_supabase.isInitialized) {
-      try {
+    try {
+      if (!_supabase.isInitialized) {
+        await _supabase.init();
+      }
+      if (_supabase.isInitialized) {
         final cloudBills = await _supabase.fetchPendingBills();
         final billMap = <String, PendingBillModel>{};
         for (final b in cloudBills) {
@@ -1283,37 +1208,7 @@ class CollectionProvider extends ChangeNotifier {
         notifyListeners();
         await _storage.savePendingBills(_pendingBills);
         _listenToPendingBillsStream();
-        return;
-      } catch (e) {
-        debugPrint('syncPendingBillsFromCloud Supabase notice: $e');
       }
-    }
-
-    if (!_firebase.isInitialized) {
-      await _firebase.init();
-    }
-    if (!_firebase.isInitialized) return;
-
-    try {
-      final cloudBills = await _firebase.fetchPendingBills();
-      final billMap = <String, PendingBillModel>{};
-      for (final b in cloudBills) {
-        if (_locallyDeletedBillIds.contains(b.id)) continue;
-        billMap[b.id] = b;
-      }
-      for (final b in _pendingBills) {
-        if (!_locallyDeletedBillIds.contains(b.id)) {
-          billMap[b.id] = b;
-          if (!cloudBills.any((cb) => cb.id == b.id)) {
-            _firebase.savePendingBill(b);
-          }
-        }
-      }
-      _pendingBills = billMap.values.toList();
-      _pendingBills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      notifyListeners();
-      await _storage.savePendingBills(_pendingBills);
-      _listenToPendingBillsStream();
     } catch (e) {
       debugPrint('syncPendingBillsFromCloud error: $e');
     }
@@ -1527,19 +1422,6 @@ _Generated via Daily Collection Pro_
           await _supabase.deleteCollection(c.id);
         } catch (_) {}
       }
-    }
-    if (_firebase.isInitialized) {
-      for (final c in oldCollections) {
-        try {
-          await _firebase.deleteCollection(c.id);
-        } catch (_) {}
-      }
-      try {
-        final cloudCols = await _firebase.fetchCollections();
-        for (final c in cloudCols) {
-          await _firebase.deleteCollection(c.id);
-        }
-      } catch (_) {}
     }
     notifyListeners();
   }

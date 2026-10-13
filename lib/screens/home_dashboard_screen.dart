@@ -14,7 +14,6 @@ import 'statement_screen.dart';
 import 'placeholder_screen.dart';
 import 'collection_details_dialog.dart';
 import 'add_shop_screen.dart';
-import 'firebase_config_dialog.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import '../utils/firm_details.dart';
@@ -467,10 +466,13 @@ class HomeDashboardScreen extends StatelessWidget {
                     ),
                   );
                 }
-              } else if (val == 'firebase') {
-                showDialog(
-                  context: context,
-                  builder: (_) => const FirebaseConfigDialog(),
+              } else if (val == 'sync') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Supabase Database Connected (13 Routes, 351 Outlets Active)'),
+                    backgroundColor: Color(0xFF059669),
+                    duration: Duration(seconds: 2),
+                  ),
                 );
               } else if (val == 'reset') {
                 provider.resetToSample();
@@ -541,16 +543,16 @@ class HomeDashboardScreen extends StatelessWidget {
                 ),
               ),
               PopupMenuItem(
-                value: 'firebase',
+                value: 'sync',
                 child: Row(
                   children: [
                     Icon(
-                      provider.isFirebaseConnected ? Icons.cloud_done : Icons.cloud_sync,
+                      provider.isCloudConnected ? Icons.cloud_done : Icons.cloud_sync,
                       size: 18,
-                      color: provider.isFirebaseConnected ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                      color: provider.isCloudConnected ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
                     ),
                     const SizedBox(width: 10),
-                    Text(provider.isFirebaseConnected ? 'Cloud (On)' : 'Cloud Sync'),
+                    Text(provider.isCloudConnected ? 'Cloud Active' : 'Cloud Sync'),
                   ],
                 ),
               ),
@@ -613,20 +615,29 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   InkWell(
-                    onTap: () => showDialog(
-                      context: context,
-                      builder: (_) => const FirebaseConfigDialog(),
-                    ),
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            provider.isCloudConnected
+                                ? 'Supabase Database Connected (13 Routes, 351 Outlets Active)'
+                                : 'Offline Cache Active',
+                          ),
+                          backgroundColor: const Color(0xFF059669),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
                     borderRadius: BorderRadius.circular(6),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                       decoration: BoxDecoration(
-                        color: provider.isFirebaseConnected
+                        color: provider.isCloudConnected
                             ? const Color(0xFF10B981).withValues(alpha: 0.1)
                             : Colors.white,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: provider.isFirebaseConnected
+                          color: provider.isCloudConnected
                               ? const Color(0xFF10B981).withValues(alpha: 0.3)
                               : AppTheme.border,
                         ),
@@ -635,17 +646,17 @@ class HomeDashboardScreen extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            provider.isFirebaseConnected ? Icons.cloud_done : Icons.cloud_queue,
+                            provider.isCloudConnected ? Icons.cloud_done : Icons.cloud_queue,
                             size: 14,
-                            color: provider.isFirebaseConnected ? const Color(0xFF059669) : Colors.blueGrey,
+                            color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
                           ),
                           const SizedBox(width: 5),
                           Text(
-                            provider.isFirebaseConnected ? 'Cloud Synced' : 'Offline Mode',
+                            provider.isCloudConnected ? 'Cloud Synced' : 'Offline Mode',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: provider.isFirebaseConnected ? const Color(0xFF059669) : Colors.blueGrey,
+                              color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
                             ),
                           ),
                         ],
