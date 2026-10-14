@@ -300,6 +300,22 @@ class SupabaseService {
     }
   }
 
+  Future<bool> clearAllBillsAndCollections() async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('collections').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await client.from('pending_bills').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      debugPrint('Successfully wiped all collections and pending bills from Supabase');
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error clearing all bills and collections: $e');
+      return false;
+    }
+  }
+
   // --- Users ---
   Future<List<UserModel>> fetchUsers() async {
     if (!_isInitialized) await init();

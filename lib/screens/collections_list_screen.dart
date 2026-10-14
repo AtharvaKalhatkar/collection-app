@@ -35,6 +35,19 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
   String? _invoiceRouteIdFilter;
   String? _invoiceShopIdFilter;
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final p = context.read<CollectionProvider>();
+        if (p.filterBusiness == null) {
+          p.setFilterBusiness('Purva Enterprises');
+        }
+      }
+    });
+  }
+
   Color _getModeColor(PaymentMode mode) {
     switch (mode) {
       case PaymentMode.cash:
@@ -187,7 +200,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
   Widget _buildFirmFilterBar(CollectionProvider provider) {
     final purvaTotal = provider.getTotalCollectionForBusiness('Purva Enterprises');
     final manasTotal = provider.getTotalCollectionForBusiness('Manas Sales');
-    final combinedTotal = purvaTotal + manasTotal;
+    final selectedFirm = provider.filterBusiness ?? 'Purva Enterprises';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -199,45 +212,6 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
       ),
       child: Row(
         children: [
-          // ALL FIRMS
-          Expanded(
-            child: InkWell(
-              onTap: () => provider.setFilterBusiness(null),
-              borderRadius: BorderRadius.circular(7),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: provider.filterBusiness == null ? AppTheme.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'ALL FIRMS',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: provider.filterBusiness == null ? Colors.white : Colors.blueGrey.shade800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      CurrencyFormatter.format(combinedTotal),
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: provider.filterBusiness == null ? Colors.white : AppTheme.primary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-
           // PURVA
           Expanded(
             child: InkWell(
@@ -246,12 +220,12 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: provider.filterBusiness == 'Purva Enterprises'
+                  color: selectedFirm == 'Purva Enterprises'
                       ? AppTheme.purvaPrimary
                       : AppTheme.purvaLight,
                   borderRadius: BorderRadius.circular(7),
                   border: Border.all(
-                    color: provider.filterBusiness == 'Purva Enterprises'
+                    color: selectedFirm == 'Purva Enterprises'
                         ? AppTheme.purvaPrimary
                         : AppTheme.purvaBorder,
                   ),
@@ -265,7 +239,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
-                        color: provider.filterBusiness == 'Purva Enterprises'
+                        color: selectedFirm == 'Purva Enterprises'
                             ? Colors.white
                             : AppTheme.purvaText,
                       ),
@@ -276,7 +250,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
-                        color: provider.filterBusiness == 'Purva Enterprises'
+                        color: selectedFirm == 'Purva Enterprises'
                             ? Colors.white
                             : AppTheme.purvaPrimary,
                       ),
@@ -286,7 +260,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
 
           // MANAS
           Expanded(
@@ -296,12 +270,12 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: provider.filterBusiness == 'Manas Sales'
+                  color: selectedFirm == 'Manas Sales'
                       ? AppTheme.manasPrimary
                       : AppTheme.manasLight,
                   borderRadius: BorderRadius.circular(7),
                   border: Border.all(
-                    color: provider.filterBusiness == 'Manas Sales'
+                    color: selectedFirm == 'Manas Sales'
                         ? AppTheme.manasPrimary
                         : AppTheme.manasBorder,
                   ),
@@ -315,7 +289,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
-                        color: provider.filterBusiness == 'Manas Sales'
+                        color: selectedFirm == 'Manas Sales'
                             ? Colors.white
                             : AppTheme.manasText,
                       ),
@@ -326,7 +300,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
-                        color: provider.filterBusiness == 'Manas Sales'
+                        color: selectedFirm == 'Manas Sales'
                             ? Colors.white
                             : AppTheme.manasPrimary,
                       ),
@@ -401,33 +375,37 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       child: const Text('Today', style: TextStyle(fontSize: 12)),
                     ),
                   const Spacer(),
-                  if (provider.filterBusiness != null)
-                    InkWell(
-                      onTap: () => provider.setFilterBusiness(null),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppTheme.getBusinessLightColor(provider.filterBusiness!),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppTheme.getBusinessBorderColor(provider.filterBusiness!)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              provider.filterBusiness == 'Purva Enterprises' ? 'PURVA ✓' : 'MANAS ✓',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.getBusinessTextColor(provider.filterBusiness!),
-                              ),
+                  InkWell(
+                    onTap: () {
+                      final current = provider.filterBusiness ?? 'Purva Enterprises';
+                      final next = current == 'Purva Enterprises' ? 'Manas Sales' : 'Purva Enterprises';
+                      provider.setFilterBusiness(next);
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.getBusinessLightColor(provider.filterBusiness ?? 'Purva Enterprises'),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppTheme.getBusinessBorderColor(provider.filterBusiness ?? 'Purva Enterprises')),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            (provider.filterBusiness ?? 'Purva Enterprises') == 'Purva Enterprises' ? 'PURVA ✓' : 'MANAS ✓',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.getBusinessTextColor(provider.filterBusiness ?? 'Purva Enterprises'),
                             ),
-                            const SizedBox(width: 4),
-                            Icon(Icons.close, size: 12, color: AppTheme.getBusinessTextColor(provider.filterBusiness!)),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.swap_horiz, size: 12, color: AppTheme.getBusinessTextColor(provider.filterBusiness ?? 'Purva Enterprises')),
+                        ],
                       ),
                     ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1120,7 +1098,8 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
 
   // --- TAB 2: INVOICE STATUS TRACKER (PENDING VS PAID) ---
   Widget _buildInvoiceStatusTab(BuildContext context, CollectionProvider provider) {
-    var allSummaries = provider.getAllBillSummaries(forBusiness: provider.filterBusiness);
+    final activeFirm = provider.filterBusiness ?? 'Purva Enterprises';
+    var allSummaries = provider.getAllBillSummaries(forBusiness: activeFirm);
 
     // Apply Route filter
     if (_invoiceRouteIdFilter != null && _invoiceRouteIdFilter!.isNotEmpty) {
@@ -1404,15 +1383,11 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    provider.filterBusiness == null
-                        ? 'All Firms'
-                        : '${provider.filterBusiness}',
+                    activeFirm,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: provider.filterBusiness == null
-                          ? Colors.blueGrey.shade700
-                          : AppTheme.getBusinessColor(provider.filterBusiness!),
+                      color: AppTheme.getBusinessColor(activeFirm),
                     ),
                   ),
                   Container(
@@ -1613,38 +1588,57 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                     ],
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: isPending
-                                        ? const Color(0xFFFEF3C7)
-                                        : const Color(0xFFDCFCE7),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: isPending
-                                          ? const Color(0xFFD97706)
-                                          : const Color(0xFF16A34A),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        isPending ? Icons.pending_outlined : Icons.check_circle,
-                                        size: 13,
-                                        color: isPending ? const Color(0xFFD97706) : const Color(0xFF16A34A),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        isPending ? 'PENDING' : 'PAID (100%)',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          color: isPending ? const Color(0xFF92400E) : const Color(0xFF166534),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: isPending
+                                            ? const Color(0xFFFEF3C7)
+                                            : const Color(0xFFDCFCE7),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: isPending
+                                              ? const Color(0xFFD97706)
+                                              : const Color(0xFF16A34A),
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            isPending ? Icons.pending_outlined : Icons.check_circle,
+                                            size: 13,
+                                            color: isPending ? const Color(0xFFD97706) : const Color(0xFF16A34A),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            isPending ? 'PENDING' : 'PAID (100%)',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              color: isPending ? const Color(0xFF92400E) : const Color(0xFF166534),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    InkWell(
+                                      onTap: () => _confirmDeleteBill(context, provider, bill),
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(5),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade50,
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: Colors.red.shade200, width: 0.8),
+                                        ),
+                                        child: Icon(Icons.delete_outline, size: 16, color: Colors.red.shade700),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -1768,5 +1762,87 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _confirmDeleteBill(
+    BuildContext context,
+    CollectionProvider provider,
+    BillSummary bill,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.delete_forever, color: Colors.red.shade700, size: 24),
+            const SizedBox(width: 8),
+            const Text('Delete Bill', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Are you sure you want to permanently delete this bill?'),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Outlet: ${bill.shopName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 3),
+                  Text('Bill No: ${bill.billNumber}', style: const TextStyle(fontSize: 12)),
+                  const SizedBox(height: 3),
+                  Text('Total Amount: ${CurrencyFormatter.format(bill.billTotal)}', style: const TextStyle(fontSize: 12)),
+                  if (bill.collections.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text('Recorded Collections: ${bill.collections.length}',
+                        style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700)),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'This bill and its associated payment records will be permanently removed across all devices.',
+              style: TextStyle(fontSize: 11, color: Colors.red.shade800),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      await provider.deleteBillSummary(bill);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Bill No: ${bill.billNumber} deleted'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 }

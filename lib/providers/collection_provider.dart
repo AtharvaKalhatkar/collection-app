@@ -172,15 +172,25 @@ class CollectionProvider extends ChangeNotifier {
 
       // Forced wipe of legacy cached test collections, bills and orders
       final prefs = await SharedPreferences.getInstance();
-      final forcedClean = prefs.getBool('forced_clean_transactions_v4') ?? false;
+      final forcedClean = prefs.getBool('forced_clean_transactions_v5') ?? false;
       if (!forcedClean) {
         _collections.clear();
         _pendingBills.clear();
         _salesOrders.clear();
+        _locallyDeletedCollectionIds.clear();
+        _locallyDeletedBillIds.clear();
         await _storage.saveCollections(_collections);
         await _storage.savePendingBills(_pendingBills);
         await _storage.saveSalesOrders(_salesOrders);
-        await prefs.setBool('forced_clean_transactions_v4', true);
+        await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+        await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+        await prefs.setBool('forced_clean_transactions_v5', true);
+
+        try {
+          await _supabase.clearAllBillsAndCollections();
+        } catch (e) {
+          debugPrint('Error clearing Supabase in forcedClean: $e');
+        }
       }
     }
 
@@ -1088,6 +1098,71 @@ class CollectionProvider extends ChangeNotifier {
       await _supabase.deleteCollection(id);
     } catch (e) {
       debugPrint('Supabase deleteCollection error: $e');
+    }
+  }
+
+  Future<void> deleteBillSummary(BillSummary bill) async {
+    final targetBillNum = bill.billNumber.trim().toLowerCase();
+
+    // 1. Identify all collection IDs belonging to this bill & shop
+    final matchingCollections = _collections.where((c) =>
+        c.shopId == bill.shopId && c.billNumber.trim().toLowerCase() == targetBillNum).toList();
+
+    final collIdsToDelete = <String>{};
+    for (final c in matchingCollections) {
+      collIdsToDelete.add(c.id);
+    }
+    for (final c in bill.collections) {
+      collIdsToDelete.add(c.id);
+    }
+
+    // 2. Identify all pending bills belonging to this bill & shop
+    final matchingPendingBills = _pendingBills.where((pb) =>
+        pb.shopId == bill.shopId && pb.billNumber.trim().toLowerCase() == targetBillNum).toList();
+
+    final pendingBillIdsToDelete = <String>{};
+    for (final pb in matchingPendingBills) {
+      pendingBillIdsToDelete.add(pb.id);
+    }
+
+    // 3. Mark collections as locally deleted (tombstone) & remove from local memory
+    for (final id in collIdsToDelete) {
+      _locallyDeletedCollectionIds.add(id);
+      _collections.removeWhere((c) => c.id == id);
+    }
+
+    // 4. Mark pending bills as locally deleted (tombstone) & remove from local memory
+    for (final id in pendingBillIdsToDelete) {
+      _locallyDeletedBillIds.add(id);
+      _pendingBills.removeWhere((b) => b.id == id);
+    }
+
+    notifyListeners();
+
+    // 5. Persist to storage
+    try {
+      await _storage.saveCollections(_collections);
+      await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+      await _storage.savePendingBills(_pendingBills);
+      await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+    } catch (e) {
+      debugPrint('Storage deleteBillSummary error: $e');
+    }
+
+    // 6. Delete from Supabase
+    for (final id in collIdsToDelete) {
+      try {
+        await _supabase.deleteCollection(id);
+      } catch (e) {
+        debugPrint('Supabase deleteCollection $id error: $e');
+      }
+    }
+    for (final id in pendingBillIdsToDelete) {
+      try {
+        await _supabase.deletePendingBill(id);
+      } catch (e) {
+        debugPrint('Supabase deletePendingBill $id error: $e');
+      }
     }
   }
 
