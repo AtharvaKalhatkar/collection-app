@@ -283,10 +283,15 @@ class SupabaseService {
 
   Future<bool> deleteCollection(String id) async {
     if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!_isInitialized) {
+      debugPrint('Supabase not initialized for deleting collection $id');
+      return false;
+    }
 
     try {
-      await client.from('collections').delete().eq('id', id);
+      final cleanId = id.trim();
+      final res = await client.from('collections').delete().eq('id', cleanId).select();
+      debugPrint('Supabase deleteCollection successfully removed: $res');
       return true;
     } catch (e) {
       _lastError = e.toString();

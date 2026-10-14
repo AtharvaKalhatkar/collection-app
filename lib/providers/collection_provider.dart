@@ -34,6 +34,7 @@ class CollectionProvider extends ChangeNotifier {
   List<CollectionModel> _collections = [];
   List<PendingBillModel> _pendingBills = [];
   Set<String> _locallyDeletedBillIds = {};
+  Set<String> _locallyDeletedCollectionIds = {};
   List<SalesOrderModel> _salesOrders = [];
   List<CatalogProduct> _customProducts = [];
   List<String> _businesses = ['Purva Enterprises', 'Manas Sales'];
@@ -126,6 +127,11 @@ class CollectionProvider extends ChangeNotifier {
       _collections = await _storage.loadCollections();
       _pendingBills = await _storage.loadPendingBills();
       _locallyDeletedBillIds = await _storage.loadDeletedBillIds();
+      _locallyDeletedCollectionIds = await _storage.loadDeletedCollectionIds();
+
+      if (_locallyDeletedCollectionIds.isNotEmpty) {
+        _collections.removeWhere((c) => _locallyDeletedCollectionIds.contains(c.id));
+      }
 
       // Auto-purge any legacy sample dummy records (col-1..col-6, pb-1..pb-4, shop-*)
       final hadDummyCol = _collections.any((c) => c.id.startsWith('col-'));
@@ -288,10 +294,11 @@ class CollectionProvider extends ChangeNotifier {
         _collectionsSubscription = collStream.listen((cloudColls) async {
           final collMap = <String, CollectionModel>{};
           for (final c in cloudColls) {
+            if (_locallyDeletedCollectionIds.contains(c.id)) continue;
             collMap[c.id] = c;
           }
           for (final c in _collections) {
-            if (!collMap.containsKey(c.id)) {
+            if (!_locallyDeletedCollectionIds.contains(c.id) && !collMap.containsKey(c.id)) {
               collMap[c.id] = c;
             }
           }
@@ -324,10 +331,12 @@ class CollectionProvider extends ChangeNotifier {
       final cloudCollections = await _supabase.fetchCollections();
       final collMap = <String, CollectionModel>{};
       for (final c in cloudCollections) {
+        if (_locallyDeletedCollectionIds.contains(c.id)) continue;
         collMap[c.id] = c;
       }
       final unsyncedColls = <CollectionModel>[];
       for (final c in _collections) {
+        if (_locallyDeletedCollectionIds.contains(c.id)) continue;
         if (!collMap.containsKey(c.id)) {
           collMap[c.id] = c;
           unsyncedColls.add(c);
@@ -397,6 +406,15 @@ class CollectionProvider extends ChangeNotifier {
           } catch (_) {}
         }
         await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+      }
+
+      if (_locallyDeletedCollectionIds.isNotEmpty) {
+        for (final id in _locallyDeletedCollectionIds.toList()) {
+          try {
+            await _supabase.deleteCollection(id);
+          } catch (_) {}
+        }
+        await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
       }
 
       // 5. Ensure Realtime subscriptions are active
@@ -956,6 +974,11 @@ class CollectionProvider extends ChangeNotifier {
 
   // --- Collection Operations ---
   Future<void> addCollection(CollectionModel collection) async {
+    if (_locallyDeletedCollectionIds.contains(collection.id)) {
+      _locallyDeletedCollectionIds.remove(collection.id);
+      await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+    }
+
     final isSettled = (collection.balanceRemaining ?? 0.0) <= 0.001;
     final finalCollection = isSettled && collection.photoBase64 != null
         ? collection.copyWith(clearPhoto: true)
@@ -1047,13 +1070,25 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   Future<void> deleteCollection(String id) async {
+    // 1. Mark as locally deleted and permanently blacklisted so background cloud sync/realtime will NEVER resurrect it
+    _locallyDeletedCollectionIds.add(id);
     _collections.removeWhere((c) => c.id == id);
-    await _storage.saveCollections(_collections);
     notifyListeners();
-    if (_supabase.isInitialized) {
-      _supabase.deleteCollection(id);
+
+    // 2. Persist both collections and deleted collection IDs to storage
+    try {
+      await _storage.saveCollections(_collections);
+      await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+    } catch (e) {
+      debugPrint('Storage deleteCollection error: $e');
     }
-    
+
+    // 3. Delete directly from Supabase
+    try {
+      await _supabase.deleteCollection(id);
+    } catch (e) {
+      debugPrint('Supabase deleteCollection error: $e');
+    }
   }
 
   List<CollectionModel> getCollectionsForShop(String shopId) {

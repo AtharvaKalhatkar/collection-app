@@ -19,6 +19,7 @@ class StorageService {
   static const String _keySalesmanRole = 'app_salesman_role_v1';
   static const String _keyInitialized = 'app_sample_data_initialized_v1';
   static const String _keyDeletedBillIds = 'deleted_bill_ids_v1';
+  static const String _keyDeletedCollectionIds = 'deleted_collection_ids_v1';
 
   Future<bool> isFirstLaunch() async {
     final prefs = await SharedPreferences.getInstance();
@@ -195,6 +196,18 @@ class StorageService {
   Future<void> saveDeletedBillIds(Set<String> ids) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_keyDeletedBillIds, ids.toList());
+  }
+
+  // --- Deleted Collection IDs Tracking ---
+  Future<Set<String>> loadDeletedCollectionIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_keyDeletedCollectionIds) ?? [];
+    return list.toSet();
+  }
+
+  Future<void> saveDeletedCollectionIds(Set<String> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyDeletedCollectionIds, ids.toList());
   }
 
   // --- Sales Orders ---
