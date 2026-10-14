@@ -5,6 +5,7 @@ import '../models/shop_model.dart';
 import '../models/collection_model.dart';
 import '../models/pending_bill_model.dart';
 import '../models/order_model.dart';
+import '../models/cash_handover_model.dart';
 
 class StorageService {
   static const String _keyRoutes = 'app_routes_v1';
@@ -20,6 +21,7 @@ class StorageService {
   static const String _keyInitialized = 'app_sample_data_initialized_v1';
   static const String _keyDeletedBillIds = 'deleted_bill_ids_v1';
   static const String _keyDeletedCollectionIds = 'deleted_collection_ids_v1';
+  static const String _keyCashHandovers = 'app_cash_handovers_v1';
 
   Future<bool> isFirstLaunch() async {
     final prefs = await SharedPreferences.getInstance();
@@ -247,6 +249,26 @@ class StorageService {
     } catch (e) {
       // ignore: avoid_print
       print('LocalStorage custom products save notice: $e');
+    }
+  }
+
+  // --- Cash Handovers ---
+  Future<List<CashHandoverModel>> loadCashHandovers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keyCashHandovers) ?? [];
+    return rawList
+        .map((s) => CashHandoverModel.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> saveCashHandovers(List<CashHandoverModel> handovers) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final rawList = handovers.map((h) => jsonEncode(h.toJson())).toList();
+      await prefs.setStringList(_keyCashHandovers, rawList);
+    } catch (e) {
+      // ignore: avoid_print
+      print('LocalStorage cash handovers save notice: $e');
     }
   }
 

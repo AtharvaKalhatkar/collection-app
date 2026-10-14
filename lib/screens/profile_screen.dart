@@ -8,6 +8,7 @@ import '../utils/firm_details.dart';
 import '../utils/theme.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'statement_screen.dart';
+import 'cash_handover_screen.dart';
 import 'user_management_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -689,6 +690,37 @@ class ProfileScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const StatementScreen()),
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1),
+
+          // Cash Handover & Denominations Counter
+          Material(
+            color: Colors.transparent,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF10B981), size: 20),
+              ),
+              title: const Text('Cash Handover & Denominations', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              subtitle: const Text('Count ₹500, ₹200, ₹100 notes & match daily cash', style: TextStyle(fontSize: 11.5)),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CashHandoverScreen(
+                      initialDate: provider.selectedDate,
+                      initialBusiness: provider.filterBusiness,
+                    ),
+                  ),
                 );
               },
             ),

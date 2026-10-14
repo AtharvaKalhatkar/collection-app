@@ -9,6 +9,7 @@ import '../models/collection_model.dart';
 import '../models/pending_bill_model.dart';
 import '../models/bill_summary.dart';
 import '../models/order_model.dart';
+import '../models/cash_handover_model.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
@@ -33,6 +34,7 @@ class CollectionProvider extends ChangeNotifier {
   List<ShopModel> _shops = [];
   List<CollectionModel> _collections = [];
   List<PendingBillModel> _pendingBills = [];
+  List<CashHandoverModel> _cashHandovers = [];
   Set<String> _locallyDeletedBillIds = {};
   Set<String> _locallyDeletedCollectionIds = {};
   List<SalesOrderModel> _salesOrders = [];
@@ -64,6 +66,7 @@ class CollectionProvider extends ChangeNotifier {
   List<ShopModel> get shops => _shops;
   List<CollectionModel> get collections => _collections;
   List<PendingBillModel> get pendingBills => _pendingBills;
+  List<CashHandoverModel> get cashHandovers => _cashHandovers;
   List<SalesOrderModel> get salesOrders => _salesOrders;
   List<CatalogProduct> get customProducts => _customProducts;
   List<String> get businesses => _businesses;
@@ -126,6 +129,7 @@ class CollectionProvider extends ChangeNotifier {
       _shops = await _storage.loadShops();
       _collections = await _storage.loadCollections();
       _pendingBills = await _storage.loadPendingBills();
+      _cashHandovers = await _storage.loadCashHandovers();
       _locallyDeletedBillIds = await _storage.loadDeletedBillIds();
       _locallyDeletedCollectionIds = await _storage.loadDeletedCollectionIds();
 
@@ -1583,6 +1587,69 @@ Net Banking:       ${CurrencyFormatter.format(netBanking)} ($netBills receipts)
 *NET COLLECTED:*   ${CurrencyFormatter.format(totalCollected)}
 --------------------------------------------------
 _Generated via Daily Collection Pro_
+'''.trim();
+  }
+
+  // --- Cash Handover & Denominations Operations ---
+  Future<void> saveCashHandover(CashHandoverModel handover) async {
+    _cashHandovers.removeWhere((h) => h.id == handover.id);
+    _cashHandovers.insert(0, handover);
+    await _storage.saveCashHandovers(_cashHandovers);
+    notifyListeners();
+  }
+
+  CashHandoverModel? getLatestHandoverForDate(DateTime date, {String? business}) {
+    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    try {
+      return _cashHandovers.firstWhere((h) {
+        final hDateStr = DateFormat('yyyy-MM-dd').format(h.date);
+        final sameDate = hDateStr == dateStr;
+        if (!sameDate) return false;
+        if (business != null && business.isNotEmpty && business != 'All') {
+          return h.businessName == business || h.businessName == 'All';
+        }
+        return true;
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String generateCashHandoverWhatsAppText(CashHandoverModel h) {
+    final dateStr = DateFormat('dd MMM yyyy, hh:mm a').format(h.createdAt);
+    final statusStr = h.isMatched
+        ? '✅ PERFECT MATCH (₹0 difference)'
+        : (h.hasShortage
+            ? '⚠️ SHORTAGE: -${CurrencyFormatter.format(h.variance.abs())}'
+            : 'ℹ️ SURPLUS: +${CurrencyFormatter.format(h.variance)}');
+
+    final lines = <String>[];
+    if (h.count500 > 0) lines.add('₹500 × ${h.count500} = ₹${h.count500 * 500}');
+    if (h.count200 > 0) lines.add('₹200 × ${h.count200} = ₹${h.count200 * 200}');
+    if (h.count100 > 0) lines.add('₹100 × ${h.count100} = ₹${h.count100 * 100}');
+    if (h.count50 > 0) lines.add('₹50 × ${h.count50} = ₹${h.count50 * 50}');
+    if (h.count20 > 0) lines.add('₹20 × ${h.count20} = ₹${h.count20 * 20}');
+    if (h.count10 > 0) lines.add('₹10 × ${h.count10} = ₹${h.count10 * 10}');
+    if (h.coinsAmount > 0) lines.add('Coins = ${CurrencyFormatter.format(h.coinsAmount)}');
+
+    final denomSection = lines.isNotEmpty ? lines.join('\n') : 'No physical notes entered';
+
+    return '''
+*CASH HANDOVER REPORT*
+Date: $dateStr
+Firm: ${h.businessName}
+Salesman: ${h.salesmanName}
+Handed Over To: ${h.receivedByName}
+--------------------------------------------------
+*PHYSICAL CASH DENOMINATIONS:*
+$denomSection
+--------------------------------------------------
+*CASH RECONCILIATION:*
+Total Counted Cash:  ${CurrencyFormatter.format(h.totalCounted)}
+System Cash Target:  ${CurrencyFormatter.format(h.totalExpected)}
+Verification:        $statusStr
+${h.remarks != null && h.remarks!.trim().isNotEmpty ? 'Note: ${h.remarks!.trim()}\n' : ''}--------------------------------------------------
+_Daily Collection Pro Cash Verification_
 '''.trim();
   }
 
