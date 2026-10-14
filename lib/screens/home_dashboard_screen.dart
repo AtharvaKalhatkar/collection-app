@@ -885,18 +885,19 @@ class HomeDashboardScreen extends StatelessWidget {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    '$purvaBills bills',
+                                    '$purvaBills ${purvaBills == 1 ? 'bill' : 'bills'}',
                                     style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
                                   ),
-                                  if (purvaPending > 0)
-                                    Text(
-                                      'Due: ${CurrencyFormatter.format(purvaPending)}',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.balanceDueColor,
-                                      ),
+                                  Text(
+                                    purvaPending > 0
+                                        ? 'Due: ${CurrencyFormatter.format(purvaPending)}'
+                                        : 'All Paid',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: purvaPending > 0 ? AppTheme.balanceDueColor : AppTheme.cashColor,
                                     ),
+                                  ),
                                 ],
                               ),
                             ],
@@ -963,7 +964,7 @@ class HomeDashboardScreen extends StatelessWidget {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    '$manasBills bills',
+                                    '$manasBills ${manasBills == 1 ? 'bill' : 'bills'}',
                                     style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
                                   ),
                                   Text(
@@ -1073,7 +1074,7 @@ class HomeDashboardScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            '${provider.totalBillsCount} Invoices',
+                            '${provider.totalBillsCount} ${provider.totalBillsCount == 1 ? 'Invoice' : 'Invoices'}',
                             style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
                           ),
                         ),

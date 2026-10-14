@@ -327,7 +327,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
         DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final subtotalCollected = filteredList.fold(0.0, (s, c) => s + c.collectedAmount);
-    final subtotalBalance = filteredList.fold(0.0, (s, c) => s + c.balanceAmount);
+    final subtotalBalance = provider.calculateTotalBalanceDue(filteredList);
 
     return Column(
       children: [
@@ -550,7 +550,9 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                     final item = filteredList[index];
                     final modeColor = _getModeColor(item.paymentMode);
                     final timeStr = DateFormat('hh:mm a').format(item.collectedAt);
-                    final isPartial = item.isPartial;
+                    final billSummary = provider.getBillSummary(item.shopId, item.billNumber);
+                    final currentBillDue = billSummary != null ? billSummary.balanceDue : (item.balanceRemaining ?? 0.0);
+                    final isBillPending = currentBillDue > 0.001;
                     final billPhotos = item.allPhotos.isNotEmpty
                         ? item.allPhotos
                         : provider.getPhotosForBill(item.billNumber, shopId: item.shopId, shopName: item.shopName);
@@ -719,7 +721,7 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                           '${item.routeName} • $timeStr',
                                           style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade400),
                                         ),
-                                        if (isPartial) ...[
+                                        if (isBillPending) ...[
                                           const SizedBox(width: 6),
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -728,11 +730,28 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                                               borderRadius: BorderRadius.circular(3),
                                             ),
                                             child: Text(
-                                              'Due: ${CurrencyFormatter.format(item.balanceAmount)}',
+                                              'Due: ${CurrencyFormatter.format(currentBillDue)}',
                                               style: const TextStyle(
                                                 fontSize: 9,
                                                 fontWeight: FontWeight.bold,
                                                 color: AppTheme.partialBadgeColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.withValues(alpha: 0.1),
+                                              borderRadius: BorderRadius.circular(3),
+                                            ),
+                                            child: const Text(
+                                              'Settled',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.green,
                                               ),
                                             ),
                                           ),

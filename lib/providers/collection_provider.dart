@@ -631,17 +631,54 @@ class CollectionProvider extends ChangeNotifier {
     }
   }
 
+  // --- Calculation Helpers for Accurate Multi-Installment Accounting ---
+  /// Calculates the sum of unique invoice bill amounts from a collection list,
+  /// avoiding duplication when an invoice has multiple partial payments.
+  double calculateTotalBilled(Iterable<CollectionModel> records) {
+    final Map<String, double> uniqueBillTotals = {};
+    for (final c in records) {
+      final key = '${c.shopId}_${c.billNumber.trim().toLowerCase()}';
+      if (!uniqueBillTotals.containsKey(key) || c.billAmount > uniqueBillTotals[key]!) {
+        uniqueBillTotals[key] = c.billAmount;
+      }
+    }
+    return uniqueBillTotals.values.fold(0.0, (sum, amt) => sum + amt);
+  }
+
+  /// Calculates the current remaining balance due across unique bills in a collection list.
+  /// If an invoice is fully settled, its balance due is 0.
+  double calculateTotalBalanceDue(Iterable<CollectionModel> records) {
+    final Map<String, double> uniqueBillBalances = {};
+    for (final c in records) {
+      final key = '${c.shopId}_${c.billNumber.trim().toLowerCase()}';
+      if (!uniqueBillBalances.containsKey(key)) {
+        final bSum = getBillSummary(c.shopId, c.billNumber);
+        uniqueBillBalances[key] = bSum != null ? bSum.balanceDue : (c.balanceRemaining ?? 0.0);
+      }
+    }
+    return uniqueBillBalances.values.fold(0.0, (sum, bal) => sum + bal);
+  }
+
+  /// Returns the count of unique bills/invoices in a collection list.
+  int countUniqueBills(Iterable<CollectionModel> records) {
+    final Set<String> uniqueKeys = {};
+    for (final c in records) {
+      uniqueKeys.add('${c.shopId}_${c.billNumber.trim().toLowerCase()}');
+    }
+    return uniqueKeys.length;
+  }
+
   // --- Breakdown Calculations for Selected Date & Filters ---
   double get totalCollection {
     return getFilteredCollections().fold(0.0, (sum, c) => sum + c.collectedAmount);
   }
 
   double get totalBillAmount {
-    return getFilteredCollections().fold(0.0, (sum, c) => sum + c.billAmount);
+    return calculateTotalBilled(getFilteredCollections());
   }
 
   double get totalBalanceDue {
-    return getFilteredCollections().fold(0.0, (sum, c) => sum + c.balanceAmount);
+    return calculateTotalBalanceDue(getFilteredCollections());
   }
 
   double get totalCash {
@@ -669,11 +706,20 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   int get totalBillsCount {
-    return getFilteredCollections().length;
+    return countUniqueBills(getFilteredCollections());
   }
 
   int get partialBillsCount {
-    return getFilteredCollections().where((c) => c.isPartial).length;
+    final filtered = getFilteredCollections();
+    final uniquePartialBills = <String>{};
+    for (final c in filtered) {
+      final bill = getBillSummary(c.shopId, c.billNumber);
+      final isPending = bill != null ? bill.isPending : ((c.balanceRemaining ?? 0.0) > 0.001);
+      if (isPending) {
+        uniquePartialBills.add('${c.shopId}_${c.billNumber.trim().toLowerCase()}');
+      }
+    }
+    return uniquePartialBills.length;
   }
 
   int get uniqueShopsCount {
@@ -695,12 +741,17 @@ class CollectionProvider extends ChangeNotifier {
 
   int getBillsCountForBusiness(String business, {DateTime? forDate}) {
     final date = forDate ?? _selectedDate;
-    return _collections.where((c) {
+    final matching = _collections.where((c) {
       final sameDay = c.collectedAt.year == date.year &&
           c.collectedAt.month == date.month &&
           c.collectedAt.day == date.day;
       return sameDay && c.businessName == business;
-    }).length;
+    });
+    final uniqueBills = <String>{};
+    for (final c in matching) {
+      uniqueBills.add('${c.shopId}_${c.billNumber.trim().toLowerCase()}');
+    }
+    return uniqueBills.length;
   }
 
   double getPendingBalanceForBusiness(String business) {
@@ -1080,20 +1131,52 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   Future<void> deleteCollection(String id) async {
+    final idx = _collections.indexWhere((c) => c.id == id);
+    if (idx == -1) return;
+    final coll = _collections[idx];
+
     // 1. Mark as locally deleted and permanently blacklisted so background cloud sync/realtime will NEVER resurrect it
     _locallyDeletedCollectionIds.add(id);
-    _collections.removeWhere((c) => c.id == id);
+    _collections.removeAt(idx);
+
+    // 2. Recalculate remaining collected sum for this invoice and update matching pending bill
+    final cleanBill = coll.billNumber.trim().toLowerCase();
+    final cleanShop = coll.shopId.trim().toLowerCase();
+    final remainingSum = _collections.where((c) =>
+        c.billNumber.trim().toLowerCase() == cleanBill &&
+        (cleanShop.isEmpty || c.shopId.trim().toLowerCase() == cleanShop)
+    ).fold(0.0, (s, c) => s + c.collectedAmount);
+
+    for (int i = 0; i < _pendingBills.length; i++) {
+      final pb = _pendingBills[i];
+      if (pb.billNumber.trim().toLowerCase() == cleanBill &&
+          (cleanShop.isEmpty || pb.shopId.trim().toLowerCase() == cleanShop)) {
+        final newCollected = remainingSum.clamp(0.0, pb.totalAmount);
+        final isPaid = (pb.totalAmount - newCollected) <= 0.001;
+        final newStatus = isPaid ? 'paid' : (newCollected > 0 ? 'partial' : 'pending');
+        final updatedPb = pb.copyWith(
+          collectedAmount: newCollected,
+          status: newStatus,
+        );
+        _pendingBills[i] = updatedPb;
+        if (_supabase.isInitialized) {
+          _supabase.savePendingBill(updatedPb).catchError((_) => false);
+        }
+      }
+    }
+
     notifyListeners();
 
-    // 2. Persist both collections and deleted collection IDs to storage
+    // 3. Persist collections, pending bills, and deleted collection IDs to storage
     try {
       await _storage.saveCollections(_collections);
       await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+      await _storage.savePendingBills(_pendingBills);
     } catch (e) {
       debugPrint('Storage deleteCollection error: $e');
     }
 
-    // 3. Delete directly from Supabase
+    // 4. Delete directly from Supabase
     try {
       await _supabase.deleteCollection(id);
     } catch (e) {
@@ -1304,20 +1387,45 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   Future<void> deletePendingBill(String id) async {
-    // 1. Mark as locally deleted so background cloud sync won't resurrect it
+    final idx = _pendingBills.indexWhere((b) => b.id == id);
+    if (idx == -1) return;
+    final pb = _pendingBills[idx];
+    final cleanBill = pb.billNumber.trim().toLowerCase();
+    final cleanShop = pb.shopId.trim().toLowerCase();
+
+    // 1. Mark pending bill as locally deleted so background cloud sync won't resurrect it
     _locallyDeletedBillIds.add(id);
-    _pendingBills.removeWhere((b) => b.id == id);
+    _pendingBills.removeAt(idx);
+
+    // 2. Also remove and tombstone any collections associated with this bill
+    final collsToDelete = _collections.where((c) =>
+        c.billNumber.trim().toLowerCase() == cleanBill &&
+        (cleanShop.isEmpty || c.shopId.trim().toLowerCase() == cleanShop)
+    ).toList();
+
+    for (final c in collsToDelete) {
+      _locallyDeletedCollectionIds.add(c.id);
+      _collections.removeWhere((col) => col.id == c.id);
+      if (_supabase.isInitialized) {
+        _supabase.deleteCollection(c.id).catchError((_) => false);
+      }
+    }
+
     notifyListeners();
 
-    // 2. Save both pending bills and deleted ID set to local storage
+    // 3. Save both pending bills, collections, and deleted ID sets to local storage
     try {
       await _storage.savePendingBills(_pendingBills);
       await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+      if (collsToDelete.isNotEmpty) {
+        await _storage.saveCollections(_collections);
+        await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+      }
     } catch (e) {
       debugPrint('Storage deletePendingBill error: $e');
     }
 
-    // 3. Delete from Supabase in background; on success, clean up tracking set
+    // 4. Delete from Supabase in background; on success, clean up tracking set
     _supabase.deletePendingBill(id).then((_) {
       _locallyDeletedBillIds.remove(id);
       _storage.saveDeletedBillIds(_locallyDeletedBillIds);
@@ -1432,15 +1540,20 @@ class CollectionProvider extends ChangeNotifier {
     final cheque = list.where((c) => c.paymentMode == PaymentMode.cheque).fold(0.0, (s, c) => s + c.collectedAmount);
     final netBanking = list.where((c) => c.paymentMode == PaymentMode.netBanking).fold(0.0, (s, c) => s + c.collectedAmount);
 
-    final totalBilled = list.fold(0.0, (s, c) => s + c.billAmount);
+    final totalBilled = calculateTotalBilled(list);
     final totalCollected = list.fold(0.0, (s, c) => s + c.collectedAmount);
-    final totalBalance = list.fold(0.0, (s, c) => s + c.balanceAmount);
+    final totalBalance = calculateTotalBalanceDue(list);
 
     final cashBills = list.where((c) => c.paymentMode == PaymentMode.cash).length;
     final upiBills = list.where((c) => c.paymentMode == PaymentMode.upi).length;
     final chequeBills = list.where((c) => c.paymentMode == PaymentMode.cheque).length;
     final netBills = list.where((c) => c.paymentMode == PaymentMode.netBanking).length;
-    final partialCount = list.where((c) => c.isPartial).length;
+    
+    final uniqueBillCount = countUniqueBills(list);
+    final uniquePartialCount = list.where((c) {
+      final bSum = getBillSummary(c.shopId, c.billNumber);
+      return bSum != null ? bSum.isPending : ((c.balanceRemaining ?? 0.0) > 0.001);
+    }).map((c) => '${c.shopId}_${c.billNumber.trim().toLowerCase()}').toSet().length;
 
     final firmHeader = (_filterBusiness != null && _filterBusiness != 'All')
         ? 'Business: $_filterBusiness\n'
@@ -1456,10 +1569,10 @@ Date: $dateStr
 Salesman: $_salesmanName
 $firmHeader$routeHeader--------------------------------------------------
 *FINANCIAL SUMMARY*
-Total Billed:      ${CurrencyFormatter.format(totalBilled)}
+Total Invoiced:    ${CurrencyFormatter.format(totalBilled)} ($uniqueBillCount ${uniqueBillCount == 1 ? 'bill' : 'bills'})
 Total Collected:   ${CurrencyFormatter.format(totalCollected)}
 Pending Balance:   ${CurrencyFormatter.format(totalBalance)}
-Receipts Count:    ${list.length} ($partialCount pending/partial)
+Receipts Count:    ${list.length} ($uniquePartialCount pending/partial)
 --------------------------------------------------
 *PAYMENT BREAKDOWN*
 Cash:              ${CurrencyFormatter.format(cash)} ($cashBills receipts)

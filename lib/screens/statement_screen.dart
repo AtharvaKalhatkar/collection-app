@@ -400,8 +400,8 @@ class _StatementScreenState extends State<StatementScreen> {
           ? (provider.shops.where((s) => s.id == _selectedShopId).firstOrNull?.name ?? 'Outlet')
           : null;
       final totalCollected = records.fold(0.0, (s, c) => s + c.collectedAmount);
-      final totalBilled = records.fold(0.0, (s, c) => s + c.billAmount);
-      final totalDue = records.fold(0.0, (s, c) => s + c.balanceAmount);
+      final totalBilled = provider.calculateTotalBilled(records);
+      final totalDue = provider.calculateTotalBalanceDue(records);
 
       final firmTitle = _selectedBusiness ?? 'Purva Enterprises & Manas Sales';
       final modeTitle = _selectedMode?.label ?? 'All Modes';
@@ -511,7 +511,11 @@ class _StatementScreenState extends State<StatementScreen> {
                     c.paymentMode.label,
                     bank,
                     'INR ${c.collectedAmount.toStringAsFixed(0)}',
-                    c.balanceAmount > 0 ? 'INR ${c.balanceAmount.toStringAsFixed(0)}' : 'Settled',
+                    (() {
+                      final bSum = provider.getBillSummary(c.shopId, c.billNumber);
+                      final due = bSum != null ? bSum.balanceDue : (c.balanceRemaining ?? 0.0);
+                      return due > 0.001 ? 'INR ${due.toStringAsFixed(0)}' : 'Settled';
+                    })(),
                   ];
                 }),
               ),
@@ -558,8 +562,8 @@ class _StatementScreenState extends State<StatementScreen> {
         ? (provider.shops.where((s) => s.id == _selectedShopId).firstOrNull?.name ?? 'Outlet')
         : null;
     final totalCollected = records.fold(0.0, (s, c) => s + c.collectedAmount);
-    final totalBilled = records.fold(0.0, (s, c) => s + c.billAmount);
-    final totalDue = records.fold(0.0, (s, c) => s + c.balanceAmount);
+    final totalBilled = provider.calculateTotalBilled(records);
+    final totalDue = provider.calculateTotalBalanceDue(records);
 
     final firmTitle = _selectedBusiness ?? 'Purva Enterprises & Manas Sales';
     final modeTitle = _selectedMode?.label ?? 'All Modes';
@@ -756,8 +760,8 @@ class _StatementScreenState extends State<StatementScreen> {
     final filteredRecords = _getFilteredCollections(provider);
 
     final totalCollected = filteredRecords.fold(0.0, (s, c) => s + c.collectedAmount);
-    final totalBilled = filteredRecords.fold(0.0, (s, c) => s + c.billAmount);
-    final totalBalance = filteredRecords.fold(0.0, (s, c) => s + c.balanceAmount);
+    final totalBilled = provider.calculateTotalBilled(filteredRecords);
+    final totalBalance = provider.calculateTotalBalanceDue(filteredRecords);
 
     final isPurva = _selectedBusiness == 'Purva Enterprises';
     final isManas = _selectedBusiness == 'Manas Sales';
@@ -1306,7 +1310,9 @@ class _StatementScreenState extends State<StatementScreen> {
                       final item = filteredRecords[index];
                       final modeColor = _getModeColor(item.paymentMode);
                       final timeStr = DateFormat('hh:mm a').format(item.collectedAt);
-                      final isPartial = item.isPartial;
+                      final billSummary = provider.getBillSummary(item.shopId, item.billNumber);
+                      final currentDue = billSummary != null ? billSummary.balanceDue : (item.balanceRemaining ?? 0.0);
+                      final isPending = currentDue > 0.001;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -1380,11 +1386,17 @@ class _StatementScreenState extends State<StatementScreen> {
                                             '${item.routeName} • $timeStr',
                                             style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade400),
                                           ),
-                                          if (isPartial) ...[
+                                          if (isPending) ...[
                                             const SizedBox(width: 6),
                                             Text(
-                                              'Due: ${CurrencyFormatter.format(item.balanceAmount)}',
+                                              'Due: ${CurrencyFormatter.format(currentDue)}',
                                               style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.balanceDueColor),
+                                            ),
+                                          ] else ...[
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'Settled',
+                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green),
                                             ),
                                           ],
                                         ],
