@@ -160,6 +160,11 @@ class UserManagementScreen extends StatelessWidget {
           'Staff & Role Management',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context),
+        ),
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
         actions: [

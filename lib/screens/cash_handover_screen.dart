@@ -381,6 +381,11 @@ class _CashHandoverScreenState extends State<CashHandoverScreen> {
       appBar: AppBar(
         title: const Text('Day Closing & Cash Counter'),
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.history_rounded),

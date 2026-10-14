@@ -164,6 +164,11 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pending Bills'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.sync_rounded),

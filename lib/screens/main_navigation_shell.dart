@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -17,6 +18,7 @@ class MainNavigationShell extends StatefulWidget {
 
 class _MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
+  DateTime? _lastBackPressTime;
 
   @override
   void initState() {
@@ -49,19 +51,43 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         onNavigateToOrders: null,
         onNavigateToProfile: () => _navigateToTab(3),
       ),
-      const CollectionsListScreen(),
-      const RoutesShopsScreen(),
-      const ProfileScreen(),
+      CollectionsListScreen(
+        onBackToOverview: () => _navigateToTab(0),
+      ),
+      RoutesShopsScreen(
+        onBackToOverview: () => _navigateToTab(0),
+      ),
+      ProfileScreen(
+        onBackToOverview: () => _navigateToTab(0),
+      ),
     ];
 
     return PopScope(
-      canPop: _currentIndex == 0,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _currentIndex != 0) {
+        if (didPop) return;
+        if (_currentIndex != 0) {
           setState(() {
             _currentIndex = 0;
           });
+          return;
         }
+
+        final now = DateTime.now();
+        if (_lastBackPressTime == null ||
+            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
+        SystemNavigator.pop();
       },
       child: Scaffold(
         body: IndexedStack(

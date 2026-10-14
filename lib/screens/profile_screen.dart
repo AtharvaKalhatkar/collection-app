@@ -12,7 +12,12 @@ import 'cash_handover_screen.dart';
 import 'user_management_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? onBackToOverview;
+
+  const ProfileScreen({
+    super.key,
+    this.onBackToOverview,
+  });
 
   void _showEditProfileDialog(BuildContext context, CollectionProvider provider) {
     final nameCtrl = TextEditingController(text: provider.salesmanName);
@@ -190,6 +195,19 @@ class ProfileScreen extends StatelessWidget {
           'My Profile',
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
         ),
+        leading: onBackToOverview != null || Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to Overview',
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else if (onBackToOverview != null) {
+                    onBackToOverview!();
+                  }
+                },
+              )
+            : null,
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
         elevation: 0,

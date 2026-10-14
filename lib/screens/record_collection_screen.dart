@@ -435,6 +435,11 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Record Payment Entry'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

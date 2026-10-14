@@ -18,7 +18,12 @@ import '../services/location_service.dart';
 import '../utils/marathi_search_helper.dart';
 
 class RoutesShopsScreen extends StatefulWidget {
-  const RoutesShopsScreen({super.key});
+  final VoidCallback? onBackToOverview;
+
+  const RoutesShopsScreen({
+    super.key,
+    this.onBackToOverview,
+  });
 
   @override
   State<RoutesShopsScreen> createState() => _RoutesShopsScreenState();
@@ -613,6 +618,19 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Routes & Outlets'),
+        leading: widget.onBackToOverview != null || Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to Overview',
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else if (widget.onBackToOverview != null) {
+                    widget.onBackToOverview!();
+                  }
+                },
+              )
+            : null,
         actions: [
           IconButton(
             icon: const Icon(Icons.add_location_alt_outlined, size: 20),

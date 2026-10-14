@@ -18,8 +18,13 @@ import '../utils/marathi_search_helper.dart';
 
 class CollectionsListScreen extends StatefulWidget {
   final int initialTabIndex;
+  final VoidCallback? onBackToOverview;
 
-  const CollectionsListScreen({super.key, this.initialTabIndex = 0});
+  const CollectionsListScreen({
+    super.key,
+    this.initialTabIndex = 0,
+    this.onBackToOverview,
+  });
 
   @override
   State<CollectionsListScreen> createState() => _CollectionsListScreenState();
@@ -98,6 +103,19 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Ledger'),
+          leading: widget.onBackToOverview != null || Navigator.canPop(context)
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back to Overview',
+                  onPressed: () {
+                    if (Navigator.canPop(context)) {
+                      Navigator.pop(context);
+                    } else if (widget.onBackToOverview != null) {
+                      widget.onBackToOverview!();
+                    }
+                  },
+                )
+              : null,
           actions: [
             IconButton(
               icon: const Icon(Icons.sync_rounded, size: 21),

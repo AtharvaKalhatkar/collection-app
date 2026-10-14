@@ -1096,32 +1096,74 @@ class HomeDashboardScreen extends StatelessWidget {
                             letterSpacing: 1.0,
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '${provider.totalBillsCount} ${provider.totalBillsCount == 1 ? 'Invoice' : 'Invoices'}',
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        InkWell(
+                          onTap: onNavigateToCollections,
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${provider.totalBillsCount} ${provider.totalBillsCount == 1 ? 'Invoice' : 'Invoices'}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_forward_ios, size: 9, color: Colors.white70),
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      CurrencyFormatter.format(provider.totalCollection),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
+                    InkWell(
+                      onTap: onNavigateToCollections,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              CurrencyFormatter.format(provider.totalCollection),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6.0),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Ledger',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.8),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.white.withValues(alpha: 0.8)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
 
-                    // Financial metrics row: Total Invoiced vs Pending Balance
+                    // Financial metrics row: Total Invoiced vs Pending Balance vs Visited
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
@@ -1131,23 +1173,34 @@ class HomeDashboardScreen extends StatelessWidget {
                       child: Row(
                         children: [
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Invoiced',
-                                  style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(height: 2),
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    CurrencyFormatter.format(provider.totalBillAmount),
-                                    style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
+                            child: InkWell(
+                              onTap: onNavigateToCollections,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Invoiced',
+                                        style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      const Icon(Icons.arrow_forward_ios, size: 8, color: Colors.white70),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 2),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      CurrencyFormatter.format(provider.totalBillAmount),
+                                      style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           Container(width: 1, height: 26, margin: const EdgeInsets.symmetric(horizontal: 6), color: Colors.white.withValues(alpha: 0.2)),
@@ -1161,6 +1214,7 @@ class HomeDashboardScreen extends StatelessWidget {
                                   ),
                                 );
                               },
+                              borderRadius: BorderRadius.circular(4),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -1197,19 +1251,30 @@ class HomeDashboardScreen extends StatelessWidget {
                           ),
                           Container(width: 1, height: 26, margin: const EdgeInsets.symmetric(horizontal: 6), color: Colors.white.withValues(alpha: 0.2)),
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Visited',
-                                  style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${provider.uniqueShopsCount}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
-                                ),
-                              ],
+                            child: InkWell(
+                              onTap: onNavigateToRoutes,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Visited',
+                                        style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      const Icon(Icons.arrow_forward_ios, size: 8, color: Colors.white70),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${provider.uniqueShopsCount}',
+                                    style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],

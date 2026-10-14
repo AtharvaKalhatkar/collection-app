@@ -219,6 +219,11 @@ class _AddShopScreenState extends State<AddShopScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(isEdit ? 'Edit Outlet' : 'Add Outlet'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
           if (isEdit)
             IconButton(
