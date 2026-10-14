@@ -379,7 +379,7 @@ class _CashHandoverScreenState extends State<CashHandoverScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Cash Handover'),
+        title: const Text('Day Closing & Cash Counter'),
         elevation: 0,
         actions: [
           IconButton(

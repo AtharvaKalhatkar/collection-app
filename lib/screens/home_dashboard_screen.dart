@@ -171,8 +171,8 @@ class HomeDashboardScreen extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.point_of_sale_rounded, size: 16),
-                      label: const Text('Cash Handover & Denominations Counter'),
+                      icon: const Icon(Icons.payments_rounded, size: 16),
+                      label: const Text('Day Closing & Cash Counter'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF10B981),
                         foregroundColor: Colors.white,
@@ -1496,9 +1496,9 @@ class HomeDashboardScreen extends StatelessWidget {
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                                children: [
                                 const Text(
-                                  'Collection Statement',
+                                  'Statement',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 14,
@@ -1507,7 +1507,7 @@ class HomeDashboardScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Excel (.xlsx) & PDF Reports with Bank Details',
+                                  'Excel (.xlsx) & PDF Reports',
                                   style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
                                 ),
                               ],
@@ -1541,7 +1541,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 10),
-              // Cash Handover & Denominations Counter Card
+              // Day Closing & Cash Counter Card
               Material(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -1572,7 +1572,7 @@ class HomeDashboardScreen extends StatelessWidget {
                             color: const Color(0xFF10B981).withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF10B981), size: 22),
+                          child: const Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 22),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -1582,7 +1582,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               Row(
                                 children: [
                                   const Text(
-                                    'Cash Handover & Day Close',
+                                    'Day Closing & Cash Counter',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 14,
@@ -1609,7 +1609,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Count ₹500, ₹200, ₹100 notes & match physical cash',
+                                'Count physical notes & verify cash match',
                                 style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
                               ),
                             ],

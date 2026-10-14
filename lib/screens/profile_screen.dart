@@ -707,9 +707,9 @@ class ProfileScreen extends StatelessWidget {
                   color: const Color(0xFF10B981).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF10B981), size: 20),
+                child: const Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 20),
               ),
-              title: const Text('Cash Handover & Denominations', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              title: const Text('Day Closing & Cash Counter', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
               subtitle: const Text('Count ₹500, ₹200, ₹100 notes & match daily cash', style: TextStyle(fontSize: 11.5)),
               trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
               onTap: () {
