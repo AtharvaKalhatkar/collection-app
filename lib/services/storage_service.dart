@@ -6,6 +6,7 @@ import '../models/collection_model.dart';
 import '../models/pending_bill_model.dart';
 import '../models/order_model.dart';
 import '../models/cash_handover_model.dart';
+import '../models/vehicle_collection_model.dart';
 
 class StorageService {
   static const String _keyRoutes = 'app_routes_v1';
@@ -22,6 +23,7 @@ class StorageService {
   static const String _keyDeletedBillIds = 'deleted_bill_ids_v1';
   static const String _keyDeletedCollectionIds = 'deleted_collection_ids_v1';
   static const String _keyCashHandovers = 'app_cash_handovers_v1';
+  static const String _keyVehicleCollections = 'app_vehicle_collections_v1';
 
   Future<bool> isFirstLaunch() async {
     final prefs = await SharedPreferences.getInstance();
@@ -269,6 +271,26 @@ class StorageService {
     } catch (e) {
       // ignore: avoid_print
       print('LocalStorage cash handovers save notice: $e');
+    }
+  }
+
+  // --- Vehicle Collections ---
+  Future<List<VehicleCollectionModel>> loadVehicleCollections() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keyVehicleCollections) ?? [];
+    return rawList
+        .map((s) => VehicleCollectionModel.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> saveVehicleCollections(List<VehicleCollectionModel> list) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final rawList = list.map((v) => jsonEncode(v.toJson())).toList();
+      await prefs.setStringList(_keyVehicleCollections, rawList);
+    } catch (e) {
+      // ignore: avoid_print
+      print('LocalStorage vehicle collections save notice: $e');
     }
   }
 

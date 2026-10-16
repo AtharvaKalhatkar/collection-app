@@ -9,6 +9,7 @@ import '../utils/theme.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
+import 'vehicle_collection_screen.dart';
 import 'user_management_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -727,7 +728,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 child: const Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 20),
               ),
-              title: const Text('Day Closing & Cash Counter', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              title: const Text('Cash Counter', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
               subtitle: const Text('Count ₹500, ₹200, ₹100 notes & match daily cash', style: TextStyle(fontSize: 11.5)),
               trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
               onTap: () {
@@ -737,6 +738,39 @@ class ProfileScreen extends StatelessWidget {
                     builder: (_) => CashHandoverScreen(
                       initialDate: provider.selectedDate,
                       initialBusiness: provider.filterBusiness,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 20),
+              ),
+              title: const Text('Vehicle Collection', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              subtitle: const Text('Vehicle cash, fuel expenses & bill-wise collections', style: TextStyle(fontSize: 11.5)),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => VehicleCollectionScreen(
+                      initialDate: provider.selectedDate,
                     ),
                   ),
                 );

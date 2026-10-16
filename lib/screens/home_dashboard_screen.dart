@@ -12,6 +12,7 @@ import 'pending_bills_list_screen.dart';
 import 'make_collection_screen.dart';
 import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
+import 'vehicle_collection_screen.dart';
 import 'placeholder_screen.dart';
 import 'collection_details_dialog.dart';
 import 'add_shop_screen.dart';
@@ -172,7 +173,7 @@ class HomeDashboardScreen extends StatelessWidget {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.payments_rounded, size: 16),
-                      label: const Text('Day Closing & Cash Counter'),
+                      label: const Text('Cash Counter'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF10B981),
                         foregroundColor: Colors.white,
@@ -187,6 +188,31 @@ class HomeDashboardScreen extends StatelessWidget {
                             builder: (_) => CashHandoverScreen(
                               initialDate: provider.selectedDate,
                               initialBusiness: provider.filterBusiness,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.local_shipping_rounded, size: 16),
+                      label: const Text('Vehicle Collection'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0284C7),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => VehicleCollectionScreen(
+                              initialDate: provider.selectedDate,
                             ),
                           ),
                         );
@@ -1647,7 +1673,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               Row(
                                 children: [
                                   const Text(
-                                    'Day Closing & Cash Counter',
+                                    'Cash Counter',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 14,
@@ -1699,6 +1725,107 @@ class HomeDashboardScreen extends StatelessWidget {
                               ),
                               SizedBox(width: 2),
                               Icon(Icons.chevron_right, size: 14, color: Color(0xFF059669)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Vehicle Collection Option Card
+              Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => VehicleCollectionScreen(
+                          initialDate: provider.selectedDate,
+                        ),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Vehicle Collection',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      '3 VANS',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF0284C7),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'MH14HG2426, GD6212, KA2059 • Fuel & Bills',
+                                style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'ENTER',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0284C7),
+                                ),
+                              ),
+                              SizedBox(width: 2),
+                              Icon(Icons.chevron_right, size: 14, color: Color(0xFF0284C7)),
                             ],
                           ),
                         ),

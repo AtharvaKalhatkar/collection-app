@@ -10,6 +10,7 @@ import '../models/pending_bill_model.dart';
 import '../models/bill_summary.dart';
 import '../models/order_model.dart';
 import '../models/cash_handover_model.dart';
+import '../models/vehicle_collection_model.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
@@ -35,6 +36,7 @@ class CollectionProvider extends ChangeNotifier {
   List<CollectionModel> _collections = [];
   List<PendingBillModel> _pendingBills = [];
   List<CashHandoverModel> _cashHandovers = [];
+  List<VehicleCollectionModel> _vehicleCollections = [];
   Set<String> _locallyDeletedBillIds = {};
   Set<String> _locallyDeletedCollectionIds = {};
   List<SalesOrderModel> _salesOrders = [];
@@ -67,6 +69,7 @@ class CollectionProvider extends ChangeNotifier {
   List<CollectionModel> get collections => _collections;
   List<PendingBillModel> get pendingBills => _pendingBills;
   List<CashHandoverModel> get cashHandovers => _cashHandovers;
+  List<VehicleCollectionModel> get vehicleCollections => _vehicleCollections;
   List<SalesOrderModel> get salesOrders => _salesOrders;
   List<CatalogProduct> get customProducts => _customProducts;
   List<String> get businesses => _businesses;
@@ -130,6 +133,7 @@ class CollectionProvider extends ChangeNotifier {
       _collections = await _storage.loadCollections();
       _pendingBills = await _storage.loadPendingBills();
       _cashHandovers = await _storage.loadCashHandovers();
+      _vehicleCollections = await _storage.loadVehicleCollections();
       _locallyDeletedBillIds = await _storage.loadDeletedBillIds();
       _locallyDeletedCollectionIds = await _storage.loadDeletedCollectionIds();
 
@@ -1651,6 +1655,41 @@ Verification:        $statusStr
 ${h.remarks != null && h.remarks!.trim().isNotEmpty ? 'Note: ${h.remarks!.trim()}\n' : ''}--------------------------------------------------
 _Daily Collection Pro Cash Verification_
 '''.trim();
+  }
+
+  // --- Vehicle Collection Operations ---
+  Future<void> saveVehicleCollection(VehicleCollectionModel entry) async {
+    _vehicleCollections.removeWhere((v) => v.id == entry.id);
+    _vehicleCollections.insert(0, entry);
+    await _storage.saveVehicleCollections(_vehicleCollections);
+    notifyListeners();
+  }
+
+  Future<void> deleteVehicleCollection(String id) async {
+    _vehicleCollections.removeWhere((v) => v.id == id);
+    await _storage.saveVehicleCollections(_vehicleCollections);
+    notifyListeners();
+  }
+
+  VehicleCollectionModel? getLatestVehicleCollectionForDate(DateTime date, {String? vehicleNo}) {
+    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    try {
+      return _vehicleCollections.firstWhere((v) {
+        final vDateStr = DateFormat('yyyy-MM-dd').format(v.date);
+        final sameDate = vDateStr == dateStr;
+        if (!sameDate) return false;
+        if (vehicleNo != null && vehicleNo.isNotEmpty && vehicleNo != 'All') {
+          return v.vehicleNo == vehicleNo;
+        }
+        return true;
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String generateVehicleCollectionWhatsAppText(VehicleCollectionModel v) {
+    return v.generateWhatsAppText();
   }
 
   // --- Sales Order Operations ---
