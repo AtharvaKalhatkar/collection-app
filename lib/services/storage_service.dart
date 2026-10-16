@@ -24,6 +24,8 @@ class StorageService {
   static const String _keyDeletedCollectionIds = 'deleted_collection_ids_v1';
   static const String _keyCashHandovers = 'app_cash_handovers_v1';
   static const String _keyVehicleCollections = 'app_vehicle_collections_v1';
+  static const String _keyVehicles = 'app_managed_vehicles_v1';
+  static const String _keyEmployees = 'app_managed_employees_v1';
 
   Future<bool> isFirstLaunch() async {
     final prefs = await SharedPreferences.getInstance();
@@ -292,6 +294,36 @@ class StorageService {
       // ignore: avoid_print
       print('LocalStorage vehicle collections save notice: $e');
     }
+  }
+
+  // --- Managed Vehicles ---
+  Future<List<String>> loadVehicles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_keyVehicles);
+    if (list != null && list.isNotEmpty) {
+      return list;
+    }
+    return ['MH 14 HG 2426', 'MH 14 GD 6212', 'MH 14 KA 2059'];
+  }
+
+  Future<void> saveVehicles(List<String> list) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyVehicles, list);
+  }
+
+  // --- Managed Employees ---
+  Future<List<String>> loadEmployees() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_keyEmployees);
+    if (list != null && list.isNotEmpty) {
+      return list;
+    }
+    return ['Akash', 'Sahil', 'Office / Owner'];
+  }
+
+  Future<void> saveEmployees(List<String> list) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyEmployees, list);
   }
 
   Future<void> clearAll() async {

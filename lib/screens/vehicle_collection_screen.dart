@@ -10,6 +10,7 @@ import '../providers/auth_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import 'cash_handover_screen.dart';
+import 'profile_screen.dart';
 
 class VehicleCollectionScreen extends StatefulWidget {
   final DateTime? initialDate;
@@ -45,23 +46,33 @@ class _BillRowController {
 class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
   late DateTime _selectedDate;
 
-  // The 3 predefined vehicles requested by user
-  static const List<String> _defaultVehicles = [
-    'MH 14 HG 2426',
-    'MH 14 GD 6212',
-    'MH 14 KA 2059',
-  ];
-
   late String _selectedVehicle;
   final TextEditingController _customVehicleCtrl = TextEditingController();
   bool _isCustomVehicle = false;
 
-  // Expense dropdown: CNG, Petrol, Diesel, None
-  static const List<String> _expenseTypes = ['CNG', 'Petrol', 'Diesel', 'None'];
-  String _selectedExpenseType = 'CNG';
-  final TextEditingController _expenseAmountCtrl = TextEditingController(text: '0');
+  // Multi-select fuel expenses (CNG, Petrol, Diesel, Toll / Other)
+  static const List<String> _availableExpenseTypes = ['CNG', 'Petrol', 'Diesel', 'Toll / Other'];
+  final Set<String> _selectedExpenseTypes = {'CNG'};
+  final Map<String, TextEditingController> _expenseAmountControllers = {
+    'CNG': TextEditingController(text: '0'),
+    'Petrol': TextEditingController(text: '0'),
+    'Diesel': TextEditingController(text: '0'),
+    'Toll / Other': TextEditingController(text: '0'),
+  };
 
-  // Employee Name
+  // Cash Denomination Counter controllers
+  static const List<String> _noteDenominations = ['500', '200', '100', '50', '20', '10'];
+  final Map<String, TextEditingController> _denomControllers = {
+    '500': TextEditingController(text: '0'),
+    '200': TextEditingController(text: '0'),
+    '100': TextEditingController(text: '0'),
+    '50': TextEditingController(text: '0'),
+    '20': TextEditingController(text: '0'),
+    '10': TextEditingController(text: '0'),
+    'coins': TextEditingController(text: '0'),
+  };
+
+  // Employee Name & Handover
   final TextEditingController _employeeNameCtrl = TextEditingController();
   final TextEditingController _receivedByCtrl = TextEditingController(text: 'Office / Owner');
   final TextEditingController _remarksCtrl = TextEditingController();
@@ -77,23 +88,29 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
     super.initState();
     _selectedDate = widget.initialDate ?? DateTime.now();
 
-    if (widget.initialVehicleNo != null &&
-        _defaultVehicles.contains(widget.initialVehicleNo)) {
-      _selectedVehicle = widget.initialVehicleNo!;
-    } else {
-      _selectedVehicle = _defaultVehicles.first;
-    }
-
     // Default: initialize with 2 blank bill rows
     _billRows.add(_BillRowController());
     _billRows.add(_BillRowController());
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final auth = context.read<AuthProvider>();
       final provider = context.read<CollectionProvider>();
+      final auth = context.read<AuthProvider>();
+
+      final registeredVehicles = provider.vehicles;
+      if (widget.initialVehicleNo != null &&
+          registeredVehicles.contains(widget.initialVehicleNo)) {
+        _selectedVehicle = widget.initialVehicleNo!;
+      } else if (registeredVehicles.isNotEmpty) {
+        _selectedVehicle = registeredVehicles.first;
+      } else {
+        _selectedVehicle = 'MH 14 HG 2426';
+      }
+
       final currentUserName = auth.currentUser?.name ?? provider.salesmanName;
       if (currentUserName.trim().isNotEmpty) {
         _employeeNameCtrl.text = currentUserName;
+      } else if (provider.employees.isNotEmpty) {
+        _employeeNameCtrl.text = provider.employees.first;
       } else {
         _employeeNameCtrl.text = 'Akash';
       }
@@ -106,7 +123,12 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
   @override
   void dispose() {
     _customVehicleCtrl.dispose();
-    _expenseAmountCtrl.dispose();
+    for (final ctrl in _expenseAmountControllers.values) {
+      ctrl.dispose();
+    }
+    for (final ctrl in _denomControllers.values) {
+      ctrl.dispose();
+    }
     _employeeNameCtrl.dispose();
     _receivedByCtrl.dispose();
     _remarksCtrl.dispose();
@@ -125,7 +147,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
 
     if (existing != null) {
       setState(() {
-        if (_defaultVehicles.contains(existing.vehicleNo)) {
+        if (provider.vehicles.contains(existing.vehicleNo)) {
           _selectedVehicle = existing.vehicleNo;
           _isCustomVehicle = false;
         } else {
@@ -133,10 +155,41 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
           _customVehicleCtrl.text = existing.vehicleNo;
         }
 
-        _selectedExpenseType = existing.expenseType;
-        _expenseAmountCtrl.text = existing.expenseAmount > 0
-            ? existing.expenseAmount.toStringAsFixed(0)
-            : '0';
+        // Restore expenses
+        _selectedExpenseTypes.clear();
+        for (final ctrl in _expenseAmountControllers.values) {
+          ctrl.text = '0';
+        }
+
+        if (existing.expenses.isNotEmpty) {
+          for (final exp in existing.expenses) {
+            _selectedExpenseTypes.add(exp.type);
+            if (_expenseAmountControllers.containsKey(exp.type)) {
+              _expenseAmountControllers[exp.type]!.text =
+                  exp.amount > 0 ? exp.amount.toStringAsFixed(0) : '0';
+            }
+          }
+        } else if (existing.expenseAmount > 0) {
+          // Backward compatibility
+          final type = existing.expenseType.isNotEmpty ? existing.expenseType : 'CNG';
+          _selectedExpenseTypes.add(type);
+          if (_expenseAmountControllers.containsKey(type)) {
+            _expenseAmountControllers[type]!.text = existing.expenseAmount.toStringAsFixed(0);
+          }
+        }
+
+        if (_selectedExpenseTypes.isEmpty) {
+          _selectedExpenseTypes.add('CNG');
+        }
+
+        // Restore denominations if present
+        if (existing.denominations != null) {
+          existing.denominations!.forEach((k, v) {
+            if (_denomControllers.containsKey(k)) {
+              _denomControllers[k]!.text = v > 0 ? v.toString() : '0';
+            }
+          });
+        }
 
         if (existing.employeeName.isNotEmpty) {
           _employeeNameCtrl.text = existing.employeeName;
@@ -183,13 +236,53 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
     return sum;
   }
 
-  double get _expenseAmount {
-    if (_selectedExpenseType == 'None') return 0.0;
-    return double.tryParse(_expenseAmountCtrl.text.trim()) ?? 0.0;
+  List<VehicleExpenseEntry> get _activeExpenses {
+    final list = <VehicleExpenseEntry>[];
+    for (final type in _selectedExpenseTypes) {
+      final ctrl = _expenseAmountControllers[type];
+      final amt = ctrl != null ? (double.tryParse(ctrl.text.trim()) ?? 0.0) : 0.0;
+      if (amt > 0) {
+        list.add(VehicleExpenseEntry(type: type, amount: amt));
+      }
+    }
+    return list;
+  }
+
+  double get _totalExpensesAmount {
+    double sum = 0.0;
+    for (final type in _selectedExpenseTypes) {
+      final ctrl = _expenseAmountControllers[type];
+      if (ctrl != null) {
+        sum += (double.tryParse(ctrl.text.trim()) ?? 0.0);
+      }
+    }
+    return sum;
   }
 
   double get _netHandoverAmount {
-    return _totalBillsAmount - _expenseAmount;
+    return _totalBillsAmount - _totalExpensesAmount;
+  }
+
+  int get _countedCashTotal {
+    int sum = 0;
+    for (final k in _noteDenominations) {
+      final count = int.tryParse(_denomControllers[k]!.text.trim()) ?? 0;
+      sum += count * int.parse(k);
+    }
+    final coins = int.tryParse(_denomControllers['coins']!.text.trim()) ?? 0;
+    sum += coins;
+    return sum;
+  }
+
+  Map<String, int> get _denominationsMap {
+    final map = <String, int>{};
+    for (final entry in _denomControllers.entries) {
+      final count = int.tryParse(entry.value.text.trim()) ?? 0;
+      if (count > 0) {
+        map[entry.key] = count;
+      }
+    }
+    return map;
   }
 
   int get _validBillsCount {
@@ -206,7 +299,6 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
 
   void _removeBillRow(int index) {
     if (_billRows.length <= 1) {
-      // Clear instead of removing last row
       _billRows[0].billNoCtrl.clear();
       _billRows[0].amountCtrl.clear();
       _billRows[0].shopNameCtrl.clear();
@@ -234,89 +326,58 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
     }
   }
 
-  void _pickFromExistingBills() {
-    final provider = context.read<CollectionProvider>();
-    final todayCollections = provider.getFilteredCollections(forDate: _selectedDate);
+  void _incrementDenom(String key) {
+    final cur = int.tryParse(_denomControllers[key]!.text.trim()) ?? 0;
+    setState(() {
+      _denomControllers[key]!.text = (cur + 1).toString();
+    });
+  }
 
-    if (todayCollections.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No recorded collections found for this date. Enter bills manually.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
+  void _decrementDenom(String key) {
+    final cur = int.tryParse(_denomControllers[key]!.text.trim()) ?? 0;
+    if (cur > 0) {
+      setState(() {
+        _denomControllers[key]!.text = (cur - 1).toString();
+      });
     }
+  }
 
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+  void _clearDenominations() {
+    setState(() {
+      for (final ctrl in _denomControllers.values) {
+        ctrl.text = '0';
+      }
+    });
+  }
+
+  void _autoMatchDenominations() {
+    // Helper to auto-distribute net handover amount into notes
+    int remaining = _netHandoverAmount.round();
+    if (remaining <= 0) return;
+
+    final noteValues = [500, 200, 100, 50, 20, 10];
+    final counts = <String, int>{};
+
+    for (final v in noteValues) {
+      final c = remaining ~/ v;
+      counts[v.toString()] = c;
+      remaining %= v;
+    }
+    counts['coins'] = remaining;
+
+    setState(() {
+      counts.forEach((k, v) {
+        if (_denomControllers.containsKey(k)) {
+          _denomControllers[k]!.text = v.toString();
+        }
+      });
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Auto-filled notes breakdown to match Net Handover cash!'),
+        duration: Duration(seconds: 2),
       ),
-      builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Pick From Today\'s Bills',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-              const Text(
-                'Tap any bill to add it to your vehicle collection entries:',
-                style: TextStyle(fontSize: 12, color: Colors.blueGrey),
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: todayCollections.length,
-                  separatorBuilder: (context, index) => const Divider(height: 1),
-                  itemBuilder: (context, idx) {
-                    final item = todayCollections[idx];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        '${item.shopName} (Bill #${item.billNumber})',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
-                      ),
-                      subtitle: Text(
-                        '${item.routeName} • ${item.businessName}',
-                        style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
-                      ),
-                      trailing: Text(
-                        CurrencyFormatter.format(item.collectedAmount),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                          color: AppTheme.primary,
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _addBillRow(
-                          billNo: item.billNumber,
-                          amount: item.collectedAmount.toStringAsFixed(0),
-                          shopName: item.shopName,
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -346,12 +407,12 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
       id: _uuid.v4(),
       date: _selectedDate,
       vehicleNo: _effectiveVehicleNo,
-      expenseType: _selectedExpenseType,
-      expenseAmount: _expenseAmount,
+      expenses: _activeExpenses,
       bills: validBills,
       employeeName: empName,
       receivedByName: recName,
       remarks: _remarksCtrl.text.trim().isNotEmpty ? _remarksCtrl.text.trim() : null,
+      denominations: _denominationsMap,
     );
   }
 
@@ -399,7 +460,6 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
     final model = _buildModel();
     final text = model.generateWhatsAppText();
 
-    // Copy to clipboard
     await Clipboard.setData(ClipboardData(text: text));
 
     if (!mounted) return;
@@ -433,11 +493,11 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Vehicle Collection Handover',
+                          'Daily Vehicle Handover Slip',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         Text(
-                          'Copied to clipboard! Share directly with Owner',
+                          'Slip copied to clipboard! Share directly with Owner',
                           style: TextStyle(fontSize: 12, color: Colors.blueGrey),
                         ),
                       ],
@@ -451,7 +511,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
               ),
               const SizedBox(height: 12),
               Container(
-                constraints: const BoxConstraints(maxHeight: 200),
+                constraints: const BoxConstraints(maxHeight: 220),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
@@ -463,7 +523,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                     text,
                     style: const TextStyle(
                       fontFamily: 'monospace',
-                      fontSize: 12,
+                      fontSize: 11.5,
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -547,7 +607,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                       Icon(Icons.history_rounded, color: AppTheme.primary, size: 22),
                       SizedBox(width: 8),
                       Text(
-                        'Vehicle Collection History',
+                        'Daily Vehicle Slips History',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                     ],
@@ -582,6 +642,12 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                         itemBuilder: (context, idx) {
                           final item = history[idx];
                           final dStr = DateFormat('dd MMM yyyy, hh:mm a').format(item.createdAt);
+                          final expenseSummary = item.expenses.isNotEmpty
+                              ? item.expenses.map((e) => '${e.type}: -₹${e.amount.toStringAsFixed(0)}').join(', ')
+                              : (item.expenseAmount > 0
+                                  ? '${item.expenseType}: -₹${item.expenseAmount.toStringAsFixed(0)}'
+                                  : 'No Expenses');
+
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Container(
@@ -614,7 +680,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                             subtitle: Padding(
                               padding: const EdgeInsets.only(top: 2.0),
                               child: Text(
-                                '$dStr • ${item.billsCount} bills • ${item.expenseType}: -${CurrencyFormatter.format(item.expenseAmount)} • By: ${item.employeeName}',
+                                '$dStr • ${item.billsCount} bills\n$expenseSummary • By: ${item.employeeName}',
                                 style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade700),
                               ),
                             ),
@@ -673,12 +739,20 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<CollectionProvider>();
+    final registeredVehicles = provider.vehicles;
+    final registeredEmployees = provider.employees;
     final dateStr = DateFormat('dd MMM yyyy').format(_selectedDate);
+
+    // Ensure selected vehicle is valid
+    if (!_isCustomVehicle && !registeredVehicles.contains(_selectedVehicle) && registeredVehicles.isNotEmpty) {
+      _selectedVehicle = registeredVehicles.first;
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Vehicle Collection'),
+        title: const Text('Daily Vehicle Collection'),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -691,11 +765,6 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
             tooltip: 'Slip History',
             onPressed: () => _showHistoryModal(context),
           ),
-          IconButton(
-            icon: const Icon(Icons.playlist_add_rounded),
-            tooltip: 'Pick from Today\'s Bills',
-            onPressed: _pickFromExistingBills,
-          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -703,7 +772,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Mode Switcher: Denominations vs Vehicle Collection
+            // Mode Switcher: Denominations vs Daily Vehicle Collection
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(4),
@@ -739,7 +808,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                             Icon(Icons.payments_outlined, color: Color(0xFF10B981), size: 16),
                             SizedBox(width: 6),
                             Text(
-                              'Denominations',
+                              'Cash Counter',
                               style: TextStyle(
                                 color: Color(0xFF10B981),
                                 fontWeight: FontWeight.w800,
@@ -765,7 +834,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                           Icon(Icons.local_shipping_outlined, color: Colors.white, size: 16),
                           SizedBox(width: 6),
                           Text(
-                            'Vehicle Collection',
+                            'Daily Vehicle',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
@@ -791,14 +860,31 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'DATE & VEHICLE',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.6,
-                      color: Color(0xFF475569),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'DATE & VEHICLE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                          );
+                        },
+                        child: const Text(
+                          '⚙️ Manage in Settings',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -856,7 +942,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                               value: _isCustomVehicle ? 'OTHER' : _selectedVehicle,
                               icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
                               items: [
-                                ..._defaultVehicles.map((v) => DropdownMenuItem(
+                                ...registeredVehicles.map((v) => DropdownMenuItem(
                                       value: v,
                                       child: Row(
                                         children: [
@@ -928,7 +1014,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Row 2: Expenses Dropdown (CNG, Petrol, Diesel, None) & Expense Amount
+            // Row 2: Multi-select Fuel & Vehicle Expenses (CNG + Petrol + Diesel + Other)
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -939,83 +1025,168 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.local_gas_station_rounded, size: 15, color: Color(0xFFF59E0B)),
-                      SizedBox(width: 6),
-                      Text(
-                        'VEHICLE EXPENSES & FUEL',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
-                          color: Color(0xFF475569),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Fuel / Expense Dropdown
-                      Expanded(
-                        flex: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.border),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              isExpanded: true,
-                              value: _selectedExpenseType,
-                              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFFF59E0B)),
-                              items: _expenseTypes.map((type) {
-                                return DropdownMenuItem(
-                                  value: type,
-                                  child: Text(
-                                    type,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setState(() {
-                                    _selectedExpenseType = val;
-                                    if (val == 'None') {
-                                      _expenseAmountCtrl.text = '0';
-                                    }
-                                  });
-                                }
-                              },
+                      const Row(
+                        children: [
+                          Icon(Icons.local_gas_station_rounded, size: 16, color: Color(0xFFF59E0B)),
+                          SizedBox(width: 6),
+                          Text(
+                            'FUEL & VEHICLE EXPENSES',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                              color: Color(0xFF475569),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-
-                      // Expense Amount Input
-                      Expanded(
-                        flex: 12,
-                        child: TextField(
-                          controller: _expenseAmountCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-                          decoration: InputDecoration(
-                            labelText: 'Expense Amount',
-                            prefixText: '₹ ',
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onChanged: (_) => setState(() {}),
+                      Text(
+                        'Total: -${CurrencyFormatter.format(_totalExpensesAmount)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFDC2626),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Multi-select fuel filled today (commercial vans can fill both CNG & Petrol):',
+                    style: TextStyle(fontSize: 11.5, color: Colors.blueGrey),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Multi-select Expense Chips
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: _availableExpenseTypes.map((type) {
+                      final isSelected = _selectedExpenseTypes.contains(type);
+                      return FilterChip(
+                        selected: isSelected,
+                        label: Text(type),
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? Colors.white : const Color(0xFF334155),
+                        ),
+                        selectedColor: type == 'CNG'
+                            ? const Color(0xFF10B981)
+                            : (type == 'Petrol' ? const Color(0xFFF59E0B) : const Color(0xFF0284C7)),
+                        checkmarkColor: Colors.white,
+                        backgroundColor: Colors.grey.shade100,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(
+                            color: isSelected ? Colors.transparent : Colors.grey.shade300,
+                          ),
+                        ),
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedExpenseTypes.add(type);
+                            } else {
+                              if (_selectedExpenseTypes.length > 1) {
+                                _selectedExpenseTypes.remove(type);
+                                _expenseAmountControllers[type]?.text = '0';
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('At least one fuel/expense category must be selected (set to ₹0 if none).'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Amount Inputs for each active expense type
+                  ..._selectedExpenseTypes.map((type) {
+                    final ctrl = _expenseAmountControllers[type]!;
+                    Color badgeColor = const Color(0xFF10B981);
+                    IconData badgeIcon = Icons.local_gas_station_rounded;
+
+                    if (type == 'Petrol') {
+                      badgeColor = const Color(0xFFF59E0B);
+                    } else if (type == 'Diesel') {
+                      badgeColor = const Color(0xFF0284C7);
+                    } else if (type == 'Toll / Other') {
+                      badgeColor = const Color(0xFF64748B);
+                      badgeIcon = Icons.toll_rounded;
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 100,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: badgeColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(badgeIcon, size: 14, color: badgeColor),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    type,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                      color: badgeColor,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: ctrl,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                              ],
+                              decoration: InputDecoration(
+                                labelText: '$type Amount (₹)',
+                                prefixText: '₹ ',
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                          if (_selectedExpenseTypes.length > 1)
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 18, color: Colors.grey),
+                              tooltip: 'Remove $type',
+                              onPressed: () {
+                                setState(() {
+                                  _selectedExpenseTypes.remove(type);
+                                  ctrl.text = '0';
+                                });
+                              },
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),
@@ -1084,24 +1255,24 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                   const SizedBox(height: 10),
 
                   // Header for Bill list
-                  Row(
+                  const Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         flex: 11,
                         child: Text(
                           'Bill No.',
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.blueGrey),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      const Expanded(
+                      SizedBox(width: 8),
+                      Expanded(
                         flex: 11,
                         child: Text(
                           'Bill Amount (₹)',
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.blueGrey),
                         ),
                       ),
-                      const SizedBox(width: 36),
+                      SizedBox(width: 36),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -1113,14 +1284,14 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                       padding: const EdgeInsets.only(bottom: 8.0),
                       child: Row(
                         children: [
-                          // Bill Number Field
+                          // Bill Number Field (Hint changed from 'Bill #1' to 'Bill No.')
                           Expanded(
                             flex: 11,
                             child: TextField(
                               controller: row.billNoCtrl,
                               textCapitalization: TextCapitalization.characters,
                               decoration: InputDecoration(
-                                hintText: 'Bill #${index + 1}',
+                                hintText: 'Bill No.',
                                 isDense: true,
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -1162,30 +1333,17 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                   }),
 
                   const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text('+ Add More Bills'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.5)),
-                          ),
-                          onPressed: () => _addBillRow(),
-                        ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('+ Add More Bills'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.5)),
                       ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.playlist_add_rounded, size: 16),
-                        label: const Text('Pick Bills'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                          foregroundColor: Colors.blueGrey.shade800,
-                        ),
-                        onPressed: _pickFromExistingBills,
-                      ),
-                    ],
+                      onPressed: () => _addBillRow(),
+                    ),
                   ),
                 ],
               ),
@@ -1230,23 +1388,32 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Fuel Expense ($_selectedExpenseType)',
-                        style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
+                  // Breakdown of each expense
+                  ..._selectedExpenseTypes.map((type) {
+                    final ctrl = _expenseAmountControllers[type];
+                    final amt = ctrl != null ? (double.tryParse(ctrl.text.trim()) ?? 0.0) : 0.0;
+                    if (amt <= 0) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Expense ($type)',
+                            style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 12.5),
+                          ),
+                          Text(
+                            '- ${CurrencyFormatter.format(amt)}',
+                            style: const TextStyle(
+                              color: Color(0xFFFCA5A5),
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        '- ${CurrencyFormatter.format(_expenseAmount)}',
-                        style: const TextStyle(
-                          color: Color(0xFFFCA5A5),
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                    );
+                  }),
                   const Divider(color: Colors.white24, height: 18),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1264,7 +1431,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                             ),
                           ),
                           Text(
-                            'Physical Cash to Submit',
+                            'Target Physical Cash',
                             style: TextStyle(color: Colors.white60, fontSize: 11),
                           ),
                         ],
@@ -1284,6 +1451,324 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
             ),
             const SizedBox(height: 12),
 
+            // EMBEDDED CASH COUNTER UNDER THE TOTAL TO MATCH CASH
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            'CASH COUNTER (VERIFY & MATCH)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                              color: Color(0xFF065F46),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          InkWell(
+                            onTap: _autoMatchDenominations,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                '⚡ Auto-Match',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF047857),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: _clearDenominations,
+                            child: const Text(
+                              'Clear',
+                              style: TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Count physical notes below to instantly match with Net Cash Handover:',
+                    style: TextStyle(fontSize: 11.5, color: Colors.blueGrey),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Denomination rows
+                  ..._noteDenominations.map((denom) {
+                    final ctrl = _denomControllers[denom]!;
+                    final count = int.tryParse(ctrl.text.trim()) ?? 0;
+                    final subtotal = count * int.parse(denom);
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 64,
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '₹$denom',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13,
+                                  color: Color(0xFF065F46),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('×', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 65,
+                            child: TextField(
+                              controller: ctrl,
+                              textAlign: TextAlign.center,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                              ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.grey),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _decrementDenom(denom),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle, size: 18, color: Color(0xFF10B981)),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _incrementDenom(denom),
+                          ),
+                          const Spacer(),
+                          Text(
+                            CurrencyFormatter.format(subtotal.toDouble()),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+
+                  // Coins row
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 64,
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Coins',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                                color: Color(0xFFB45309),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('=', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _denomControllers['coins'],
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            decoration: InputDecoration(
+                              labelText: 'Coins Total (₹)',
+                              prefixText: '₹ ',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          CurrencyFormatter.format(
+                              (double.tryParse(_denomControllers['coins']!.text.trim()) ?? 0.0)),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 16),
+
+                  // Real-time verification match indicator
+                  Builder(
+                    builder: (context) {
+                      final counted = _countedCashTotal;
+                      final target = _netHandoverAmount.round();
+                      final diff = counted - target;
+
+                      if (counted == 0) {
+                        return Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline, size: 16, color: Color(0xFF64748B)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Enter notes count to verify physical cash against Net Handover of ${CurrencyFormatter.format(target.toDouble())}',
+                                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      if (diff == 0) {
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF10B981)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 22),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      '✅ PERFECT MATCH (₹0 DIFFERENCE)',
+                                      style: TextStyle(
+                                        color: Color(0xFF065F46),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 12.5,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Counted ${CurrencyFormatter.format(counted.toDouble())} equals Net Handover.',
+                                      style: const TextStyle(color: Color(0xFF047857), fontSize: 11.5),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                CurrencyFormatter.format(counted.toDouble()),
+                                style: const TextStyle(
+                                  color: Color(0xFF059669),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final isShort = diff < 0;
+                      final color = isShort ? const Color(0xFFDC2626) : const Color(0xFF2563EB);
+                      final bgColor = isShort ? const Color(0xFFFEF2F2) : const Color(0xFFEFF6FF);
+
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: color.withValues(alpha: 0.5)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isShort ? Icons.warning_amber_rounded : Icons.info_outline,
+                              color: color,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    isShort
+                                        ? '⚠️ CASH SHORTAGE: -${CurrencyFormatter.format(diff.abs().toDouble())}'
+                                        : 'ℹ️ CASH SURPLUS: +${CurrencyFormatter.format(diff.toDouble())}',
+                                    style: TextStyle(
+                                      color: color,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Counted: ${CurrencyFormatter.format(counted.toDouble())} | Net Handover: ${CurrencyFormatter.format(target.toDouble())}',
+                                    style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 11.5),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
             // Employee Name & Handover and Save Options
             Container(
               padding: const EdgeInsets.all(14),
@@ -1295,30 +1780,78 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'EMPLOYEE & HANDOVER DETAILS',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.6,
-                      color: Color(0xFF475569),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'EMPLOYEE & HANDOVER DETAILS',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                          );
+                        },
+                        child: const Text(
+                          '⚙️ Manage Staff',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      // Employee Name Field
+                      // Employee Name Field with Dropdown option if registered staff exist
                       Expanded(
-                        child: TextField(
-                          controller: _employeeNameCtrl,
-                          decoration: InputDecoration(
-                            labelText: 'Employee Name',
-                            prefixIcon: const Icon(Icons.person_outline, size: 18),
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                        ),
+                        child: registeredEmployees.isNotEmpty
+                            ? Autocomplete<String>(
+                                initialValue: TextEditingValue(text: _employeeNameCtrl.text),
+                                optionsBuilder: (TextEditingValue val) {
+                                  if (val.text.isEmpty) {
+                                    return registeredEmployees;
+                                  }
+                                  return registeredEmployees.where((e) =>
+                                      e.toLowerCase().contains(val.text.toLowerCase()));
+                                },
+                                onSelected: (String sel) {
+                                  _employeeNameCtrl.text = sel;
+                                },
+                                fieldViewBuilder: (context, fieldCtrl, focusNode, onFieldSubmitted) {
+                                  // Sync back
+                                  fieldCtrl.addListener(() {
+                                    _employeeNameCtrl.text = fieldCtrl.text;
+                                  });
+                                  return TextField(
+                                    controller: fieldCtrl,
+                                    focusNode: focusNode,
+                                    decoration: InputDecoration(
+                                      labelText: 'Employee Name',
+                                      prefixIcon: const Icon(Icons.person_outline, size: 18),
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                  );
+                                },
+                              )
+                            : TextField(
+                                controller: _employeeNameCtrl,
+                                decoration: InputDecoration(
+                                  labelText: 'Employee Name',
+                                  prefixIcon: const Icon(Icons.person_outline, size: 18),
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                              ),
                       ),
                       const SizedBox(width: 10),
                       // Handover To (Office / Owner)
@@ -1341,7 +1874,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                     controller: _remarksCtrl,
                     decoration: InputDecoration(
                       labelText: 'Remarks / Notes (Optional)',
-                      hintText: 'e.g. Route 4 collection, fuel bill attached',
+                      hintText: 'e.g. Route 4 collection, cash matched',
                       prefixIcon: const Icon(Icons.notes_rounded, size: 18),
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),

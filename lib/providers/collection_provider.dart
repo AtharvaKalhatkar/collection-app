@@ -37,6 +37,8 @@ class CollectionProvider extends ChangeNotifier {
   List<PendingBillModel> _pendingBills = [];
   List<CashHandoverModel> _cashHandovers = [];
   List<VehicleCollectionModel> _vehicleCollections = [];
+  List<String> _vehicles = [];
+  List<String> _employees = [];
   Set<String> _locallyDeletedBillIds = {};
   Set<String> _locallyDeletedCollectionIds = {};
   List<SalesOrderModel> _salesOrders = [];
@@ -70,6 +72,8 @@ class CollectionProvider extends ChangeNotifier {
   List<PendingBillModel> get pendingBills => _pendingBills;
   List<CashHandoverModel> get cashHandovers => _cashHandovers;
   List<VehicleCollectionModel> get vehicleCollections => _vehicleCollections;
+  List<String> get vehicles => List.unmodifiable(_vehicles);
+  List<String> get employees => List.unmodifiable(_employees);
   List<SalesOrderModel> get salesOrders => _salesOrders;
   List<CatalogProduct> get customProducts => _customProducts;
   List<String> get businesses => _businesses;
@@ -123,9 +127,13 @@ class CollectionProvider extends ChangeNotifier {
       _pendingBills = [];
       _businesses = ['Purva Enterprises', 'Manas Sales'];
       _salesmanName = 'Akash';
+      _vehicles = ['MH 14 HG 2426', 'MH 14 GD 6212', 'MH 14 KA 2059'];
+      _employees = ['Akash', 'Sahil', 'Office / Owner'];
 
       await _storage.saveBusinesses(_businesses);
       await _storage.saveSalesmanName(_salesmanName);
+      await _storage.saveVehicles(_vehicles);
+      await _storage.saveEmployees(_employees);
       await _storage.markInitialized();
     } else {
       _routes = await _storage.loadRoutes();
@@ -134,6 +142,8 @@ class CollectionProvider extends ChangeNotifier {
       _pendingBills = await _storage.loadPendingBills();
       _cashHandovers = await _storage.loadCashHandovers();
       _vehicleCollections = await _storage.loadVehicleCollections();
+      _vehicles = await _storage.loadVehicles();
+      _employees = await _storage.loadEmployees();
       _locallyDeletedBillIds = await _storage.loadDeletedBillIds();
       _locallyDeletedCollectionIds = await _storage.loadDeletedCollectionIds();
 
@@ -1690,6 +1700,35 @@ _Daily Collection Pro Cash Verification_
 
   String generateVehicleCollectionWhatsAppText(VehicleCollectionModel v) {
     return v.generateWhatsAppText();
+  }
+
+  // --- Vehicle & Employee Management Operations ---
+  Future<void> addVehicle(String vehicleNo) async {
+    final v = vehicleNo.trim().toUpperCase();
+    if (v.isEmpty || _vehicles.any((x) => x.toUpperCase() == v)) return;
+    _vehicles.add(v);
+    await _storage.saveVehicles(_vehicles);
+    notifyListeners();
+  }
+
+  Future<void> deleteVehicle(String vehicleNo) async {
+    _vehicles.removeWhere((v) => v.toUpperCase() == vehicleNo.trim().toUpperCase());
+    await _storage.saveVehicles(_vehicles);
+    notifyListeners();
+  }
+
+  Future<void> addEmployee(String employeeName) async {
+    final name = employeeName.trim();
+    if (name.isEmpty || _employees.any((x) => x.toLowerCase() == name.toLowerCase())) return;
+    _employees.add(name);
+    await _storage.saveEmployees(_employees);
+    notifyListeners();
+  }
+
+  Future<void> deleteEmployee(String employeeName) async {
+    _employees.removeWhere((e) => e.trim().toLowerCase() == employeeName.trim().toLowerCase());
+    await _storage.saveEmployees(_employees);
+    notifyListeners();
   }
 
   // --- Sales Order Operations ---

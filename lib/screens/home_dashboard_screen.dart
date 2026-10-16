@@ -199,7 +199,7 @@ class HomeDashboardScreen extends StatelessWidget {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.local_shipping_rounded, size: 16),
-                      label: const Text('Vehicle Collection'),
+                      label: const Text('Daily Vehicle Collection'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0284C7),
                         foregroundColor: Colors.white,
@@ -1771,37 +1771,17 @@ class HomeDashboardScreen extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  const Text(
-                                    'Vehicle Collection',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 14,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Text(
-                                      '3 VANS',
-                                      style: TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF0284C7),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              const Text(
+                                'Daily Vehicle Collection',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                  color: Color(0xFF0F172A),
+                                ),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'MH14HG2426, GD6212, KA2059 • Fuel & Bills',
+                                'Vehicle cash, fuel expenses & cash handover',
                                 style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
                               ),
                             ],
