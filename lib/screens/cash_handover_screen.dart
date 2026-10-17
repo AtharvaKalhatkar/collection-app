@@ -8,7 +8,6 @@ import '../models/cash_handover_model.dart';
 import '../providers/collection_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
-import 'vehicle_collection_screen.dart';
 
 class CashHandoverScreen extends StatefulWidget {
   final DateTime? initialDate;
@@ -389,20 +388,6 @@ class _CashHandoverScreenState extends State<CashHandoverScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.local_shipping_outlined),
-            tooltip: 'Vehicle Collection',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => VehicleCollectionScreen(
-                    initialDate: _selectedDate,
-                  ),
-                ),
-              );
-            },
-          ),
-          IconButton(
             icon: const Icon(Icons.history_rounded),
             tooltip: 'Handover History',
             onPressed: () => _showHistoryModal(context),
@@ -419,83 +404,6 @@ class _CashHandoverScreenState extends State<CashHandoverScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Mode Switcher: Denominations vs Vehicle Collection
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.border),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.payments_outlined, color: Colors.white, size: 16),
-                          SizedBox(width: 6),
-                          Text(
-                            'Denominations',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => VehicleCollectionScreen(
-                              initialDate: _selectedDate,
-                            ),
-                          ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.local_shipping_outlined, color: Color(0xFF0284C7), size: 16),
-                            SizedBox(width: 6),
-                            Text(
-                              'Vehicle Collection',
-                              style: TextStyle(
-                                color: Color(0xFF0284C7),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
             // Filter Bar: Date & Firm Selectors
             Container(
               padding: const EdgeInsets.all(12),

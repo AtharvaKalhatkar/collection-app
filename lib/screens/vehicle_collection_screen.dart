@@ -9,8 +9,6 @@ import '../providers/collection_provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
-import 'cash_handover_screen.dart';
-import 'profile_screen.dart';
 
 class VehicleCollectionScreen extends StatefulWidget {
   final DateTime? initialDate;
@@ -50,14 +48,13 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
   final TextEditingController _customVehicleCtrl = TextEditingController();
   bool _isCustomVehicle = false;
 
-  // Multi-select fuel expenses (CNG, Petrol, Diesel, Toll / Other)
-  static const List<String> _availableExpenseTypes = ['CNG', 'Petrol', 'Diesel', 'Toll / Other'];
+  // Multi-select fuel expenses (CNG, Petrol, Diesel)
+  static const List<String> _availableExpenseTypes = ['CNG', 'Petrol', 'Diesel'];
   final Set<String> _selectedExpenseTypes = {'CNG'};
   final Map<String, TextEditingController> _expenseAmountControllers = {
     'CNG': TextEditingController(text: '0'),
     'Petrol': TextEditingController(text: '0'),
     'Diesel': TextEditingController(text: '0'),
-    'Toll / Other': TextEditingController(text: '0'),
   };
 
   // Cash Denomination Counter controllers
@@ -772,83 +769,6 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Mode Switcher: Denominations vs Daily Vehicle Collection
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.border),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CashHandoverScreen(
-                              initialDate: _selectedDate,
-                            ),
-                          ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.payments_outlined, color: Color(0xFF10B981), size: 16),
-                            SizedBox(width: 6),
-                            Text(
-                              'Cash Counter',
-                              style: TextStyle(
-                                color: Color(0xFF10B981),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0284C7),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.local_shipping_outlined, color: Colors.white, size: 16),
-                          SizedBox(width: 6),
-                          Text(
-                            'Daily Vehicle',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
             // Row 1: Date & Vehicle Number (side by side in front of each other)
             Container(
               padding: const EdgeInsets.all(14),
@@ -860,31 +780,14 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'DATE & VEHICLE',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
-                          color: Color(0xFF475569),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                          );
-                        },
-                        child: const Text(
-                          '⚙️ Manage in Settings',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
-                        ),
-                      ),
-                    ],
+                  const Text(
+                    'DATE & VEHICLE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                      color: Color(0xFF475569),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -1119,9 +1022,6 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                       badgeColor = const Color(0xFFF59E0B);
                     } else if (type == 'Diesel') {
                       badgeColor = const Color(0xFF0284C7);
-                    } else if (type == 'Toll / Other') {
-                      badgeColor = const Color(0xFF64748B);
-                      badgeIcon = Icons.toll_rounded;
                     }
 
                     return Padding(
@@ -1780,78 +1680,57 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'EMPLOYEE & HANDOVER DETAILS',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
-                          color: Color(0xFF475569),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                          );
-                        },
-                        child: const Text(
-                          '⚙️ Manage Staff',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
-                        ),
-                      ),
-                    ],
+                  const Text(
+                    'EMPLOYEE & HANDOVER DETAILS',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                      color: Color(0xFF475569),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      // Employee Name Field with Dropdown option if registered staff exist
-                      Expanded(
-                        child: registeredEmployees.isNotEmpty
-                            ? Autocomplete<String>(
-                                initialValue: TextEditingValue(text: _employeeNameCtrl.text),
-                                optionsBuilder: (TextEditingValue val) {
-                                  if (val.text.isEmpty) {
-                                    return registeredEmployees;
-                                  }
-                                  return registeredEmployees.where((e) =>
-                                      e.toLowerCase().contains(val.text.toLowerCase()));
-                                },
-                                onSelected: (String sel) {
-                                  _employeeNameCtrl.text = sel;
-                                },
-                                fieldViewBuilder: (context, fieldCtrl, focusNode, onFieldSubmitted) {
-                                  // Sync back
-                                  fieldCtrl.addListener(() {
-                                    _employeeNameCtrl.text = fieldCtrl.text;
-                                  });
-                                  return TextField(
-                                    controller: fieldCtrl,
-                                    focusNode: focusNode,
-                                    decoration: InputDecoration(
-                                      labelText: 'Employee Name',
-                                      prefixIcon: const Icon(Icons.person_outline, size: 18),
-                                      isDense: true,
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                  );
-                                },
-                              )
-                            : TextField(
-                                controller: _employeeNameCtrl,
-                                decoration: InputDecoration(
-                                  labelText: 'Employee Name',
-                                  prefixIcon: const Icon(Icons.person_outline, size: 18),
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
+                      // Employee Name Dropdown
+                      Builder(
+                        builder: (context) {
+                          final employeesList = registeredEmployees.isNotEmpty
+                              ? registeredEmployees
+                              : ['Akash', 'Sahil', 'Office / Owner'];
+                          final currentValue = employeesList.contains(_employeeNameCtrl.text)
+                              ? _employeeNameCtrl.text
+                              : employeesList.first;
+                          return Expanded(
+                            child: DropdownButtonFormField<String>(
+                              initialValue: currentValue,
+                              isExpanded: true,
+                              icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
+                              decoration: InputDecoration(
+                                labelText: 'Employee Name',
+                                prefixIcon: const Icon(Icons.person_outline, size: 18),
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                               ),
+                              items: employeesList
+                                  .map((e) => DropdownMenuItem<String>(
+                                        value: e,
+                                        child: Text(
+                                          e,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ))
+                                  .toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() => _employeeNameCtrl.text = val);
+                                }
+                              },
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(width: 10),
                       // Handover To (Office / Owner)
