@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/shop_model.dart';
 import 'bill_text_parser.dart';
 import 'party_name_matcher.dart';
+import 'supabase_service.dart';
 import 'ocr/ocr_stub_bridge.dart'
     if (dart.library.html) 'ocr/ocr_web_bridge.dart';
 
@@ -48,18 +49,49 @@ class BillOcrResult {
 class BillOcrService {
   static const String _keyGeminiKey = 'gemini_api_key_v1';
 
-  /// Saves user-provided Gemini API key for high-speed cloud vision
+  /// Saves user-provided Gemini API key for high-speed cloud vision and syncs across devices
   static Future<void> saveApiKey(String key) async {
+    final cleanKey = key.trim();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyGeminiKey, key.trim());
+    await prefs.setString(_keyGeminiKey, cleanKey);
+    try {
+      await SupabaseService().syncGeminiApiKey(cleanKey);
+    } catch (e) {
+      debugPrint('Cloud sync error for Gemini key: $e');
+    }
   }
 
-  /// Gets stored Gemini API key if any
+  /// Gets stored Gemini API key, syncing from cloud if not present locally
   static Future<String?> getApiKey() async {
     final prefs = await SharedPreferences.getInstance();
     final key = prefs.getString(_keyGeminiKey);
     if (key != null && key.trim().isNotEmpty) return key.trim();
+
+    try {
+      final cloudKey = await SupabaseService().fetchGeminiApiKey();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        await prefs.setString(_keyGeminiKey, cloudKey);
+        return cloudKey;
+      }
+    } catch (e) {
+      debugPrint('Error loading cloud Gemini key: $e');
+    }
     return null;
+  }
+
+  /// Explicitly pulls latest Gemini key from cloud Supabase
+  static Future<String?> syncFromCloud() async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final cloudKey = await SupabaseService().fetchGeminiApiKey();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        await prefs.setString(_keyGeminiKey, cloudKey);
+        return cloudKey;
+      }
+    } catch (e) {
+      debugPrint('Error syncing Gemini key from cloud: $e');
+    }
+    return prefs.getString(_keyGeminiKey);
   }
 
   /// Check whether an API key is configured

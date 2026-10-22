@@ -8,6 +8,7 @@ import 'home_dashboard_screen.dart';
 import 'collections_list_screen.dart';
 import 'routes_shops_screen.dart';
 import 'profile_screen.dart';
+import 'driver_dashboard_screen.dart';
 
 class MainNavigationShell extends StatefulWidget {
   const MainNavigationShell({super.key});
@@ -27,7 +28,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       final auth = context.read<AuthProvider>();
       if (auth.currentUser != null) {
         final u = auth.currentUser!;
-        context.read<CollectionProvider>().updateProfile(
+        final provider = context.read<CollectionProvider>();
+        provider.setCurrentUser(u);
+        provider.updateProfile(
           name: u.name,
           phone: u.phone,
           role: u.roleDisplayName,
@@ -44,6 +47,22 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final user = auth.currentUser;
+
+    if (user != null) {
+      final provider = context.read<CollectionProvider>();
+      if (provider.currentUser?.id != user.id ||
+          provider.currentUser?.assignedRouteIds.length != user.assignedRouteIds.length) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          provider.setCurrentUser(user);
+        });
+      }
+    }
+
+    if (user?.isDriver == true) {
+      return const DriverDashboardScreen();
+    }
     final screens = [
       HomeDashboardScreen(
         onNavigateToRoutes: () => _navigateToTab(2),

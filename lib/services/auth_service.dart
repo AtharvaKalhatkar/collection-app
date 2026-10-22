@@ -18,7 +18,10 @@ class AuthService {
     if (jsonStr != null) {
       try {
         final List<dynamic> list = jsonDecode(jsonStr);
-        users = list.map((item) => UserModel.fromJson(item as Map<String, dynamic>)).toList();
+        users = list
+            .map((item) => UserModel.fromJson(item as Map<String, dynamic>))
+            .where((u) => u.id != 'config_gemini_api')
+            .toList();
       } catch (e) {
         debugPrint('Error decoding users cache: $e');
       }
@@ -35,7 +38,19 @@ class AuthService {
       if (_supabase.isInitialized) {
         final cloudUsers = await _supabase.fetchUsers();
         if (cloudUsers.isNotEmpty) {
-          users = cloudUsers;
+          users = cloudUsers.where((u) => u.id != 'config_gemini_api').toList();
+          // Ensure driver user is present if missing
+          if (!users.any((u) => u.phone == 'user1' || u.role == UserRole.driver)) {
+            final driver = UserModel(
+              id: 'user_driver_user1',
+              phone: 'user1',
+              name: 'Driver (user1)',
+              role: UserRole.driver,
+              password: 'pass123',
+            );
+            users.add(driver);
+            await _supabase.saveUser(driver);
+          }
           await saveUsersLocally(users);
         } else {
           // Push initial users to Supabase
@@ -62,7 +77,9 @@ class AuthService {
     final users = await loadUsers();
 
     final user = users.firstWhere(
-      (u) => UserModel.normalizePhone(u.phone) == cleanPhone && u.password == password.trim(),
+      (u) =>
+          UserModel.normalizePhone(u.phone) == cleanPhone &&
+          u.actualPassword == password.trim(),
       orElse: () => UserModel(
         id: '',
         phone: '',

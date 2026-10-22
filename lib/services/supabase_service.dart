@@ -325,6 +325,7 @@ class SupabaseService {
       final List<dynamic> data =
           await client.from('app_users').select().order('createdAt', ascending: true);
       return data
+          .where((row) => row['id'] != 'config_gemini_api')
           .map((row) => UserModel.fromJson(Map<String, dynamic>.from(row as Map)))
           .toList();
     } catch (e) {
@@ -332,6 +333,44 @@ class SupabaseService {
       debugPrint('Error fetching users from Supabase: $e');
       return [];
     }
+  }
+
+  // --- Gemini Cloud API Key Sync ---
+  Future<void> syncGeminiApiKey(String apiKey) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return;
+    try {
+      await client.from('app_users').upsert({
+        'id': 'config_gemini_api',
+        'phone': 'config_gemini',
+        'name': 'Cloud Gemini Key',
+        'role': 'office',
+        'password': apiKey.trim(),
+        'isActive': true,
+      });
+      debugPrint('Successfully synced Gemini API key to Supabase');
+    } catch (e) {
+      debugPrint('Error syncing Gemini API key to Supabase: $e');
+    }
+  }
+
+  Future<String?> fetchGeminiApiKey() async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return null;
+    try {
+      final res = await client
+          .from('app_users')
+          .select('password')
+          .eq('id', 'config_gemini_api')
+          .maybeSingle();
+      if (res != null && res['password'] != null) {
+        final key = (res['password'] as String).trim();
+        if (key.isNotEmpty) return key;
+      }
+    } catch (e) {
+      debugPrint('Error fetching Gemini API key from Supabase: $e');
+    }
+    return null;
   }
 
   Future<bool> saveUser(UserModel user) async {

@@ -18,6 +18,8 @@ import 'collection_details_dialog.dart';
 import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
+import 'user_management_screen.dart';
+import '../models/user_model.dart';
 import '../utils/firm_details.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
@@ -341,9 +343,459 @@ class HomeDashboardScreen extends StatelessWidget {
     );
   }
 
+  void _showDriverRouteAssignmentDialog(
+    BuildContext context,
+    UserModel driver,
+    CollectionProvider provider,
+    AuthProvider auth,
+  ) {
+    final allRoutes = provider.allRoutes;
+    List<String> selectedRoutes = List<String>.from(driver.assignedRouteIds);
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Assign Route for ${driver.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text('Driver will only see bills & shops for these routes', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: allRoutes.isEmpty
+                ? const Text('No routes available. Please create routes first.')
+                : ListView(
+                    shrinkWrap: true,
+                    children: allRoutes.map((route) {
+                      final isChecked = selectedRoutes.contains(route.id);
+                      return CheckboxListTile(
+                        dense: true,
+                        value: isChecked,
+                        activeColor: const Color(0xFF0284C7),
+                        title: Text(route.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                        subtitle: Text(
+                          '${provider.shops.where((s) => s.routeId == route.id).length} outlets',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        onChanged: (val) {
+                          setDlgState(() {
+                            if (val == true) {
+                              selectedRoutes.add(route.id);
+                            } else {
+                              selectedRoutes.remove(route.id);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dlgCtx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0284C7),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () async {
+                Navigator.pop(dlgCtx);
+                final updated = driver.copyWith(assignedRouteIds: selectedRoutes);
+                await auth.saveUser(updated);
+                provider.setCurrentUser(auth.currentUser);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Routes updated for ${driver.name}!'),
+                      backgroundColor: Colors.green.shade700,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Save Routes', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuperAdminStaffOversight(
+    BuildContext context,
+    CollectionProvider provider,
+    AuthProvider auth,
+  ) {
+    final users = auth.users;
+    final staffUsers = users.where((u) => u.id != 'config_gemini_api' && !u.isSuperAdmin).toList();
+    final currentStaffFilter = provider.selectedStaffFilter;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF1E293B),
+            Color(0xFF0F172A),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade500.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.shield_outlined, color: Colors.amber.shade400, size: 18),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Staff & Fleet Live Overview',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const UserManagementScreen()),
+                  );
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.manage_accounts_outlined, color: Colors.blue.shade300, size: 15),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Manage Staff',
+                        style: TextStyle(fontSize: 11.5, color: Colors.blue.shade300, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Filter chips row
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildStaffFilterChip(
+                  label: 'All Staff',
+                  icon: Icons.groups_outlined,
+                  isSelected: currentStaffFilter == null || currentStaffFilter == 'All',
+                  onTap: () => provider.setSelectedStaffFilter(null),
+                ),
+                const SizedBox(width: 8),
+                ...staffUsers.map((u) {
+                  final summary = provider.getStaffSummary(u.name);
+                  final isSel = currentStaffFilter != null &&
+                      (currentStaffFilter.toLowerCase() == u.name.toLowerCase() ||
+                          currentStaffFilter.toLowerCase() == u.phone.toLowerCase());
+                  final icon = u.isDriver
+                      ? Icons.local_shipping
+                      : (u.isSalesman ? Icons.two_wheeler : Icons.business_center);
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: _buildStaffFilterChip(
+                      label: '${u.name} (${CurrencyFormatter.format(summary.totalAmount)})',
+                      icon: icon,
+                      isSelected: isSel,
+                      onTap: () => provider.setSelectedStaffFilter(u.name),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Staff Cards Scroll
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: staffUsers.map((u) {
+                final summary = provider.getStaffSummary(u.name);
+                final isSelected = currentStaffFilter != null &&
+                    (currentStaffFilter.toLowerCase() == u.name.toLowerCase() ||
+                        currentStaffFilter.toLowerCase() == u.phone.toLowerCase());
+
+                return Container(
+                  width: 250,
+                  margin: const EdgeInsets.only(right: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFF1E3A8A)
+                        : Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFF60A5FA)
+                          : Colors.white.withValues(alpha: 0.12),
+                      width: isSelected ? 1.6 : 1.0,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                u.isDriver
+                                    ? Icons.local_shipping
+                                    : (u.isSalesman ? Icons.two_wheeler : Icons.business_center),
+                                color: u.isDriver ? const Color(0xFF38BDF8) : Colors.amber.shade400,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                u.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              u.roleDisplayName.toUpperCase(),
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            CurrencyFormatter.format(summary.totalAmount),
+                            style: const TextStyle(
+                              color: Color(0xFF34D399),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            '${summary.collectionsCount} receipts',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Cash: ${CurrencyFormatter.format(summary.cashAmount)} • UPI: ${CurrencyFormatter.format(summary.upiAmount)}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.65),
+                          fontSize: 10.5,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                if (isSelected) {
+                                  provider.setSelectedStaffFilter(null);
+                                } else {
+                                  provider.setSelectedStaffFilter(u.name);
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? const Color(0xFF3B82F6) : Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  isSelected ? 'Clear Filter' : 'Inspect Activity',
+                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (u.isDriver) ...[
+                            const SizedBox(width: 6),
+                            InkWell(
+                              onTap: () => _showDriverRouteAssignmentDialog(context, u, provider, auth),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0284C7).withValues(alpha: 0.35),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.alt_route, color: Color(0xFF38BDF8), size: 12),
+                                    SizedBox(width: 4),
+                                    Text('Routes', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          if (currentStaffFilter != null && currentStaffFilter != 'All') ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade500.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.shade400.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.filter_alt, size: 14, color: Colors.amber.shade300),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Filtered to $currentStaffFilter\'s collections only.',
+                      style: TextStyle(color: Colors.amber.shade200, fontSize: 11.5, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => provider.setSelectedStaffFilter(null),
+                    child: Text(
+                      'RESET',
+                      style: TextStyle(color: Colors.amber.shade300, fontSize: 11, fontWeight: FontWeight.w900, decoration: TextDecoration.underline),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStaffFilterChip({
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF3B82F6) : Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? Colors.transparent : Colors.white.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: Colors.white),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CollectionProvider>();
+    final auth = context.watch<AuthProvider>();
 
     if (provider.isLoading) {
       return const Scaffold(
@@ -616,6 +1068,9 @@ class HomeDashboardScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (auth.currentUser?.isSuperAdmin == true) ...[
+                _buildSuperAdminStaffOversight(context, provider, auth),
+              ],
               // Date Indicator & Business Pills Row
               Row(
                 children: [

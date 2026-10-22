@@ -11,6 +11,7 @@ import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
 import 'vehicle_collection_screen.dart';
 import 'user_management_screen.dart';
+import '../services/bill_ocr_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   final VoidCallback? onBackToOverview;
@@ -440,6 +441,96 @@ class ProfileScreen extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  void _showGeminiKeyDialog(BuildContext context) async {
+    final currentKey = await BillOcrService.getApiKey() ?? '';
+    final ctrl = TextEditingController(text: currentKey);
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 22),
+              SizedBox(width: 8),
+              Text('Cloud AI Bill Scanner', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Gemini AI automatically reads Invoice #, Date, Bill Amount, and matches English/Marathi party names when capturing bills.',
+                style: TextStyle(fontSize: 12.5, color: Colors.blueGrey),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                decoration: InputDecoration(
+                  labelText: 'Gemini API Key',
+                  hintText: 'AIzaSy...',
+                  prefixIcon: const Icon(Icons.key),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '✓ Synced automatically across all logins & devices via Supabase cloud.',
+                style: TextStyle(fontSize: 11, color: Colors.green.shade700, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final cloudKey = await BillOcrService.syncFromCloud();
+                if (cloudKey != null && cloudKey.isNotEmpty) {
+                  ctrl.text = cloudKey;
+                  setDlgState(() {});
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Synced key from cloud!')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Pull Cloud Key'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dlgCtx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF8B5CF6),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () async {
+                final newKey = ctrl.text.trim();
+                await BillOcrService.saveApiKey(newKey);
+                if (dlgCtx.mounted) {
+                  Navigator.pop(dlgCtx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Gemini API key saved & synced across all logins!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Save & Cloud Sync', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1083,6 +1174,27 @@ class ProfileScreen extends StatelessWidget {
               subtitle: Text('${provider.employees.length} collection staff registered • Add or remove', style: const TextStyle(fontSize: 11.5)),
               trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
               onTap: () => _showManageEmployeesDialog(context, provider),
+            ),
+          ),
+          const Divider(height: 1),
+
+          // Cloud AI Bill Scanner (Gemini API Key)
+          Material(
+            color: Colors.transparent,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 20),
+              ),
+              title: const Text('AI Bill Scanner (Cloud Key)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              subtitle: const Text('Auto-syncs Gemini Vision API key across phone & desktop', style: TextStyle(fontSize: 11.5)),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+              onTap: () => _showGeminiKeyDialog(context),
             ),
           ),
           const Divider(height: 1),

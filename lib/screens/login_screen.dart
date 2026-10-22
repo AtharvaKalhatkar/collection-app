@@ -49,6 +49,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final user = auth.currentUser!;
         // Sync logged in user profile with CollectionProvider
         final collectionProvider = context.read<CollectionProvider>();
+        collectionProvider.setCurrentUser(user);
         await collectionProvider.updateProfile(
           name: user.name,
           phone: user.phone,
@@ -361,6 +362,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               phone: '8390768833',
                               name: 'Atharva',
                               color: const Color(0xFFEC4899),
+                            ),
+                            _buildQuickChip(
+                              label: '🚚 user1 (Driver)',
+                              phone: 'user1',
+                              name: 'Driver (user1)',
+                              color: const Color(0xFF06B6D4),
                             ),
                           ],
                         ),

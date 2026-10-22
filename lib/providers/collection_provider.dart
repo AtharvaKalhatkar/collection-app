@@ -11,6 +11,7 @@ import '../models/bill_summary.dart';
 import '../models/order_model.dart';
 import '../models/cash_handover_model.dart';
 import '../models/vehicle_collection_model.dart';
+import '../models/user_model.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
@@ -18,6 +19,26 @@ import '../services/backup_service.dart';
 import '../services/auth_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
+
+class StaffCollectionSummary {
+  final String staffName;
+  final double totalAmount;
+  final double cashAmount;
+  final double upiAmount;
+  final double chequeAmount;
+  final int collectionsCount;
+  final List<CollectionModel> collections;
+
+  const StaffCollectionSummary({
+    required this.staffName,
+    required this.totalAmount,
+    required this.cashAmount,
+    required this.upiAmount,
+    required this.chequeAmount,
+    required this.collectionsCount,
+    required this.collections,
+  });
+}
 
 class CollectionProvider extends ChangeNotifier {
   final StorageService _storage = StorageService();
@@ -47,7 +68,31 @@ class CollectionProvider extends ChangeNotifier {
   String _salesmanName = 'Akash';
   String _salesmanPhone = '+91 98765 43210';
   String _salesmanRole = 'Field Collection & Sales Officer';
+  UserModel? _currentUser;
+  String? _selectedStaffFilter; // null or 'All' means all staff. Super Admin can select a specific staff member.
   bool _isLoading = true;
+
+  UserModel? get currentUser => _currentUser;
+  String? get selectedStaffFilter => _selectedStaffFilter;
+
+  void setCurrentUser(UserModel? user) {
+    _currentUser = user;
+    if (user != null) {
+      _salesmanName = user.name;
+      _salesmanPhone = user.phone;
+      _salesmanRole = user.roleDisplayName;
+    }
+    notifyListeners();
+  }
+
+  void setSelectedStaffFilter(String? staffName) {
+    if (staffName == null || staffName.trim().isEmpty || staffName == 'All') {
+      _selectedStaffFilter = null;
+    } else {
+      _selectedStaffFilter = staffName.trim();
+    }
+    notifyListeners();
+  }
 
   // Filters for Dashboard & Collection List
   DateTime _selectedDate = DateTime.now();
@@ -56,6 +101,16 @@ class CollectionProvider extends ChangeNotifier {
   String _searchQuery = '';
 
   List<RouteModel> get routes {
+    final list = List<RouteModel>.from(_routes);
+    if (_currentUser?.isDriver == true) {
+      final assigned = _currentUser!.assignedRouteIds;
+      list.retainWhere((r) => assigned.contains(r.id));
+    }
+    list.sort((a, b) => a.priority.compareTo(b.priority));
+    return list;
+  }
+
+  List<RouteModel> get allRoutes {
     final list = List<RouteModel>.from(_routes);
     list.sort((a, b) => a.priority.compareTo(b.priority));
     return list;
@@ -67,9 +122,28 @@ class CollectionProvider extends ChangeNotifier {
       orElse: () => RouteModel(id: routeId, name: 'Unknown Route'),
     ).name;
   }
-  List<ShopModel> get shops => _shops;
+
+  List<ShopModel> get shops {
+    if (_currentUser?.isDriver == true) {
+      final assigned = _currentUser!.assignedRouteIds;
+      return _shops.where((s) => assigned.contains(s.routeId)).toList();
+    }
+    return _shops;
+  }
+
+  List<ShopModel> get allShops => _shops;
+
   List<CollectionModel> get collections => _collections;
-  List<PendingBillModel> get pendingBills => _pendingBills;
+
+  List<PendingBillModel> get pendingBills {
+    if (_currentUser?.isDriver == true) {
+      final assigned = _currentUser!.assignedRouteIds;
+      return _pendingBills.where((b) => assigned.contains(b.routeId)).toList();
+    }
+    return _pendingBills;
+  }
+
+  List<PendingBillModel> get allPendingBills => _pendingBills;
   List<CashHandoverModel> get cashHandovers => _cashHandovers;
   List<VehicleCollectionModel> get vehicleCollections => _vehicleCollections;
   List<String> get vehicles => List.unmodifiable(_vehicles);
@@ -515,7 +589,7 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   // --- Filtered Collections for selected date and active filters ---
-  List<CollectionModel> getFilteredCollections({DateTime? forDate}) {
+  List<CollectionModel> getFilteredCollections({DateTime? forDate, String? staffOverride}) {
     final date = forDate ?? _selectedDate;
     return _collections.where((c) {
       // Date filter (matches day, month, year)
@@ -523,6 +597,19 @@ class CollectionProvider extends ChangeNotifier {
           c.collectedAt.month == date.month &&
           c.collectedAt.day == date.day;
       if (!sameDay) return false;
+
+      // Staff filter & user isolation scoping
+      if (staffOverride != null && staffOverride.isNotEmpty && staffOverride != 'All') {
+        if (!_matchesStaff(c.salesmanName, staffOverride)) return false;
+      } else if (_currentUser != null && (_currentUser!.isSalesman || _currentUser!.isDriver)) {
+        // Salesman or Driver only sees their own collections
+        final isOwn = _matchesStaff(c.salesmanName, _currentUser!.name) ||
+            _matchesStaff(c.salesmanName, _currentUser!.phone);
+        if (!isOwn) return false;
+      } else if (_selectedStaffFilter != null && _selectedStaffFilter != 'All') {
+        // Super Admin or Office selected a specific staff filter
+        if (!_matchesStaff(c.salesmanName, _selectedStaffFilter!)) return false;
+      }
 
       // Business filter
       if (_filterBusiness != null && _filterBusiness!.isNotEmpty && _filterBusiness != 'All') {
@@ -532,6 +619,11 @@ class CollectionProvider extends ChangeNotifier {
       // Route filter
       if (_filterRouteId != null && _filterRouteId!.isNotEmpty && _filterRouteId != 'All') {
         if (c.routeId != _filterRouteId) return false;
+      }
+
+      // If driver, only show collections for assigned routes
+      if (_currentUser?.isDriver == true && _currentUser!.assignedRouteIds.isNotEmpty) {
+        if (!_currentUser!.assignedRouteIds.contains(c.routeId)) return false;
       }
 
       // Search query
@@ -546,6 +638,61 @@ class CollectionProvider extends ChangeNotifier {
       return true;
     }).toList()
       ..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+  }
+
+  bool _matchesStaff(String recordedSalesman, String targetStaff) {
+    final r = recordedSalesman.trim().toLowerCase();
+    final t = targetStaff.trim().toLowerCase();
+    if (r == t) return true;
+    if (r.contains(t) || t.contains(r)) return true;
+    if ((t.contains('user1') || t.contains('driver')) && (r.contains('user1') || r.contains('driver'))) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Returns collection breakdown for a specific staff member on a specific date
+  StaffCollectionSummary getStaffSummary(String staffName, {DateTime? forDate}) {
+    final date = forDate ?? _selectedDate;
+    final staffCollections = _collections.where((c) {
+      final sameDay = c.collectedAt.year == date.year &&
+          c.collectedAt.month == date.month &&
+          c.collectedAt.day == date.day;
+      if (!sameDay) return false;
+      return _matchesStaff(c.salesmanName, staffName);
+    }).toList();
+
+    double cashTotal = 0;
+    double upiTotal = 0;
+    double chequeTotal = 0;
+    double otherTotal = 0;
+    for (final c in staffCollections) {
+      switch (c.paymentMode) {
+        case PaymentMode.cash:
+          cashTotal += c.collectedAmount;
+          break;
+        case PaymentMode.upi:
+          upiTotal += c.collectedAmount;
+          break;
+        case PaymentMode.cheque:
+          chequeTotal += c.collectedAmount;
+          break;
+        case PaymentMode.netBanking:
+          otherTotal += c.collectedAmount;
+          break;
+      }
+    }
+
+    final total = cashTotal + upiTotal + chequeTotal + otherTotal;
+    return StaffCollectionSummary(
+      staffName: staffName,
+      totalAmount: total,
+      cashAmount: cashTotal,
+      upiAmount: upiTotal,
+      chequeAmount: chequeTotal,
+      collectionsCount: staffCollections.length,
+      collections: staffCollections,
+    );
   }
 
   // --- Bill Aggregation & Status Tracking (Pending vs Paid) ---
@@ -748,23 +895,14 @@ class CollectionProvider extends ChangeNotifier {
 
   // --- Per-Business Performance & Collection Metrics ---
   double getTotalCollectionForBusiness(String business, {DateTime? forDate}) {
-    final date = forDate ?? _selectedDate;
-    return _collections.where((c) {
-      final sameDay = c.collectedAt.year == date.year &&
-          c.collectedAt.month == date.month &&
-          c.collectedAt.day == date.day;
-      return sameDay && c.businessName == business;
-    }).fold(0.0, (s, c) => s + c.collectedAmount);
+    return getFilteredCollections(forDate: forDate)
+        .where((c) => c.businessName == business)
+        .fold(0.0, (s, c) => s + c.collectedAmount);
   }
 
   int getBillsCountForBusiness(String business, {DateTime? forDate}) {
-    final date = forDate ?? _selectedDate;
-    final matching = _collections.where((c) {
-      final sameDay = c.collectedAt.year == date.year &&
-          c.collectedAt.month == date.month &&
-          c.collectedAt.day == date.day;
-      return sameDay && c.businessName == business;
-    });
+    final matching = getFilteredCollections(forDate: forDate)
+        .where((c) => c.businessName == business);
     final uniqueBills = <String>{};
     for (final c in matching) {
       uniqueBills.add('${c.shopId}_${c.billNumber.trim().toLowerCase()}');
@@ -777,23 +915,15 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   double getCashForBusiness(String business, {DateTime? forDate}) {
-    final date = forDate ?? _selectedDate;
-    return _collections.where((c) {
-      final sameDay = c.collectedAt.year == date.year &&
-          c.collectedAt.month == date.month &&
-          c.collectedAt.day == date.day;
-      return sameDay && c.businessName == business && c.paymentMode == PaymentMode.cash;
-    }).fold(0.0, (s, c) => s + c.collectedAmount);
+    return getFilteredCollections(forDate: forDate)
+        .where((c) => c.businessName == business && c.paymentMode == PaymentMode.cash)
+        .fold(0.0, (s, c) => s + c.collectedAmount);
   }
 
   double getDigitalForBusiness(String business, {DateTime? forDate}) {
-    final date = forDate ?? _selectedDate;
-    return _collections.where((c) {
-      final sameDay = c.collectedAt.year == date.year &&
-          c.collectedAt.month == date.month &&
-          c.collectedAt.day == date.day;
-      return sameDay && c.businessName == business && c.paymentMode != PaymentMode.cash;
-    }).fold(0.0, (s, c) => s + c.collectedAmount);
+    return getFilteredCollections(forDate: forDate)
+        .where((c) => c.businessName == business && c.paymentMode != PaymentMode.cash)
+        .fold(0.0, (s, c) => s + c.collectedAmount);
   }
 
   // --- Route Operations ---
@@ -1533,12 +1663,7 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   List<CollectionModel> getCollectionsForMode(PaymentMode mode, {DateTime? forDate, String? business}) {
-    final date = forDate ?? _selectedDate;
-    return _collections.where((c) {
-      final sameDay = c.collectedAt.year == date.year &&
-          c.collectedAt.month == date.month &&
-          c.collectedAt.day == date.day;
-      if (!sameDay) return false;
+    return getFilteredCollections(forDate: forDate).where((c) {
       if (business != null && business.isNotEmpty && business != 'All') {
         if (c.businessName != business) return false;
       }

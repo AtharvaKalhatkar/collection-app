@@ -76,6 +76,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     _invoiceDate = widget.initialInvoiceDate;
     _deliveryDate = null;
     _loadPersistedDefaults();
+    BillOcrService.syncFromCloud().catchError((_) => null);
   }
 
   Future<void> _loadPersistedDefaults() async {
