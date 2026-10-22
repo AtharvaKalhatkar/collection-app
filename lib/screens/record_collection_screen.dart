@@ -13,6 +13,7 @@ import '../utils/image_compress_helper.dart';
 import 'add_shop_screen.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 import '../widgets/in_app_bill_camera_screen.dart';
+import '../widgets/payment_receipt_dialog.dart';
 
 class RecordCollectionScreen extends StatefulWidget {
   final String? initialShopId;
@@ -397,19 +398,24 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
       await provider.addCollection(collection);
 
       if (mounted) {
-        final isFullySettled = remainingAfter <= 0;
-        final msg = isFullySettled
-            ? '${CurrencyFormatter.format(collAmt)} recorded. Invoice $billNo is now fully PAID (100% complete)!'
-            : '${CurrencyFormatter.format(collAmt)} recorded for ${shop.name}. Remaining Balance: ${CurrencyFormatter.format(remainingAfter)} (PENDING)';
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: isFullySettled ? AppTheme.cashColor : AppTheme.chequeColor,
-            duration: const Duration(seconds: 3),
-          ),
+        // 2-Factor Verification: Show Customer Confirmation Receipt
+        await PaymentReceiptDialog.show(
+          context,
+          customerName: shop.name,
+          customerMobile: shop.mobileNumber,
+          firmName: _selectedBusiness,
+          billNo: billNo,
+          billTotal: effectiveBillTotal,
+          amountCollected: collAmt,
+          balanceRemaining: remainingAfter,
+          paymentMode: _selectedMode,
+          salesmanName: provider.salesmanName,
+          collectionDate: _collectionDate,
         );
-        Navigator.pop(context, true);
+
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
       }
     } catch (e) {
       if (mounted) {

@@ -11,6 +11,7 @@ import '../utils/image_compress_helper.dart';
 import 'add_pending_bill_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import '../widgets/fullscreen_image_viewer.dart';
+import '../widgets/payment_receipt_dialog.dart';
 import '../utils/qr_data.dart';
 import '../utils/marathi_search_helper.dart';
 
@@ -465,27 +466,31 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Collected ${CurrencyFormatter.format(amount)} from ${pendingBill.shopName} via ${_selectedMode.label}!',
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFF10B981),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
         if (_selectedRouteId != null) {
           _persistRoute(_selectedRouteId!);
         }
-        Navigator.pop(context);
+
+        final remainingAfter = pendingBill.balanceDue - amount;
+        final shop = provider.getShopById(pendingBill.shopId);
+
+        // 2-Factor Verification: Show Customer Confirmation Receipt
+        await PaymentReceiptDialog.show(
+          context,
+          customerName: pendingBill.shopName,
+          customerMobile: shop?.mobileNumber ?? '',
+          firmName: pendingBill.businessName,
+          billNo: pendingBill.billNumber,
+          billTotal: pendingBill.totalAmount,
+          amountCollected: amount,
+          balanceRemaining: remainingAfter > 0 ? remainingAfter : 0.0,
+          paymentMode: _selectedMode,
+          salesmanName: provider.salesmanName,
+          collectionDate: _collectionDate,
+        );
+
+        if (mounted) {
+          Navigator.pop(context);
+        }
       }
     } catch (e) {
       if (mounted) {

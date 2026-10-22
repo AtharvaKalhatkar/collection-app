@@ -8,6 +8,7 @@ import '../utils/theme.dart';
 import 'record_collection_screen.dart';
 import 'send_reminder_dialog.dart';
 import '../widgets/fullscreen_image_viewer.dart';
+import '../widgets/payment_receipt_dialog.dart';
 import '../utils/image_compress_helper.dart';
 
 class CollectionDetailsDialog extends StatelessWidget {
@@ -544,6 +545,39 @@ class CollectionDetailsDialog extends StatelessWidget {
                 ],
 
                 const SizedBox(height: 16),
+
+                // 2-Factor Customer Receipt
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.send_rounded, size: 16),
+                  label: const Text(
+                    'Send Customer Receipt (WhatsApp/SMS)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F172A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    final shop = provider.getShopById(collection.shopId);
+                    PaymentReceiptDialog.show(
+                      context,
+                      customerName: collection.shopName,
+                      customerMobile: shop?.mobileNumber ?? '',
+                      firmName: collection.businessName,
+                      billNo: collection.billNumber,
+                      billTotal: totalBill,
+                      amountCollected: collection.collectedAmount,
+                      balanceRemaining: balanceDue,
+                      paymentMode: collection.paymentMode,
+                      salesmanName: collection.salesmanName,
+                      collectionDate: collection.collectedAt,
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 10),
 
                 // Action Buttons
                 Row(
