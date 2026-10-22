@@ -52,18 +52,18 @@ class WebCameraHelper {
         throw Exception('Camera API (mediaDevices) not available on this browser/context');
       }
 
-      // Request maximum camera resolution (4K/1080p) for ultra-sharp bill text
+      // Request snappy 720p/1080p camera stream for instant startup and zero lag
       try {
         _stream = await mediaDevices.getUserMedia({
           'video': {
             'facingMode': {'ideal': facingMode},
-            'width': {'ideal': 3840, 'min': 1920},
-            'height': {'ideal': 2160, 'min': 1080},
+            'width': {'ideal': 1280, 'max': 1920},
+            'height': {'ideal': 720, 'max': 1080},
           },
           'audio': false,
         });
       } catch (_) {
-        // Fallback to standard facingMode constraints if device rejects high-res params
+        // Fallback to basic facingMode constraints if device rejects resolution params
         _stream = await mediaDevices.getUserMedia({
           'video': {'facingMode': {'ideal': facingMode}},
           'audio': false,
@@ -152,7 +152,6 @@ class WebCameraHelper {
     final needTemporaryFlash = (_flashMode == 'auto' || _flashMode == 'on') && !_isTorchOn;
     if (needTemporaryFlash) {
       await setTorch(true);
-      await Future.delayed(const Duration(milliseconds: 80));
     }
 
     String? photoBase64;
@@ -161,10 +160,10 @@ class WebCameraHelper {
       final width = _videoElement!.videoWidth;
       final height = _videoElement!.videoHeight;
       if (width > 0 && height > 0) {
-        // High-definition 1600px max dimension: crisp, razor-sharp bill text & numbers
+        // Fast, high-clarity 1280px max dimension: crisp OCR & instant encoding
         int targetW = width;
         int targetH = height;
-        const int maxDim = 1600;
+        const int maxDim = 1280;
         if (targetW > maxDim || targetH > maxDim) {
           if (targetW >= targetH) {
             targetH = (targetH * maxDim / targetW).round();
@@ -186,8 +185,8 @@ class WebCameraHelper {
 
         ctx.drawImageScaled(_videoElement!, 0, 0, targetW, targetH);
 
-        // Quality 0.82 produces crystal-clear HD image in ~150KB (instant save, zero quota errors)
-        final dataUrl = canvas.toDataUrl('image/jpeg', 0.82);
+        // Quality 0.80 encodes instantly in <40ms
+        final dataUrl = canvas.toDataUrl('image/jpeg', 0.80);
         if (dataUrl.contains(',')) {
           photoBase64 = dataUrl.split(',').last;
         }

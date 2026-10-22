@@ -110,6 +110,8 @@
       cursor: pointer;
     }
   </style>
+  <!-- In-browser Fast OCR Engine (Preloaded for instant bill scanning) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body style="margin:0; background:#0F172A;">
 
@@ -193,6 +195,145 @@
       const banner = document.getElementById('pwa-install-banner');
       if (banner) banner.style.display = 'none';
     });
+
+    // Global in-browser Fast OCR Engine with Pre-warming and Multi-Slice Spatial Extraction
+    let _tessWorker = null;
+    let _tessWorkerPromise = null;
+
+    async function initTesseractWorker() {
+      if (_tessWorker) return _tessWorker;
+      if (_tessWorkerPromise) return _tessWorkerPromise;
+
+      _tessWorkerPromise = (async () => {
+        try {
+          if (typeof Tesseract === 'undefined') return null;
+          console.log('[Bill OCR] Pre-warming Tesseract worker...');
+          const worker = await Tesseract.createWorker('eng', 1, {
+            workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+            corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+            logger: m => {
+              if (m.status === 'recognizing text') {
+                console.log('[Bill OCR]', Math.round((m.progress || 0) * 100) + '%');
+              }
+            }
+          });
+          _tessWorker = worker;
+          console.log('[Bill OCR] Worker initialized & ready for instant scans.');
+          return worker;
+        } catch (e) {
+          console.warn('[Bill OCR] Worker initialization error:', e);
+          return null;
+        }
+      })();
+      return _tessWorkerPromise;
+    }
+
+    // Pre-warm silently in background 1.5s after page load
+    window.addEventListener('load', () => {
+      setTimeout(() => { initTesseractWorker(); }, 1500);
+    });
+
+    window.extractBillTextFromBase64 = async function(base64Data, callback) {
+      try {
+        let src = base64Data;
+        if (!src.startsWith('data:')) {
+          src = 'data:image/jpeg;base64,' + base64Data;
+        }
+
+        // 1. Load image into an HTML image object
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('Failed to load bill image'));
+          img.src = src;
+        });
+
+        // 2. Downscale to optimal dimensions for fast & crisp OCR (max dimension 1200px)
+        const maxDim = 1200;
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // 3. Contrast stretch & grayscale for clean character definition
+        try {
+          const imgData = ctx.getImageData(0, 0, w, h);
+          const d = imgData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            // Stretch contrast
+            gray = (gray - 128) * 1.35 + 128;
+            if (gray < 0) gray = 0;
+            if (gray > 255) gray = 255;
+            d[i] = gray;
+            d[i + 1] = gray;
+            d[i + 2] = gray;
+          }
+          ctx.putImageData(imgData, 0, 0);
+        } catch (_) {}
+
+        // 4. Spatial Slice 1: Header (Top 42% -> Invoice No, Date, Distributor, Customer Name)
+        const headerCanvas = document.createElement('canvas');
+        headerCanvas.width = w;
+        headerCanvas.height = Math.round(h * 0.42);
+        const hCtx = headerCanvas.getContext('2d');
+        hCtx.drawImage(canvas, 0, 0, w, headerCanvas.height, 0, 0, w, headerCanvas.height);
+
+        // 5. Spatial Slice 2: Footer (Bottom 32% -> Subtotal, Taxes, Grand Total, Net Payable)
+        const footerStartY = Math.round(h * 0.68);
+        const footerH = h - footerStartY;
+        const footerCanvas = document.createElement('canvas');
+        footerCanvas.width = w;
+        footerCanvas.height = footerH;
+        const fCtx = footerCanvas.getContext('2d');
+        fCtx.drawImage(canvas, 0, footerStartY, w, footerH, 0, 0, w, footerH);
+
+        const worker = await initTesseractWorker();
+
+        let headerText = '';
+        let footerText = '';
+        let fullText = '';
+
+        if (worker) {
+          // Parallel OCR across slices for maximum speed & spatial fidelity
+          const [hRes, fRes, fullRes] = await Promise.all([
+            worker.recognize(headerCanvas),
+            worker.recognize(footerCanvas),
+            worker.recognize(canvas)
+          ]);
+          headerText = hRes?.data?.text || '';
+          footerText = fRes?.data?.text || '';
+          fullText = fullRes?.data?.text || '';
+        } else if (typeof Tesseract !== 'undefined') {
+          const res = await Tesseract.recognize(canvas, 'eng');
+          fullText = res?.data?.text || '';
+        }
+
+        if (callback) {
+          callback(JSON.stringify({
+            text: fullText,
+            headerText: headerText,
+            footerText: footerText
+          }));
+        }
+      } catch (err) {
+        console.error('OCR processing error:', err);
+        if (callback) callback(JSON.stringify({ error: err ? err.toString() : 'Unknown OCR error' }));
+      }
+    };
   </script>
 
   <script src="flutter_bootstrap.js" async></script>

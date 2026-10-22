@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +17,8 @@ import 'pending_bills_list_screen.dart';
 import '../utils/marathi_search_helper.dart';
 import '../utils/quick_alert.dart';
 import '../widgets/in_app_bill_camera_screen.dart';
+import '../services/bill_ocr_service.dart';
+import '../services/party_name_matcher.dart';
 
 class AddPendingBillScreen extends StatefulWidget {
   final String? initialRouteId;
@@ -56,6 +60,12 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
   final List<String> _photosBase64 = [];
   final Map<String, Uint8List> _photoBytesCache = {};
   bool _isSaving = false;
+
+  // OCR Extraction state
+  bool _isExtracting = false;
+  String? _ocrStatusText;
+  String? _extractedPartyRawName;
+  ShopMatchResult? _matchedShopResult;
 
   @override
   void initState() {
@@ -132,6 +142,82 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
     }
   }
 
+  Future<void> _extractDetailsFromPhoto(String base64Photo) async {
+    setState(() {
+      _isExtracting = true;
+      _ocrStatusText = 'Extracting bill details...';
+    });
+
+    try {
+      final provider = context.read<CollectionProvider>();
+      final candidateShops = (_selectedRouteId != null && _selectedRouteId!.isNotEmpty)
+          ? provider.getShopsForRoute(_selectedRouteId!)
+          : provider.shops;
+
+      final result = await BillOcrService.processBillImage(
+        base64Image: base64Photo,
+        candidateShops: candidateShops,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isExtracting = false;
+          _ocrStatusText = null;
+
+          if (result.success) {
+            // Bill Number
+            if (result.billNumber != null && result.billNumber!.isNotEmpty) {
+              _billNoController.text = result.billNumber!;
+            }
+
+            // Dates: Invoice Date & Delivery Date
+            if (result.billDate != null) {
+              _invoiceDate = result.billDate;
+              _deliveryDate ??= result.billDate;
+            }
+
+            // Amount
+            if (result.amount != null && result.amount! > 0) {
+              _amountController.text = result.amount!.toStringAsFixed(0);
+            }
+
+            // Extracted English Party Name
+            if (result.extractedPartyName != null && result.extractedPartyName!.isNotEmpty) {
+              _extractedPartyRawName = result.extractedPartyName;
+            }
+
+            // Matched Marathi Shop from selected route
+            if (result.matchedShop != null) {
+              _selectedShopId = result.matchedShop!.id;
+              _matchedShopResult = ShopMatchResult(
+                shop: result.matchedShop!,
+                score: result.matchScore,
+                matchedExplanation: result.matchExplanation ?? '',
+              );
+              if (_selectedRouteId == null || _selectedRouteId!.isEmpty) {
+                _selectedRouteId = result.matchedShop!.routeId;
+              }
+            }
+          }
+        });
+
+        if (result.hasAnyExtractedField) {
+          QuickAlert.success(context, 'Details extracted from bill. Please verify.');
+        } else if (result.errorMessage != null) {
+          QuickAlert.info(context, result.errorMessage!);
+        }
+      }
+    } catch (e) {
+      debugPrint('Extraction error: $e');
+      if (mounted) {
+        setState(() {
+          _isExtracting = false;
+          _ocrStatusText = null;
+        });
+      }
+    }
+  }
+
   Future<void> _captureBillPhoto() async {
     try {
       final result = await Navigator.push(
@@ -143,15 +229,20 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       );
 
       if (result != null && mounted) {
+        String? firstNewPhoto;
         setState(() {
-          if (result is List<String>) {
+          if (result is List<String> && result.isNotEmpty) {
             _photosBase64.addAll(result);
+            firstNewPhoto = result.first;
           } else if (result is String && result.isNotEmpty) {
             _photosBase64.add(result);
+            firstNewPhoto = result;
           }
         });
-        final count = result is List ? result.length : 1;
-        QuickAlert.success(context, '$count bill photo${count > 1 ? 's' : ''} added');
+
+        if (firstNewPhoto != null) {
+          await _extractDetailsFromPhoto(firstNewPhoto!);
+        }
       }
     } catch (e) {
       debugPrint('Error capturing bill photo: $e');
@@ -159,6 +250,160 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
         QuickAlert.error(context, 'Could not open camera: $e');
       }
     }
+  }
+
+  Future<void> _pickGalleryPhoto() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 82,
+      );
+      if (picked != null && mounted) {
+        final bytes = await picked.readAsBytes();
+        final b64 = base64Encode(bytes);
+        setState(() {
+          _photosBase64.add(b64);
+        });
+        await _extractDetailsFromPhoto(b64);
+      }
+    } catch (e) {
+      debugPrint('Gallery pick error: $e');
+    }
+  }
+
+  Future<void> _showOcrSettingsDialog() async {
+    final existingKey = await BillOcrService.getApiKey() ?? '';
+    final controller = TextEditingController(text: existingKey);
+    bool obscure = true;
+
+    if (!mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.auto_awesome, color: AppTheme.primary, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Bill Scanner & AI Setup',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Fast on-device scanner runs automatically without internet.\nOptionally add a Google Gemini API Key for instant 1-second cloud AI extraction.',
+                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  obscureText: obscure,
+                  decoration: InputDecoration(
+                    labelText: 'Gemini API Key (Optional)',
+                    hintText: 'AIzaSy...',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, size: 18),
+                          onPressed: () => setModalState(() => obscure = !obscure),
+                        ),
+                        if (controller.text.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () => setModalState(() => controller.clear()),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    if (existingKey.isNotEmpty) ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            await BillOcrService.saveApiKey('');
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (mounted) {
+                              QuickAlert.info(context, 'AI Key removed. Fast on-device scanner active.');
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.error,
+                            side: const BorderSide(color: AppTheme.error),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Clear Key'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.save, size: 18),
+                        label: const Text('Save & Apply', style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: () async {
+                          final key = controller.text.trim();
+                          await BillOcrService.saveApiKey(key);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (mounted) {
+                            if (key.isNotEmpty) {
+                              QuickAlert.success(context, 'AI Key saved! Scans will use Google Gemini Vision.');
+                            } else {
+                              QuickAlert.info(context, 'Using fast on-device scanner.');
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F172A),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // Searchable Outlet Picker Dialog / BottomSheet
@@ -590,12 +835,334 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               ),
               const SizedBox(height: 18),
 
-              // 3. OUTLET (SHOP) ACCORDING TO ROUTE (WITH SEARCH OPTION)
+              // 3. BILL PHOTO (CAPTURE & AUTO EXTRACT)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '3. BILL PHOTO (${_photosBase64.length})',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          color: Colors.blueGrey,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: _showOcrSettingsDialog,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.auto_awesome, size: 12, color: AppTheme.primary),
+                              SizedBox(width: 3),
+                              Text(
+                                'AI Setup',
+                                style: TextStyle(fontSize: 10.5, color: AppTheme.primary, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_photosBase64.isNotEmpty)
+                    TextButton.icon(
+                      icon: const Icon(Icons.delete_sweep_outlined, size: 16, color: AppTheme.error),
+                      label: const Text('Clear', style: TextStyle(color: AppTheme.error, fontSize: 12)),
+                      onPressed: () => setState(() {
+                        _photosBase64.clear();
+                        _extractedPartyRawName = null;
+                        _matchedShopResult = null;
+                      }),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              if (_photosBase64.isEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                              label: const Text(
+                                'Take Photo',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F172A),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: _captureBillPhoto,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.photo_library_outlined, size: 18),
+                              label: const Text(
+                                'Upload File',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF0F172A),
+                                side: BorderSide(color: Colors.grey.shade400),
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: _pickGalleryPhoto,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Select route first, then click photo to auto-extract details',
+                        style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                // Photo Preview & Extraction Status
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Extraction in progress indicator
+                      if (_isExtracting) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _ocrStatusText ?? 'Extracting bill number, date, amount & party name...',
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFF1D4ED8), fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else if (_extractedPartyRawName != null || _billNoController.text.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle, size: 16, color: Color(0xFF059669)),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  'Details extracted from bill. Review and edit any field below.',
+                                  style: TextStyle(fontSize: 12, color: Color(0xFF065F46), fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: () {
+                                  if (_photosBase64.isNotEmpty) {
+                                    _extractDetailsFromPhoto(_photosBase64.first);
+                                  }
+                                },
+                                child: const Text(
+                                  'Re-scan',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      // Multi-photo horizontal thumbnail strip
+                      SizedBox(
+                        height: 100,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _photosBase64.length,
+                          itemBuilder: (ctx, idx) {
+                            final photo = _photosBase64[idx];
+                            final bytes = _photoBytesCache.putIfAbsent(
+                              photo,
+                              () => ImageCompressHelper.safeBase64Decode(photo) ?? Uint8List(0),
+                            );
+                            return Container(
+                              width: 85,
+                              margin: const EdgeInsets.only(right: 10),
+                              child: Stack(
+                                children: [
+                                  InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => FullScreenImageViewer(
+                                            imagesBase64: _photosBase64,
+                                            initialIndex: idx,
+                                            title: 'Bill Photo Preview',
+                                            subtitle: 'Photo ${idx + 1} of ${_photosBase64.length}',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.grey.shade300),
+                                      ),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: Column(
+                                        children: [
+                                          Expanded(
+                                            child: bytes.isNotEmpty
+                                                ? Image.memory(
+                                                    bytes,
+                                                    width: 85,
+                                                    fit: BoxFit.cover,
+                                                  )
+                                                : Container(
+                                                    color: Colors.grey.shade200,
+                                                    child: const Icon(Icons.broken_image, size: 24),
+                                                  ),
+                                          ),
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.symmetric(vertical: 2),
+                                            color: const Color(0xFF0F172A),
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              'Photo ${idx + 1}',
+                                              style: const TextStyle(
+                                                fontSize: 9.5,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 2,
+                                    right: 2,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _photosBase64.removeAt(idx);
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(3),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          size: 12,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                              label: const Text('+ Add Photo', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: _captureBillPhoto,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.photo_library_outlined, size: 16),
+                              label: const Text('+ Add File', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: _pickGalleryPhoto,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+
+              // 4. OUTLET (SHOP) ACCORDING TO ROUTE (WITH SEARCH OPTION)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    '3. SELECT OUTLET / SHOP',
+                    '4. OUTLET / SHOP NAME',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -634,60 +1201,122 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                       width: selectedShop != null ? 1.5 : 1.0,
                     ),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: firmPrimaryColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Center(
-                          child: Icon(Icons.storefront, color: firmPrimaryColor, size: 20),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: selectedShop != null
-                            ? Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    selectedShop.name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
+                      Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: firmPrimaryColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: Icon(Icons.storefront, color: firmPrimaryColor, size: 20),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: selectedShop != null
+                                ? Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        selectedShop.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${selectedShop.mobileNumber} • ${selectedShop.address}',
+                                        style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  )
+                                : Text(
+                                    'Tap to choose outlet (Searchable)',
+                                    style: TextStyle(
                                       fontSize: 14,
-                                      color: Color(0xFF0F172A),
+                                      color: Colors.blueGrey.shade400,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  Text(
-                                    '${selectedShop.mobileNumber} • ${selectedShop.address}',
-                                    style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              )
-                            : Text(
-                                'Tap to choose outlet (Searchable)',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.blueGrey.shade400,
-                                  fontWeight: FontWeight.w500,
+                          ),
+                          const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+                        ],
+                      ),
+                      // If party was extracted from bill, show the source info
+                      if (_extractedPartyRawName != null && _extractedPartyRawName!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.amber.shade300),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.auto_awesome, size: 12, color: Color(0xFFB45309)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _matchedShopResult != null && _matchedShopResult!.matchedExplanation.isNotEmpty
+                                      ? 'Matched: "$_extractedPartyRawName" (${_matchedShopResult!.matchedExplanation})'
+                                      : 'Matched from bill text: "$_extractedPartyRawName"',
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF92400E), fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                      ),
-                      const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 18),
 
-              // 4. INVOICE DATE & DELIVERY DATE (NO DEFAULT DATE)
+              // 5. BILL NUMBER
               const Text(
-                '4. BILL DATES (NO DEFAULT DATE)',
+                '5. BILL NUMBER',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                  color: Colors.blueGrey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _billNoController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  hintText: isPurva ? 'e.g. PE-5042' : 'e.g. MS-3021',
+                  prefixIcon: const Icon(Icons.receipt_outlined, size: 20),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) {
+                    return 'Please enter bill / invoice number';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 18),
+
+              // 6. INVOICE DATE & DELIVERY DATE
+              const Text(
+                '6. BILL DATES',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
@@ -792,39 +1421,9 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
               ),
               const SizedBox(height: 18),
 
-              // 5. BILL NUMBER
+              // 7. TOTAL BILL AMOUNT
               const Text(
-                '5. BILL NUMBER',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  color: Colors.blueGrey,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _billNoController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  hintText: isPurva ? 'e.g. PE-5042' : 'e.g. MS-3021',
-                  prefixIcon: const Icon(Icons.receipt_outlined, size: 20),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'Please enter bill / invoice number';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 18),
-
-              // 6. TOTAL BILL AMOUNT
-              const Text(
-                '6. TOTAL BILL AMOUNT (₹)',
+                '7. TOTAL BILL AMOUNT (₹)',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
@@ -856,193 +1455,6 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                   return null;
                 },
               ),
-              const SizedBox(height: 18),
-
-              // 7. UPLOAD BILL PHOTOS (Supports Multiple Pages / Proofs)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '7. UPLOAD BILL PHOTOS (${_photosBase64.length})',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                      color: Colors.blueGrey,
-                    ),
-                  ),
-                  if (_photosBase64.isNotEmpty)
-                    TextButton.icon(
-                      icon: const Icon(Icons.delete_sweep_outlined, size: 16, color: AppTheme.error),
-                      label: const Text('Clear All', style: TextStyle(color: AppTheme.error, fontSize: 12)),
-                      onPressed: () => setState(() => _photosBase64.clear()),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              if (_photosBase64.isEmpty) ...[
-                // Clean Single Camera Button (Camera with Gallery in system chooser)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Column(
-                    children: [
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.camera_alt_rounded, size: 20),
-                        label: const Text(
-                          'Open Camera',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F172A),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          elevation: 1,
-                        ),
-                        onPressed: _captureBillPhoto,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Live bill camera with gallery inside',
-                        style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else ...[
-                // Multi-photo horizontal thumbnail preview
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        height: 115,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _photosBase64.length,
-                          itemBuilder: (ctx, idx) {
-                            final photo = _photosBase64[idx];
-                            final bytes = _photoBytesCache.putIfAbsent(
-                              photo,
-                              () => ImageCompressHelper.safeBase64Decode(photo) ?? Uint8List(0),
-                            );
-                            return Container(
-                              width: 95,
-                              margin: const EdgeInsets.only(right: 10),
-                              child: Stack(
-                                children: [
-                                  InkWell(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => FullScreenImageViewer(
-                                            imagesBase64: _photosBase64,
-                                            initialIndex: idx,
-                                            title: 'Bill Photo Preview',
-                                            subtitle: 'Page ${idx + 1} of ${_photosBase64.length}',
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.grey.shade300),
-                                      ),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: Column(
-                                        children: [
-                                          Expanded(
-                                            child: bytes.isNotEmpty
-                                                ? Image.memory(
-                                                    bytes,
-                                                    width: 95,
-                                                    fit: BoxFit.cover,
-                                                  )
-                                                : Container(
-                                                    color: Colors.grey.shade200,
-                                                    child: const Icon(Icons.broken_image, size: 24),
-                                                  ),
-                                          ),
-                                          Container(
-                                            width: double.infinity,
-                                            padding: const EdgeInsets.symmetric(vertical: 3),
-                                            color: const Color(0xFF0F172A),
-                                            alignment: Alignment.center,
-                                            child: Text(
-                                              'Photo ${idx + 1}',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 3,
-                                    right: 3,
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          _photosBase64.removeAt(idx);
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(3),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.red,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          size: 13,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const Divider(height: 18),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.camera_alt_outlined, size: 16),
-                        label: const Text('+ Add Another Photo', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F172A),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 11),
-                          minimumSize: const Size(double.infinity, 42),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: _captureBillPhoto,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               const SizedBox(height: 28),
 
               // SAVE BUTTON (Single, clean button)

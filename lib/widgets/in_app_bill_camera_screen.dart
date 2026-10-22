@@ -196,6 +196,29 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
     }
   }
 
+  Future<void> _openSystemCamera() async {
+    if (_isCapturing) return;
+    try {
+      final picked = await _picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 82,
+      );
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        final b64 = base64Encode(bytes);
+        setState(() {
+          _capturedPhotos.add(b64);
+        });
+        _scrollToEnd();
+      }
+    } catch (e) {
+      debugPrint('Device camera error: $e');
+    }
+  }
+
   void _scrollToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_thumbScrollController.hasClients) {
@@ -491,8 +514,8 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
                           GestureDetector(
                             onTap: _pickFromGallery,
                             child: Container(
-                              width: 54,
-                              height: 54,
+                              width: 50,
+                              height: 50,
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.18),
                                 shape: BoxShape.circle,
@@ -501,7 +524,26 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
                               child: const Icon(
                                 Icons.photo_library_rounded,
                                 color: Colors.white,
-                                size: 24,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+
+                          // Device Native Camera Button (zero lag, hardware camera)
+                          GestureDetector(
+                            onTap: _openSystemCamera,
+                            child: Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white38, width: 1.5),
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt_outlined,
+                                color: Colors.white,
+                                size: 22,
                               ),
                             ),
                           ),
