@@ -11,6 +11,8 @@ echo "=========================================="
 echo "📦 Deploying build/web to gh-pages branch..."
 echo "=========================================="
 
+REPO_REMOTE=$(git config --get remote.origin.url)
+
 # Navigate into compiled web directory
 cd build/web
 
@@ -26,7 +28,7 @@ git add -A
 git commit -m "Deploy Flutter Web to GitHub Pages $(date +'%Y-%m-%d %H:%M:%S')"
 
 # Push to gh-pages branch
-git remote add origin https://github.com/AtharvaKalhatkar/collection-app.git
+git remote add origin "$REPO_REMOTE"
 git push -f origin gh-pages
 
 echo ""
