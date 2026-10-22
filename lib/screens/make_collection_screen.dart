@@ -13,6 +13,7 @@ import '../widgets/payment_qr_dialog.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 import '../widgets/payment_receipt_dialog.dart';
 import '../utils/qr_data.dart';
+import '../utils/firm_details.dart';
 import '../utils/marathi_search_helper.dart';
 
 class MakeCollectionScreen extends StatefulWidget {
@@ -873,6 +874,50 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 10),
+                      const Divider(height: 1, color: Color(0xFFFDE68A)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                final shop = provider.getShopById(selectedBill.shopId);
+                                FirmDetailsHelper.showQuickShareModal(
+                                  context,
+                                  defaultFirm: _selectedBusiness,
+                                  recipientMobile: shop?.mobileNumber,
+                                  recipientName: selectedBill.shopName,
+                                );
+                              },
+                              icon: const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF15803D)),
+                              label: const Text(
+                                'Send Bank Details (WhatsApp)',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFF86EFAC)),
+                                backgroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: () => PaymentQrDialog.show(context, initialFirm: _selectedBusiness),
+                            icon: const Icon(Icons.qr_code_2_rounded, size: 15, color: AppTheme.primary),
+                            label: const Text('Show QR', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppTheme.border),
+                              backgroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -1465,61 +1510,191 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: const Color(0xFFBFDBFE)),
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Image.memory(
-                            _selectedBusiness == 'Purva Enterprises'
-                                ? QrData.purvaBytes
-                                : QrData.manasBytes,
-                            width: 44,
-                            height: 44,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Image.asset(
+                        Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Image.memory(
                                 _selectedBusiness == 'Purva Enterprises'
-                                    ? 'assets/images/qr_purva.png'
-                                    : 'assets/images/qr_manas.png',
+                                    ? QrData.purvaBytes
+                                    : QrData.manasBytes,
                                 width: 44,
                                 height: 44,
                                 fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Image.asset(
+                                    _selectedBusiness == 'Purva Enterprises'
+                                        ? 'assets/images/qr_purva.png'
+                                        : 'assets/images/qr_manas.png',
+                                    width: 44,
+                                    height: 44,
+                                    fit: BoxFit.cover,
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${_selectedBusiness == 'Purva Enterprises' ? 'Purva' : 'Manas'} UPI QR',
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                                  ),
+                                  Text(
+                                    _selectedBusiness == 'Purva Enterprises'
+                                        ? '8459671694@okbizaxis'
+                                        : '9309862465@okbizaxis',
+                                    style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.qr_code_2_rounded, size: 16),
+                              label: const Text('Show QR'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                elevation: 0,
+                                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () => PaymentQrDialog.show(context, initialFirm: _selectedBusiness),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF15803D)),
+                            label: Text(
+                              selectedBill != null
+                                  ? 'Send Bank & QR to ${selectedBill.shopName}'
+                                  : 'Send Bank & QR Details (WhatsApp)',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF86EFAC)),
+                              backgroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 7),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () {
+                              final shop = selectedBill != null ? provider.getShopById(selectedBill.shopId) : null;
+                              FirmDetailsHelper.showQuickShareModal(
+                                context,
+                                defaultFirm: _selectedBusiness,
+                                recipientMobile: shop?.mobileNumber,
+                                recipientName: selectedBill?.shopName,
                               );
                             },
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${_selectedBusiness == 'Purva Enterprises' ? 'Purva' : 'Manas'} UPI QR',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
-                              ),
-                              Text(
-                                _selectedBusiness == 'Purva Enterprises'
-                                    ? '8459671694@okbizaxis'
-                                    : '9309862465@okbizaxis',
-                                style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
-                              ),
-                            ],
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.qr_code_2_rounded, size: 16),
-                          label: const Text('Show QR'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            elevation: 0,
-                            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                          onPressed: () => PaymentQrDialog.show(context, initialFirm: _selectedBusiness),
-                        ),
                       ],
                     ),
+                  ),
+                ],
+
+                // Net Banking (NEFT/RTGS/IMPS) Specific: Direct Bank Details Card
+                if (_selectedMode == PaymentMode.netBanking) ...[
+                  const SizedBox(height: 10),
+                  Builder(
+                    builder: (ctx) {
+                      final firmInfo = FirmDetailsHelper.getInfo(_selectedBusiness);
+                      final shop = selectedBill != null ? provider.getShopById(selectedBill.shopId) : null;
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFBBF7D0)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF16A34A).withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.account_balance, color: Color(0xFF16A34A), size: 20),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${firmInfo.shortName} NEFT / Bank Details',
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
+                                      ),
+                                      Text(
+                                        'Bank: ${firmInfo.bankName} • A/c: ${firmInfo.accountNumber}',
+                                        style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                                      ),
+                                      Text(
+                                        'IFSC: ${firmInfo.ifscCode} • Type: ${firmInfo.accountType}',
+                                        style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                                    label: Text(
+                                      shop != null ? 'Send to ${selectedBill!.shopName}' : 'Send Bank Details (WhatsApp)',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF25D366),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      elevation: 0,
+                                    ),
+                                    onPressed: () {
+                                      FirmDetailsHelper.showQuickShareModal(
+                                        context,
+                                        defaultFirm: _selectedBusiness,
+                                        recipientMobile: shop?.mobileNumber,
+                                        recipientName: selectedBill?.shopName,
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.qr_code_2_rounded, size: 16),
+                                  label: const Text('Show QR'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF166534),
+                                    side: const BorderSide(color: Color(0xFF86EFAC)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                  onPressed: () => PaymentQrDialog.show(context, initialFirm: _selectedBusiness),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ],
 

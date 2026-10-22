@@ -14,6 +14,8 @@ import 'add_shop_screen.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 import '../widgets/in_app_bill_camera_screen.dart';
 import '../widgets/payment_receipt_dialog.dart';
+import '../widgets/payment_qr_dialog.dart';
+import '../utils/firm_details.dart';
 
 class RecordCollectionScreen extends StatefulWidget {
   final String? initialShopId;
@@ -816,6 +818,58 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                           validator: (val) => val == null ? 'Please select a store' : null,
                         ),
 
+                      // If a shop is selected, allow quick bank details / QR share directly on WhatsApp
+                      if (_selectedShopId != null) ...[
+                        Builder(
+                          builder: (context) {
+                            final shop = provider.getShopById(_selectedShopId!);
+                            return Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        FirmDetailsHelper.showQuickShareModal(
+                                          context,
+                                          defaultFirm: _selectedBusiness,
+                                          recipientMobile: shop?.mobileNumber,
+                                          recipientName: shop?.name,
+                                        );
+                                      },
+                                      icon: const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF15803D)),
+                                      label: Text(
+                                        shop != null ? 'Send Bank Details (${shop.name})' : 'Send Bank Details (WhatsApp)',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        side: const BorderSide(color: Color(0xFF86EFAC)),
+                                        backgroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: () => PaymentQrDialog.show(context, initialFirm: _selectedBusiness),
+                                    icon: const Icon(Icons.qr_code_2_rounded, size: 15, color: AppTheme.primary),
+                                    label: const Text('Show QR', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: AppTheme.border),
+                                      backgroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+
                       // If this shop has pending bills, show them so Akash can tap to settle with 1 click!
                       if (_selectedShopId != null) ...[
                         Builder(
@@ -1359,6 +1413,111 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                               return 'Please enter bank name';
                             }
                             return null;
+                          },
+                        ),
+                      ],
+
+                      // UPI / Net Banking Bank & QR Quick Share
+                      if (_selectedMode == PaymentMode.upi || _selectedMode == PaymentMode.netBanking) ...[
+                        const SizedBox(height: 12),
+                        Builder(
+                          builder: (ctx) {
+                            final firmInfo = FirmDetailsHelper.getInfo(_selectedBusiness);
+                            final shop = _selectedShopId != null ? provider.getShopById(_selectedShopId!) : null;
+                            final isNetBanking = _selectedMode == PaymentMode.netBanking;
+
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isNetBanking ? const Color(0xFFF0FDF4) : const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: isNetBanking ? const Color(0xFFBBF7D0) : const Color(0xFFBFDBFE)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: (isNetBanking ? const Color(0xFF16A34A) : const Color(0xFF2563EB)).withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(
+                                          isNetBanking ? Icons.account_balance : Icons.qr_code_2_rounded,
+                                          color: isNetBanking ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                                          size: 20,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              isNetBanking
+                                                  ? '${firmInfo.shortName} Bank Details (NEFT/RTGS)'
+                                                  : '${firmInfo.shortName} UPI ID: ${firmInfo.upiId}',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: isNetBanking ? const Color(0xFF166534) : const Color(0xFF1E3A8A),
+                                              ),
+                                            ),
+                                            Text(
+                                              'Bank: ${firmInfo.bankName} • A/c: ${firmInfo.accountNumber} • IFSC: ${firmInfo.ifscCode}',
+                                              style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                                          label: Text(
+                                            shop != null ? 'Send to ${shop.name}' : 'Send Bank Details (WhatsApp)',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF25D366),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            elevation: 0,
+                                          ),
+                                          onPressed: () {
+                                            FirmDetailsHelper.showQuickShareModal(
+                                              context,
+                                              defaultFirm: _selectedBusiness,
+                                              recipientMobile: shop?.mobileNumber,
+                                              recipientName: shop?.name,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      OutlinedButton.icon(
+                                        icon: const Icon(Icons.qr_code_2_rounded, size: 16),
+                                        label: const Text('Show QR'),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: isNetBanking ? const Color(0xFF166534) : AppTheme.primary,
+                                          side: BorderSide(color: isNetBanking ? const Color(0xFF86EFAC) : AppTheme.border),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                        ),
+                                        onPressed: () => PaymentQrDialog.show(context, initialFirm: _selectedBusiness),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
                           },
                         ),
                       ],

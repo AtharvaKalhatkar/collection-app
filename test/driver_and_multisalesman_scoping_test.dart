@@ -6,6 +6,7 @@ import 'package:daily_collection_app/models/pending_bill_model.dart';
 import 'package:daily_collection_app/models/shop_model.dart';
 import 'package:daily_collection_app/models/route_model.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
+import 'package:daily_collection_app/utils/firm_details.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -259,6 +260,28 @@ void main() {
 
       expect(provider.pendingBills.length, 1);
       expect(provider.pendingBills.first.id, b1.id);
+    });
+  });
+
+  group('Bank Details & Payment Options Tests', () {
+    test('FirmDetailsHelper provides correct NEFT / Bank details and formatted share text', () {
+      final purva = FirmDetailsHelper.getInfo('Purva Enterprises');
+      expect(purva.firmName, 'PURVA ENTERPRISES');
+      expect(purva.bankName, 'Union Bank of India');
+      expect(purva.accountNumber, '115925080000004');
+      expect(purva.ifscCode, 'UBIN0570575');
+      expect(purva.formattedShareText.contains('115925080000004'), isTrue);
+      expect(purva.formattedShareText.contains('UBIN0570575'), isTrue);
+      expect(purva.formattedShareText.contains('8459671694@okbizaxis'), isTrue);
+
+      final manas = FirmDetailsHelper.getInfo('Manas Sales');
+      expect(manas.firmName, 'MANAS SALES');
+      expect(manas.bankName, 'Central Bank of India');
+      expect(manas.accountNumber, '5251719817');
+      expect(manas.ifscCode, 'CBIN0284624');
+      expect(manas.formattedShareText.contains('5251719817'), isTrue);
+      expect(manas.formattedShareText.contains('CBIN0284624'), isTrue);
+      expect(manas.formattedShareText.contains('9309862465@okbizaxis'), isTrue);
     });
   });
 }

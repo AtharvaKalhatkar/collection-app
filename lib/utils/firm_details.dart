@@ -41,6 +41,7 @@ Branch: $branch
 A/c No: $accountNumber
 A/c Type: $accountType
 IFSC Code: $ifscCode
+UPI ID: $upiId
 '''.trim();
   }
 }
@@ -344,43 +345,104 @@ class _QuickSharePaymentSheetState extends State<_QuickSharePaymentSheet> {
           const SizedBox(height: 20),
 
           // Action Buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    FirmDetailsHelper.copyToClipboard(context, firm);
-                  },
-                  icon: const Icon(Icons.copy_rounded, size: 18),
-                  label: const Text('Copy Details', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          if (widget.recipientMobile != null && widget.recipientMobile!.trim().isNotEmpty) ...[
+            ElevatedButton.icon(
+              onPressed: () {
+                FirmDetailsHelper.shareViaWhatsApp(
+                  context: context,
+                  firm: firm,
+                  recipientMobile: widget.recipientMobile,
+                );
+              },
+              icon: const Icon(Icons.chat_bubble_outline, size: 18),
+              label: Text(
+                'Send to ${widget.recipientName ?? "Customer"} on WhatsApp',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      FirmDetailsHelper.copyToClipboard(context, firm);
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 17),
+                    label: const Text('Copy Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    FirmDetailsHelper.shareViaWhatsApp(
-                      context: context,
-                      firm: firm,
-                      recipientMobile: widget.recipientMobile,
-                    );
-                  },
-                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                  label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF25D366),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      FirmDetailsHelper.shareViaWhatsApp(
+                        context: context,
+                        firm: firm,
+                        recipientMobile: null,
+                      );
+                    },
+                    icon: const Icon(Icons.share_outlined, size: 17, color: Color(0xFF25D366)),
+                    label: const Text('Other Contact', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF25D366))),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: Color(0xFF25D366)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      FirmDetailsHelper.copyToClipboard(context, firm);
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 18),
+                    label: const Text('Copy Details', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      FirmDetailsHelper.shareViaWhatsApp(
+                        context: context,
+                        firm: firm,
+                        recipientMobile: null,
+                      );
+                    },
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
