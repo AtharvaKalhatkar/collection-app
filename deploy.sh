@@ -23,6 +23,9 @@ git branch -M gh-pages
 git config user.name "Atharva Kalhatkar"
 git config user.email "atharva@collectionapp.local"
 
+# Clean up heavy symbols files to ensure rapid, smooth git push
+find . -name "*.symbols" -delete
+
 # Add and commit all web assets
 git add -A
 git commit -m "Deploy Flutter Web to GitHub Pages $(date +'%Y-%m-%d %H:%M:%S')"
