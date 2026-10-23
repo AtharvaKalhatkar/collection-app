@@ -97,9 +97,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
 
     String? selectedBank;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (dlgCtx) => StatefulBuilder(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetCtx) => StatefulBuilder(
         builder: (ctx, setDlgState) {
           final isPurva = bill.businessName == 'Purva Enterprises';
           final availableBanks = getBanksForSelection(bill.businessName, selectedMode);
@@ -109,270 +111,172 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             selectedBank = null;
           }
 
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.payments_rounded, color: AppTheme.primary, size: 22),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Collect Payment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text(bill.shopName, style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600), overflow: TextOverflow.ellipsis),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Bill Summary Card
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Invoice #:', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
-                            Text(bill.billNumber, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Bill Total:', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
-                            Text(CurrencyFormatter.format(bill.totalAmount), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Balance Due:', style: TextStyle(fontSize: 12, color: Colors.red)),
-                            Text(
-                              CurrencyFormatter.format(bill.balanceDue),
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.red),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
+          final enteredAmount = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+          final balanceRemaining = (bill.balanceDue - enteredAmount);
 
-                  // Quick Action Buttons: Send Bank Details & Show QR
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            FirmDetailsHelper.showQuickShareModal(
-                              context,
-                              defaultFirm: bill.businessName,
-                              recipientMobile: shop.mobileNumber,
-                              recipientName: bill.shopName,
-                            );
-                          },
-                          icon: const Icon(Icons.chat_bubble_outline, size: 14, color: Color(0xFF15803D)),
-                          label: const Text(
-                            'Send Bank Details',
-                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFF86EFAC)),
-                            backgroundColor: const Color(0xFFF0FDF4),
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => PaymentQrDialog.show(context, initialFirm: bill.businessName),
-                        icon: const Icon(Icons.qr_code_2_rounded, size: 15, color: AppTheme.primary),
-                        label: const Text('Show QR', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppTheme.primary)),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppTheme.border),
-                          backgroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Collected Amount Field
-                  TextField(
-                    controller: amountCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: 'Collected Amount (₹)',
-                      prefixText: '₹ ',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Payment Mode Selector (Cash, UPI, Net Banking, Cheque)
-                  const Text('Payment Mode:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      PaymentMode.cash,
-                      PaymentMode.upi,
-                      PaymentMode.netBanking,
-                      PaymentMode.cheque,
-                    ].map((mode) {
-                      final isSel = selectedMode == mode;
-                      return ChoiceChip(
-                        label: Text(mode.label),
-                        selected: isSel,
-                        selectedColor: AppTheme.primary,
-                        labelStyle: TextStyle(
-                          color: isSel ? Colors.white : Colors.black87,
-                          fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 12,
-                        ),
-                        onSelected: (val) {
-                          if (val) {
-                            setDlgState(() {
-                              selectedMode = mode;
-                              final banks = getBanksForSelection(bill.businessName, mode);
-                              selectedBank = banks.isNotEmpty ? banks.first : null;
-                            });
-                          }
-                        },
-                      );
-                    }).toList(),
-                  ),
-
-                  // Deposit Bank Selector (Union Bank / RSBL / Central Bank)
-                  if (availableBanks.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Deposit Bank:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                        Text(
-                          bill.businessName,
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      children: availableBanks.map((b) {
-                        final isSel = selectedBank == b;
-                        return ChoiceChip(
-                          label: Text(b),
-                          selected: isSel,
-                          selectedColor: isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary,
-                          labelStyle: TextStyle(
-                            color: isSel ? Colors.white : Colors.black87,
-                            fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 12,
-                          ),
-                          onSelected: (val) {
-                            if (val) setDlgState(() => selectedBank = b);
-                          },
-                        );
-                      }).toList(),
-                    ),
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black26, blurRadius: 20, spreadRadius: 4),
                   ],
-
-                  // UPI Card
-                  if (selectedMode == PaymentMode.upi) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 12,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Grab Handle
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
                       ),
-                      child: Column(
+
+                      // Header Row
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: Image.memory(
-                                  isPurva ? QrData.purvaBytes : QrData.manasBytes,
-                                  width: 40,
-                                  height: 40,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.qr_code, size: 40),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.payments_rounded, color: Color(0xFF059669), size: 22),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Collect Payment',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 17,
+                                    color: Color(0xFF0F172A),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${isPurva ? "Purva" : "Manas"} UPI QR',
-                                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  bill.shopName,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blueGrey.shade700,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 22, color: Colors.blueGrey),
+                            tooltip: 'Close',
+                            onPressed: () => Navigator.pop(bottomSheetCtx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Invoice & Balance Due Summary Card
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.getBusinessLightColor(bill.businessName),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: AppTheme.getBusinessBorderColor(bill.businessName)),
+                                  ),
+                                  child: Text(
+                                    bill.businessName,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.getBusinessTextColor(bill.businessName),
                                     ),
+                                  ),
+                                ),
+                                Row(
+                                  children: [
+                                    const Text('Bill No: ', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
                                     Text(
-                                      isPurva ? '8459671694@okbizaxis' : '9309862465@okbizaxis',
-                                      style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
+                                      bill.billNumber,
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                     ),
                                   ],
                                 ),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.primary,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ],
+                            ),
+                            const Divider(height: 16, thickness: 0.8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Total Bill Amount', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      CurrencyFormatter.format(bill.totalAmount),
+                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                    ),
+                                  ],
                                 ),
-                                onPressed: () => PaymentQrDialog.show(context, initialFirm: bill.businessName),
-                                child: const Text('Show QR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            width: double.infinity,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    const Text('Balance Due', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFDC2626))),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      CurrencyFormatter.format(bill.balanceDue),
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w900,
+                                        color: Color(0xFFDC2626),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Quick Action Buttons: Send Bank Details & Show QR
+                      Row(
+                        children: [
+                          Expanded(
                             child: OutlinedButton.icon(
-                              icon: const Icon(Icons.chat_bubble_outline, size: 14, color: Color(0xFF15803D)),
-                              label: Text(
-                                'Send QR to ${bill.shopName}',
-                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFF86EFAC)),
-                                backgroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 6),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                              ),
                               onPressed: () {
                                 FirmDetailsHelper.showQuickShareModal(
                                   context,
@@ -381,174 +285,519 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                                   recipientName: bill.shopName,
                                 );
                               },
+                              icon: const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF15803D)),
+                              label: const Text(
+                                'WhatsApp Bank Details',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFF86EFAC)),
+                                backgroundColor: const Color(0xFFF0FDF4),
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => PaymentQrDialog.show(context, initialFirm: bill.businessName),
+                              icon: const Icon(Icons.qr_code_2_rounded, size: 16, color: Color(0xFF1D4ED8)),
+                              label: const Text(
+                                'Show UPI QR',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFBFDBFE)),
+                                backgroundColor: const Color(0xFFEFF6FF),
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 14),
 
-                  // Net Banking Card
-                  if (selectedMode == PaymentMode.netBanking) ...[
-                    const SizedBox(height: 10),
-                    Builder(
-                      builder: (ctx) {
-                        final firmInfo = FirmDetailsHelper.getInfo(bill.businessName);
-                        return Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0FDF4),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      // Collected Amount Field
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                '${firmInfo.shortName} NEFT / Bank Details',
-                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
+                              const Text(
+                                'Collected Amount (₹)',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
                               ),
-                              Text(
-                                'Bank: ${firmInfo.bankName} • A/c: ${firmInfo.accountNumber}',
-                                style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                              // Quick shortcut chip: Full Due
+                              InkWell(
+                                onTap: () {
+                                  setDlgState(() {
+                                    amountCtrl.text = bill.balanceDue.toStringAsFixed(0);
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check, size: 12, color: Color(0xFF0F172A)),
+                                      SizedBox(width: 4),
+                                      Text('Full Due', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              Text(
-                                'IFSC: ${firmInfo.ifscCode} • Type: ${firmInfo.accountType}',
-                                style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: amountCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                            onChanged: (_) => setDlgState(() {}),
+                            decoration: InputDecoration(
+                              prefixIcon: const Padding(
+                                padding: EdgeInsets.only(left: 14, right: 8),
+                                child: Text('₹', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
                               ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: ElevatedButton.icon(
-                                      icon: const Icon(Icons.chat_bubble_outline, size: 14),
-                                      label: Text(
-                                        'Send to ${bill.shopName}',
-                                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF25D366),
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                        minimumSize: Size.zero,
-                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      ),
+                              prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+                              ),
+                              suffixIcon: amountCtrl.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18, color: Colors.blueGrey),
                                       onPressed: () {
-                                        FirmDetailsHelper.showQuickShareModal(
-                                          context,
-                                          defaultFirm: bill.businessName,
-                                          recipientMobile: shop.mobileNumber,
-                                          recipientName: bill.shopName,
-                                        );
+                                        setDlgState(() {
+                                          amountCtrl.clear();
+                                        });
                                       },
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          // Live balance status feedback
+                          if (enteredAmount > 0)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 2),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    balanceRemaining <= 0 ? Icons.check_circle : Icons.info_outline,
+                                    size: 13,
+                                    color: balanceRemaining <= 0 ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    balanceRemaining <= 0
+                                        ? 'Full Payment • Remaining: ₹0'
+                                        : 'Partial Payment • Remaining: ${CurrencyFormatter.format(balanceRemaining)}',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: balanceRemaining <= 0 ? const Color(0xFF16A34A) : const Color(0xFFD97706),
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  OutlinedButton(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: const Color(0xFF166534),
-                                      side: const BorderSide(color: Color(0xFF86EFAC)),
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Payment Mode Grid (4 Equal Symmetrical Columns)
+                      const Text(
+                        'Payment Mode:',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          PaymentMode.cash,
+                          PaymentMode.upi,
+                          PaymentMode.netBanking,
+                          PaymentMode.cheque,
+                        ].map((mode) {
+                          final isSel = selectedMode == mode;
+                          Color modeColor;
+                          switch (mode) {
+                            case PaymentMode.cash:
+                              modeColor = AppTheme.cashColor;
+                              break;
+                            case PaymentMode.upi:
+                              modeColor = AppTheme.upiColor;
+                              break;
+                            case PaymentMode.cheque:
+                              modeColor = AppTheme.chequeColor;
+                              break;
+                            case PaymentMode.netBanking:
+                              modeColor = AppTheme.netBankingColor;
+                              break;
+                          }
+
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 3),
+                              child: InkWell(
+                                onTap: () {
+                                  setDlgState(() {
+                                    selectedMode = mode;
+                                    final banks = getBanksForSelection(bill.businessName, mode);
+                                    selectedBank = banks.isNotEmpty ? banks.first : null;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSel ? modeColor : Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isSel ? modeColor : const Color(0xFFE2E8F0),
+                                      width: isSel ? 1.6 : 1.0,
                                     ),
+                                    boxShadow: isSel
+                                        ? [
+                                            BoxShadow(
+                                              color: modeColor.withValues(alpha: 0.25),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        mode.icon,
+                                        size: 20,
+                                        color: isSel ? Colors.white : modeColor,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        mode.label,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: isSel ? Colors.white : const Color(0xFF334155),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+
+                      // Deposit Bank Selector (Union Bank / RSBL / Central Bank)
+                      if (availableBanks.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Deposit To Bank:',
+                              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                            ),
+                            Text(
+                              bill.businessName,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: availableBanks.map((b) {
+                            final isSel = selectedBank == b;
+                            return Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 3),
+                                child: InkWell(
+                                  onTap: () => setDlgState(() => selectedBank = b),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: isSel
+                                          ? (isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary)
+                                          : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isSel
+                                            ? (isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary)
+                                            : AppTheme.border,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        b,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: isSel ? Colors.white : Colors.blueGrey.shade800,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+
+                      // UPI Quick Card
+                      if (selectedMode == PaymentMode.upi) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Image.memory(
+                                      isPurva ? QrData.purvaBytes : QrData.manasBytes,
+                                      width: 44,
+                                      height: 44,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.qr_code, size: 44),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${isPurva ? "Purva" : "Manas"} UPI QR',
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                                        ),
+                                        Text(
+                                          isPurva ? '8459671694@okbizaxis' : '9309862465@okbizaxis',
+                                          style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade700),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.primary,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    icon: const Icon(Icons.fullscreen, size: 16),
                                     onPressed: () => PaymentQrDialog.show(context, initialFirm: bill.businessName),
-                                    child: const Text('Show QR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    label: const Text('Show QR', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
                                   ),
                                 ],
                               ),
                             ],
                           ),
-                        );
-                      },
-                    ),
-                  ],
+                        ),
+                      ],
 
-                  // Cheque Number Input
-                  if (selectedMode == PaymentMode.cheque) ...[
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: chequeNoCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Cheque Number (Optional)',
-                        hintText: 'e.g. 123456',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ],
+                      // Net Banking Card
+                      if (selectedMode == PaymentMode.netBanking) ...[
+                        const SizedBox(height: 12),
+                        Builder(
+                          builder: (ctx) {
+                            final firmInfo = FirmDetailsHelper.getInfo(bill.businessName);
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFBBF7D0)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        '${firmInfo.shortName} Bank Details',
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
+                                      ),
+                                      Text(
+                                        firmInfo.accountType,
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Bank: ${firmInfo.bankName} • A/c: ${firmInfo.accountNumber}',
+                                    style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade800),
+                                  ),
+                                  Text(
+                                    'IFSC: ${firmInfo.ifscCode}',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade800),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
 
-                  // UTR Reference Input
-                  if (selectedMode == PaymentMode.upi || selectedMode == PaymentMode.netBanking) ...[
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: refNoCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'UTR / Transaction Reference (Optional)',
-                        hintText: 'e.g. UPI Ref / NEFT Ref',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      // Cheque Number Input
+                      if (selectedMode == PaymentMode.cheque) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: chequeNoCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Cheque Number (Optional)',
+                            hintText: 'e.g. 123456',
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ],
+
+                      // UTR Reference Input
+                      if (selectedMode == PaymentMode.upi || selectedMode == PaymentMode.netBanking) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: refNoCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'UTR / Transaction Reference (Optional)',
+                            hintText: 'e.g. UPI Ref / NEFT Ref',
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 18),
+
+                      // Action Buttons (Cancel and Save & Verify)
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 1,
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: () => Navigator.pop(bottomSheetCtx),
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF64748B)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F172A),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                elevation: 1,
+                              ),
+                              icon: const Icon(Icons.check_circle_outline, size: 18),
+                              label: const Text(
+                                'Save & Verify',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              onPressed: () async {
+                                final amount = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                                if (amount <= 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Please enter a valid collection amount')),
+                                  );
+                                  return;
+                                }
+
+                                Navigator.pop(bottomSheetCtx);
+
+                                // Record payment in provider with bank name, cheque number, reference
+                                await provider.recordCollectionForPendingBill(
+                                  pendingBill: bill,
+                                  collectedAmount: amount,
+                                  paymentMode: selectedMode,
+                                  collectionDate: DateTime.now(),
+                                  bankName: selectedBank,
+                                  chequeNumber: selectedMode == PaymentMode.cheque ? chequeNoCtrl.text.trim() : null,
+                                  referenceNumber: (selectedMode == PaymentMode.upi || selectedMode == PaymentMode.netBanking) ? refNoCtrl.text.trim() : null,
+                                );
+
+                                if (!context.mounted) return;
+
+                                // Show 2-Factor verification receipt for customer
+                                final remaining = (bill.balanceDue - amount) > 0 ? (bill.balanceDue - amount) : 0.0;
+                                final driverName = currentUser?.name ?? 'user1';
+
+                                await PaymentReceiptDialog.show(
+                                  context,
+                                  customerName: bill.shopName,
+                                  customerMobile: shop.mobileNumber,
+                                  firmName: bill.businessName,
+                                  billNo: bill.billNumber,
+                                  billTotal: bill.totalAmount,
+                                  amountCollected: amount,
+                                  balanceRemaining: remaining,
+                                  paymentMode: selectedMode,
+                                  salesmanName: driverName,
+                                  collectionDate: DateTime.now(),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ],
+                    ],
+                  ),
+                ),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dlgCtx),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: () async {
-                  final amount = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
-                  if (amount <= 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Please enter a valid collection amount')),
-                    );
-                    return;
-                  }
-
-                  Navigator.pop(dlgCtx);
-
-                  // Record payment in provider with bank name, cheque number, reference
-                  await provider.recordCollectionForPendingBill(
-                    pendingBill: bill,
-                    collectedAmount: amount,
-                    paymentMode: selectedMode,
-                    collectionDate: DateTime.now(),
-                    bankName: selectedBank,
-                    chequeNumber: selectedMode == PaymentMode.cheque ? chequeNoCtrl.text.trim() : null,
-                    referenceNumber: (selectedMode == PaymentMode.upi || selectedMode == PaymentMode.netBanking) ? refNoCtrl.text.trim() : null,
-                  );
-
-                  if (!context.mounted) return;
-
-                  // Show 2-Factor verification receipt for customer
-                  final remaining = (bill.balanceDue - amount) > 0 ? (bill.balanceDue - amount) : 0.0;
-                  final driverName = currentUser?.name ?? 'user1';
-
-                  await PaymentReceiptDialog.show(
-                    context,
-                    customerName: bill.shopName,
-                    customerMobile: shop.mobileNumber,
-                    firmName: bill.businessName,
-                    billNo: bill.billNumber,
-                    billTotal: bill.totalAmount,
-                    amountCollected: amount,
-                    balanceRemaining: remaining,
-                    paymentMode: selectedMode,
-                    salesmanName: driverName,
-                    collectionDate: DateTime.now(),
-                  );
-                },
-                child: const Text('Save & Verify', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
           );
         },
       ),
