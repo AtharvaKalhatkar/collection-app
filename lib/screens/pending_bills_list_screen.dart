@@ -28,7 +28,7 @@ class PendingBillsListScreen extends StatefulWidget {
 
 class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
   DateTime? _selectedInvoiceDate;
-  String? _selectedFirm;
+  String _selectedFirm = 'Purva Enterprises';
   String? _selectedRouteId;
   String _searchQuery = '';
   String _statusFilter = 'pending'; // 'pending', 'all', 'paid'
@@ -37,7 +37,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
   void initState() {
     super.initState();
     _selectedInvoiceDate = widget.initialInvoiceDate;
-    _selectedFirm = widget.initialFirm;
+    _selectedFirm = widget.initialFirm ?? 'Purva Enterprises';
   }
 
   Future<void> _pickInvoiceDate() async {
@@ -72,7 +72,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
     if (added != null && mounted) {
       setState(() {
         _selectedInvoiceDate = null;
-        _selectedFirm = null;
+        _selectedFirm = added.firmName.isNotEmpty ? added.firmName : _selectedFirm;
         _selectedRouteId = null;
         _statusFilter = 'pending';
         _searchQuery = '';
@@ -122,9 +122,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
     // Filter bills
     final filteredBills = allBills.where((b) {
       // Firm filter
-      if (_selectedFirm != null && _selectedFirm!.isNotEmpty) {
-        if (b.firmName != _selectedFirm) return false;
-      }
+      if (b.firmName != _selectedFirm) return false;
 
       // Route filter
       if (_selectedRouteId != null && _selectedRouteId!.isNotEmpty) {
@@ -197,7 +195,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Firm Selector (All / Purva / Manas)
+                // Firm Selector (Purva / Manas)
                 Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
@@ -207,39 +205,13 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                   ),
                   child: Row(
                     children: [
-                      // All Firms
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => setState(() => _selectedFirm = null),
-                          borderRadius: BorderRadius.circular(6),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            decoration: BoxDecoration(
-                              color: _selectedFirm == null ? AppTheme.primary : Colors.transparent,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Center(
-                              child: Text(
-                                'All Firms',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: _selectedFirm == null ? Colors.white : Colors.blueGrey.shade800,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-
                       // Purva
                       Expanded(
                         child: InkWell(
                           onTap: () => setState(() => _selectedFirm = 'Purva Enterprises'),
                           borderRadius: BorderRadius.circular(6),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
                               color: _selectedFirm == 'Purva Enterprises' ? AppTheme.purvaPrimary : Colors.transparent,
                               borderRadius: BorderRadius.circular(6),
@@ -248,7 +220,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                               child: Text(
                                 'Purva ($purvaPendingCount)',
                                 style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w800,
                                   color: _selectedFirm == 'Purva Enterprises' ? Colors.white : AppTheme.purvaText,
                                 ),
@@ -265,7 +237,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                           onTap: () => setState(() => _selectedFirm = 'Manas Sales'),
                           borderRadius: BorderRadius.circular(6),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
                               color: _selectedFirm == 'Manas Sales' ? AppTheme.manasPrimary : Colors.transparent,
                               borderRadius: BorderRadius.circular(6),
@@ -274,7 +246,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                               child: Text(
                                 'Manas ($manasPendingCount)',
                                 style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w800,
                                   color: _selectedFirm == 'Manas Sales' ? Colors.white : AppTheme.manasText,
                                 ),
@@ -540,7 +512,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                   if (allBills.isNotEmpty) ...[
                                     ElevatedButton.icon(
                                       icon: const Icon(Icons.clear_all, size: 18),
-                                      label: Text('Clear Filters (Show All ${allBills.length} Bills)'),
+                                      label: const Text('Reset Filters'),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: AppTheme.primary,
                                         foregroundColor: Colors.white,
@@ -549,7 +521,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                       onPressed: () {
                                         setState(() {
                                           _selectedInvoiceDate = null;
-                                          _selectedFirm = null;
+                                          _selectedFirm = 'Purva Enterprises';
                                           _selectedRouteId = null;
                                           _statusFilter = 'pending';
                                           _searchQuery = '';

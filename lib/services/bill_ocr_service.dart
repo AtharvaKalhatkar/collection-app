@@ -48,10 +48,12 @@ class BillOcrResult {
 
 class BillOcrService {
   static const String _keyGeminiKey = 'gemini_api_key_v1';
+  static String? _cachedApiKey;
 
   /// Saves user-provided Gemini API key for high-speed cloud vision and syncs across devices
   static Future<void> saveApiKey(String key) async {
     final cleanKey = key.trim();
+    _cachedApiKey = cleanKey;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyGeminiKey, cleanKey);
     try {
@@ -63,13 +65,21 @@ class BillOcrService {
 
   /// Gets stored Gemini API key, syncing from cloud if not present locally
   static Future<String?> getApiKey() async {
+    if (_cachedApiKey != null && _cachedApiKey!.isNotEmpty) {
+      return _cachedApiKey;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final key = prefs.getString(_keyGeminiKey);
-    if (key != null && key.trim().isNotEmpty) return key.trim();
+    if (key != null && key.trim().isNotEmpty) {
+      _cachedApiKey = key.trim();
+      return _cachedApiKey;
+    }
 
     try {
       final cloudKey = await SupabaseService().fetchGeminiApiKey();
       if (cloudKey != null && cloudKey.isNotEmpty) {
+        _cachedApiKey = cloudKey;
         await prefs.setString(_keyGeminiKey, cloudKey);
         return cloudKey;
       }
@@ -85,13 +95,16 @@ class BillOcrService {
     try {
       final cloudKey = await SupabaseService().fetchGeminiApiKey();
       if (cloudKey != null && cloudKey.isNotEmpty) {
+        _cachedApiKey = cloudKey;
         await prefs.setString(_keyGeminiKey, cloudKey);
         return cloudKey;
       }
     } catch (e) {
       debugPrint('Error syncing Gemini key from cloud: $e');
     }
-    return prefs.getString(_keyGeminiKey);
+    final localKey = prefs.getString(_keyGeminiKey);
+    _cachedApiKey = localKey;
+    return localKey;
   }
 
   /// Check whether an API key is configured
@@ -206,8 +219,17 @@ class BillOcrService {
   ) async {
     final cleanB64 = base64Image.contains(',') ? base64Image.split(',').last : base64Image;
 
-    // Use Gemini 3.8 Flash with fallback to Gemini 3.5 Flash Lite
-    final models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+    // Use Gemini 3.5 Flash-Lite with minimal thinking for ultra-fast (2-3 second) multimodal extraction
+    final models = [
+      'gemini-3.5-flash-lite',
+      'gemini-flash-lite-latest',
+      'gemini-3.8-flash',
+      'gemini-flash-latest',
+    ];
+
+    final candidateList = candidateShops.isNotEmpty
+        ? '\nCandidate beat shops (match party name to one of these if close):\n${candidateShops.take(60).map((s) => s.name).join(", ")}'
+        : '';
 
     for (final model in models) {
       try {
@@ -220,19 +242,21 @@ class BillOcrService {
             {
               'parts': [
                 {
-                  'text': '''You are an Indian wholesale & FMCG bill invoice analyzer.
-Analyze this invoice/bill photo and extract these 4 fields in strict JSON format:
+                  'text': '''You are an ultra-fast Indian wholesale & FMCG bill invoice analyzer.
+Analyze this invoice/bill photo and extract these fields in strict JSON format:
 {
   "bill_number": "invoice or bill number (e.g. PE-2024-0412 or 1042)",
   "bill_date": "YYYY-MM-DD",
   "amount": total bill amount as a number (e.g. 1450.00),
-  "party_name": "customer / shop / buyer name printed on bill (English)"
+  "party_name": "customer / shop / buyer name printed on bill (English)",
+  "matched_shop_name": "exact match from Candidate beat shops list if matching, otherwise null"
 }
 Look for:
 - Invoice number in header area (near Inv No, Bill No, Tax Invoice)
 - Date in header area (near Date, Dt, Dated)
 - Total amount at the bottom of the bill (Grand Total, Net Payable, Total Amount)
 - Party name under M/s, To, Customer, Billed To (ignore distributor firm name)
+$candidateList
 Return ONLY pure JSON without markdown code fences.'''
                 },
                 {
@@ -247,6 +271,9 @@ Return ONLY pure JSON without markdown code fences.'''
           'generationConfig': {
             'temperature': 0.1,
             'responseMimeType': 'application/json',
+            'thinkingConfig': {
+              'thinkingLevel': 'minimal',
+            },
           }
         };
 
@@ -254,7 +281,7 @@ Return ONLY pure JSON without markdown code fences.'''
           url,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
-        );
+        ).timeout(const Duration(seconds: 8));
 
         if (response.statusCode != 200) {
           debugPrint('Gemini API ($model) returned code: ${response.statusCode}');
@@ -284,6 +311,7 @@ Return ONLY pure JSON without markdown code fences.'''
         final dateStr = parsedJson['bill_date']?.toString();
         final amtVal = parsedJson['amount'];
         final party = parsedJson['party_name']?.toString();
+        final matchedName = parsedJson['matched_shop_name']?.toString();
 
         DateTime? parsedDate;
         if (dateStr != null && dateStr.isNotEmpty) {
@@ -300,7 +328,22 @@ Return ONLY pure JSON without markdown code fences.'''
         ShopMatchResult? bestMatch;
         List<ShopMatchResult> ranked = const [];
 
-        if (party != null && party.isNotEmpty) {
+        // Check if Gemini matched directly with high precision
+        if (matchedName != null && matchedName.isNotEmpty) {
+          for (final s in candidateShops) {
+            if (s.name.trim().toLowerCase() == matchedName.trim().toLowerCase()) {
+              bestMatch = ShopMatchResult(
+                shop: s,
+                score: 0.99,
+                matchedExplanation: 'AI Direct Match: ${s.name}',
+              );
+              break;
+            }
+          }
+        }
+
+        // Fallback to phonetic and token matcher
+        if (bestMatch == null && party != null && party.isNotEmpty) {
           bestMatch = PartyNameMatcher.findBestMatch(
             rawExtractedName: party,
             candidateShops: candidateShops,
