@@ -357,9 +357,35 @@ class CollectionProvider extends ChangeNotifier {
     return result;
   }
 
+  // --- Performance Caches ---
+  List<CollectionModel>? _filteredCollectionsCache;
+  DateTime? _cachedForDate;
+  String? _cachedStaffOverride;
+  String? _cachedFilterBusiness;
+  String? _cachedFilterRouteId;
+  String? _cachedSelectedStaffFilter;
+  String? _cachedSearchQuery;
+  Map<String, double>? _shopBalanceCache;
+  List<BillSummary>? _allBillSummariesCache;
+  Map<String, BillSummary>? _billSummaryMapCache;
+
+  void _invalidateCaches() {
+    _filteredCollectionsCache = null;
+    _shopBalanceCache = null;
+    _allBillSummariesCache = null;
+    _billSummaryMapCache = null;
+  }
+
+  @override
+  void notifyListeners() {
+    _invalidateCaches();
+    super.notifyListeners();
+  }
+
   void _startAutoSyncTimer() {
     _autoSyncTimer?.cancel();
-    _autoSyncTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+    // Intelligent 60-second background sync interval to prevent UI flickering, CPU freezing, and battery drain
+    _autoSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       syncAllWithCloud(notify: false);
     });
   }
@@ -381,9 +407,26 @@ class CollectionProvider extends ChangeNotifier {
               billMap[b.id] = b;
             }
           }
-          _pendingBills = billMap.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-          notifyListeners();
-          await _storage.savePendingBills(_pendingBills);
+          final newBills = billMap.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+          bool changed = newBills.length != _pendingBills.length;
+          if (!changed) {
+            for (int i = 0; i < newBills.length; i++) {
+              final nb = newBills[i];
+              final ob = _pendingBills[i];
+              if (nb.id != ob.id || nb.collectedAmount != ob.collectedAmount || nb.status != ob.status) {
+                changed = true;
+                break;
+              }
+            }
+          }
+
+          if (changed) {
+            _pendingBills = newBills;
+            _invalidateCaches();
+            notifyListeners();
+            await _storage.savePendingBills(_pendingBills);
+          }
         }, onError: (e) {
           debugPrint('Realtime pending_bills error: $e');
         });
@@ -404,9 +447,26 @@ class CollectionProvider extends ChangeNotifier {
               collMap[c.id] = c;
             }
           }
-          _collections = collMap.values.toList()..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
-          notifyListeners();
-          await _storage.saveCollections(_collections);
+          final newColls = collMap.values.toList()..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+
+          bool changed = newColls.length != _collections.length;
+          if (!changed) {
+            for (int i = 0; i < newColls.length; i++) {
+              final nc = newColls[i];
+              final oc = _collections[i];
+              if (nc.id != oc.id || nc.collectedAmount != oc.collectedAmount) {
+                changed = true;
+                break;
+              }
+            }
+          }
+
+          if (changed) {
+            _collections = newColls;
+            _invalidateCaches();
+            notifyListeners();
+            await _storage.saveCollections(_collections);
+          }
         }, onError: (e) {
           debugPrint('Realtime collections error: $e');
         });
@@ -429,6 +489,8 @@ class CollectionProvider extends ChangeNotifier {
         return false;
       }
 
+      bool hasDataChanged = false;
+
       // 1. Synchronize Collections across all devices
       final cloudCollections = await _supabase.fetchCollections();
       final collMap = <String, CollectionModel>{};
@@ -444,8 +506,12 @@ class CollectionProvider extends ChangeNotifier {
           unsyncedColls.add(c);
         }
       }
-      _collections = collMap.values.toList()..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
-      await _storage.saveCollections(_collections);
+      final newColls = collMap.values.toList()..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+      if (newColls.length != _collections.length || unsyncedColls.isNotEmpty) {
+        _collections = newColls;
+        await _storage.saveCollections(_collections);
+        hasDataChanged = true;
+      }
       if (unsyncedColls.isNotEmpty) {
         await _supabase.saveCollectionsBulk(unsyncedColls);
       }
@@ -472,8 +538,12 @@ class CollectionProvider extends ChangeNotifier {
           }
         }
       }
-      _pendingBills = billMap.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      await _storage.savePendingBills(_pendingBills);
+      final newBills = billMap.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      if (newBills.length != _pendingBills.length || unsyncedBills.isNotEmpty) {
+        _pendingBills = newBills;
+        await _storage.savePendingBills(_pendingBills);
+        hasDataChanged = true;
+      }
       if (unsyncedBills.isNotEmpty) {
         await _supabase.savePendingBillsBulk(unsyncedBills);
       }
@@ -489,14 +559,21 @@ class CollectionProvider extends ChangeNotifier {
             cleanCloudShops.add(s);
           }
         }
-        _shops = _deduplicateShops(cleanCloudShops);
-        await _storage.saveShops(_shops);
+        final dedup = _deduplicateShops(cleanCloudShops);
+        if (dedup.length != _shops.length) {
+          _shops = dedup;
+          await _storage.saveShops(_shops);
+          hasDataChanged = true;
+        }
       }
 
       final cloudRoutes = await _supabase.fetchRoutes();
       if (cloudRoutes.isNotEmpty) {
-        _routes = cloudRoutes..sort((a, b) => a.priority.compareTo(b.priority));
-        await _storage.saveRoutes(_routes);
+        if (cloudRoutes.length != _routes.length) {
+          _routes = cloudRoutes..sort((a, b) => a.priority.compareTo(b.priority));
+          await _storage.saveRoutes(_routes);
+          hasDataChanged = true;
+        }
       }
 
       // 4. Retry deletes for locally tracked deleted IDs
@@ -522,25 +599,35 @@ class CollectionProvider extends ChangeNotifier {
       // 5. Ensure Realtime subscriptions are active
       _setupRealtimeListeners();
 
-      // 6. Check and perform auto-backup if 4 days have passed
+      // 6. Check and perform auto-backup only if overdue (every 4 days)
       try {
-        final authService = AuthService();
-        final users = await authService.loadUsers();
-        _lastBackupTime = await _backupService.getLatestBackupTimeShared();
-        await _backupService.checkAndRunAutoBackup(
-          routes: _routes,
-          shops: _shops,
-          collections: _collections,
-          pendingBills: _pendingBills,
-          users: users,
-        );
-        _lastBackupTime = await _backupService.getLatestBackupTimeShared();
+        final lastBackup = await _backupService.getLatestBackupTimeShared();
+        final now = DateTime.now();
+        if (lastBackup == null || now.difference(lastBackup).inDays >= 4) {
+          final authService = AuthService();
+          final users = await authService.loadUsers();
+          _lastBackupTime = await _backupService.getLatestBackupTimeShared();
+          await _backupService.checkAndRunAutoBackup(
+            routes: _routes,
+            shops: _shops,
+            collections: _collections,
+            pendingBills: _pendingBills,
+            users: users,
+          );
+          _lastBackupTime = await _backupService.getLatestBackupTimeShared();
+        }
       } catch (e) {
         debugPrint('Auto backup notice: $e');
       }
 
+      if (hasDataChanged) {
+        _invalidateCaches();
+      }
+
       _isSyncing = false;
-      notifyListeners();
+      if (hasDataChanged || notify) {
+        notifyListeners();
+      }
       return true;
     } catch (e) {
       debugPrint('syncAllWithCloud notice: $e');
@@ -591,7 +678,19 @@ class CollectionProvider extends ChangeNotifier {
   // --- Filtered Collections for selected date and active filters ---
   List<CollectionModel> getFilteredCollections({DateTime? forDate, String? staffOverride}) {
     final date = forDate ?? _selectedDate;
-    return _collections.where((c) {
+
+    // Return cached filtered collections if parameters match to avoid O(N) re-filtering in tight build loops
+    if (_filteredCollectionsCache != null &&
+        _cachedForDate == date &&
+        _cachedStaffOverride == staffOverride &&
+        _cachedFilterBusiness == _filterBusiness &&
+        _cachedFilterRouteId == _filterRouteId &&
+        _cachedSelectedStaffFilter == _selectedStaffFilter &&
+        _cachedSearchQuery == _searchQuery) {
+      return _filteredCollectionsCache!;
+    }
+
+    final filtered = _collections.where((c) {
       // Date filter (matches day, month, year)
       final sameDay = c.collectedAt.year == date.year &&
           c.collectedAt.month == date.month &&
@@ -638,6 +737,16 @@ class CollectionProvider extends ChangeNotifier {
       return true;
     }).toList()
       ..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+
+    _filteredCollectionsCache = filtered;
+    _cachedForDate = date;
+    _cachedStaffOverride = staffOverride;
+    _cachedFilterBusiness = _filterBusiness;
+    _cachedFilterRouteId = _filterRouteId;
+    _cachedSelectedStaffFilter = _selectedStaffFilter;
+    _cachedSearchQuery = _searchQuery;
+
+    return filtered;
   }
 
   bool _matchesStaff(String recordedSalesman, String targetStaff) {
@@ -697,81 +806,104 @@ class CollectionProvider extends ChangeNotifier {
 
   // --- Bill Aggregation & Status Tracking (Pending vs Paid) ---
   List<BillSummary> getAllBillSummaries({String? forShopId, String? forBusiness}) {
-    final Map<String, List<CollectionModel>> grouped = {};
-
-    for (final c in _collections) {
-      if (forShopId != null && c.shopId != forShopId) continue;
-      if (forBusiness != null && forBusiness != 'All' && c.businessName != forBusiness) continue;
-
-      final key = '${c.shopId}_${c.billNumber.trim().toLowerCase()}';
-      grouped.putIfAbsent(key, () => []).add(c);
-    }
-
-    final List<BillSummary> list = [];
-    grouped.forEach((key, collList) {
-      collList.sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
-      final first = collList.first;
-
-      // Bill total is taken from max recorded billAmount for this invoice
-      double maxBill = 0.0;
-      double totalCollected = 0.0;
-      for (final c in collList) {
-        if (c.billAmount > maxBill) maxBill = c.billAmount;
-        totalCollected += c.collectedAmount;
+    if (_allBillSummariesCache == null) {
+      final Map<String, List<CollectionModel>> grouped = {};
+      final shopRouteMap = <String, String>{};
+      for (final s in _shops) {
+        shopRouteMap[s.id] = s.routeId;
+      }
+      final routeNameMap = <String, String>{};
+      for (final r in _routes) {
+        routeNameMap[r.id] = r.name;
       }
 
-      final effectiveRouteId = (first.routeId.isNotEmpty)
-          ? first.routeId
-          : (_shops.any((s) => s.id == first.shopId)
-              ? _shops.firstWhere((s) => s.id == first.shopId).routeId
-              : '');
+      for (final c in _collections) {
+        final key = '${c.shopId}_${c.billNumber.trim().toLowerCase()}';
+        grouped.putIfAbsent(key, () => []).add(c);
+      }
 
-      list.add(BillSummary(
-        billNumber: first.billNumber,
-        shopId: first.shopId,
-        shopName: first.shopName,
-        routeId: effectiveRouteId,
-        routeName: first.routeName.isNotEmpty ? first.routeName : getRouteName(effectiveRouteId),
-        businessName: first.businessName,
-        billTotal: maxBill,
-        totalCollected: totalCollected,
-        collections: collList,
-        lastPaymentDate: first.collectedAt,
-      ));
-    });
+      final List<BillSummary> list = [];
+      final Map<String, BillSummary> summaryMap = {};
 
-    // Also include any standalone pending bills from _pendingBills that haven't had collections yet
-    final Set<String> processedKeys = Set<String>.from(grouped.keys);
-    for (final pb in _pendingBills) {
-      if (forShopId != null && pb.shopId != forShopId) continue;
-      if (forBusiness != null && forBusiness != 'All' && pb.businessName != forBusiness) continue;
+      grouped.forEach((key, collList) {
+        collList.sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+        final first = collList.first;
 
-      final key = '${pb.shopId}_${pb.billNumber.trim().toLowerCase()}';
-      if (!processedKeys.contains(key)) {
-        final effectiveRouteId = (pb.routeId.isNotEmpty)
-            ? pb.routeId
-            : (_shops.any((s) => s.id == pb.shopId)
-                ? _shops.firstWhere((s) => s.id == pb.shopId).routeId
-                : '');
+        // Bill total is taken from max recorded billAmount for this invoice
+        double maxBill = 0.0;
+        double totalCollected = 0.0;
+        for (final c in collList) {
+          if (c.billAmount > maxBill) maxBill = c.billAmount;
+          totalCollected += c.collectedAmount;
+        }
 
-        list.add(BillSummary(
-          billNumber: pb.billNumber,
-          shopId: pb.shopId,
-          shopName: pb.shopName,
+        final effectiveRouteId = (first.routeId.isNotEmpty)
+            ? first.routeId
+            : (shopRouteMap[first.shopId] ?? '');
+
+        final rName = first.routeName.isNotEmpty
+            ? first.routeName
+            : (routeNameMap[effectiveRouteId] ?? 'Unknown Route');
+
+        final summary = BillSummary(
+          billNumber: first.billNumber,
+          shopId: first.shopId,
+          shopName: first.shopName,
           routeId: effectiveRouteId,
-          routeName: pb.routeName.isNotEmpty ? pb.routeName : getRouteName(effectiveRouteId),
-          businessName: pb.businessName,
-          billTotal: pb.totalAmount,
-          totalCollected: pb.collectedAmount,
-          collections: const [],
-          lastPaymentDate: pb.invoiceDate,
-        ));
-        processedKeys.add(key);
+          routeName: rName,
+          businessName: first.businessName,
+          billTotal: maxBill,
+          totalCollected: totalCollected,
+          collections: collList,
+          lastPaymentDate: first.collectedAt,
+        );
+        list.add(summary);
+        summaryMap[key] = summary;
+      });
+
+      // Also include any standalone pending bills from _pendingBills that haven't had collections yet
+      for (final pb in _pendingBills) {
+        final key = '${pb.shopId}_${pb.billNumber.trim().toLowerCase()}';
+        if (!summaryMap.containsKey(key)) {
+          final effectiveRouteId = (pb.routeId.isNotEmpty)
+              ? pb.routeId
+              : (shopRouteMap[pb.shopId] ?? '');
+
+          final rName = pb.routeName.isNotEmpty
+              ? pb.routeName
+              : (routeNameMap[effectiveRouteId] ?? 'Unknown Route');
+
+          final summary = BillSummary(
+            billNumber: pb.billNumber,
+            shopId: pb.shopId,
+            shopName: pb.shopName,
+            routeId: effectiveRouteId,
+            routeName: rName,
+            businessName: pb.businessName,
+            billTotal: pb.totalAmount,
+            totalCollected: pb.collectedAmount,
+            collections: const [],
+            lastPaymentDate: pb.invoiceDate,
+          );
+          list.add(summary);
+          summaryMap[key] = summary;
+        }
       }
+
+      list.sort((a, b) => b.lastPaymentDate.compareTo(a.lastPaymentDate));
+      _allBillSummariesCache = list;
+      _billSummaryMapCache = summaryMap;
     }
 
-    list.sort((a, b) => b.lastPaymentDate.compareTo(a.lastPaymentDate));
-    return list;
+    if (forShopId == null && (forBusiness == null || forBusiness == 'All')) {
+      return _allBillSummariesCache!;
+    }
+
+    return _allBillSummariesCache!.where((b) {
+      if (forShopId != null && b.shopId != forShopId) return false;
+      if (forBusiness != null && forBusiness != 'All' && b.businessName != forBusiness) return false;
+      return true;
+    }).toList();
   }
 
   List<BillSummary> getPendingBills({String? forShopId, String? forBusiness}) {
@@ -787,13 +919,23 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   BillSummary? getBillSummary(String shopId, String billNumber) {
-    try {
-      final key = billNumber.trim().toLowerCase();
-      final list = getAllBillSummaries(forShopId: shopId);
-      return list.firstWhere((b) => b.billNumber.trim().toLowerCase() == key);
-    } catch (_) {
-      return null;
+    if (_billSummaryMapCache == null) {
+      getAllBillSummaries();
     }
+    final cleanBill = billNumber.trim().toLowerCase();
+    final exactKey = '${shopId}_$cleanBill';
+    if (_billSummaryMapCache!.containsKey(exactKey)) {
+      return _billSummaryMapCache![exactKey];
+    }
+    // Fallback: If shopId was empty or not matched, search by bill number
+    if (shopId.isEmpty) {
+      for (final summary in _allBillSummariesCache!) {
+        if (summary.billNumber.trim().toLowerCase() == cleanBill) {
+          return summary;
+        }
+      }
+    }
+    return null;
   }
 
   // --- Calculation Helpers for Accurate Multi-Installment Accounting ---
@@ -911,7 +1053,9 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   double getPendingBalanceForBusiness(String business) {
-    return getPendingBills(forBusiness: business).fold(0.0, (s, b) => s + b.balanceDue);
+    return _pendingBills
+        .where((b) => (business == 'All' || b.businessName == business) && !b.isPaid)
+        .fold(0.0, (s, b) => s + b.balanceDue);
   }
 
   double getCashForBusiness(String business, {DateTime? forDate}) {
@@ -1403,8 +1547,16 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   double getTotalBalanceForShop(String shopId) {
-    final pending = getPendingBills(forShopId: shopId);
-    return pending.fold(0.0, (sum, b) => sum + b.balanceDue);
+    if (_shopBalanceCache == null) {
+      final map = <String, double>{};
+      for (final b in _pendingBills) {
+        if (!b.isPaid && b.balanceDue > 0) {
+          map[b.shopId] = (map[b.shopId] ?? 0.0) + b.balanceDue;
+        }
+      }
+      _shopBalanceCache = map;
+    }
+    return _shopBalanceCache![shopId] ?? 0.0;
   }
 
   List<CollectionModel> getCollectionsForBill(String billNumber, {String? shopId, String? shopName}) {

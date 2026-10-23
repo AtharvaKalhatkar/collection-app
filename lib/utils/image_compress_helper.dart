@@ -37,12 +37,19 @@ class ImageCompressHelper {
     }
   }
 
+  static final Map<int, Uint8List> _decodeCache = <int, Uint8List>{};
+
   /// Safely decodes base64 strings, stripping any data URI prefix or whitespace.
+  /// Uses an in-memory cache to prevent re-decoding heavy image bytes during scroll frames.
   /// Returns null if string is empty, invalid, or corrupted.
   static Uint8List? safeBase64Decode(String? input) {
     if (input == null) return null;
     final trimmed = input.trim();
     if (trimmed.isEmpty) return null;
+
+    final key = trimmed.hashCode;
+    final cached = _decodeCache[key];
+    if (cached != null) return cached;
 
     try {
       String clean = trimmed;
@@ -50,7 +57,12 @@ class ImageCompressHelper {
         clean = clean.split('base64,').last;
       }
       clean = clean.replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
-      return base64Decode(clean);
+      final decoded = base64Decode(clean);
+      if (_decodeCache.length >= 200) {
+        _decodeCache.clear();
+      }
+      _decodeCache[key] = decoded;
+      return decoded;
     } catch (_) {
       return null;
     }

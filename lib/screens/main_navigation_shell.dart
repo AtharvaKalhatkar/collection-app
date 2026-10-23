@@ -20,6 +20,26 @@ class MainNavigationShell extends StatefulWidget {
 class _MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
   DateTime? _lastBackPressTime;
+  String? _lastSyncedUserId;
+  int _lastSyncedRouteCount = -1;
+
+  late final List<Widget> _screens = [
+    HomeDashboardScreen(
+      onNavigateToRoutes: () => _navigateToTab(2),
+      onNavigateToCollections: () => _navigateToTab(1),
+      onNavigateToOrders: null,
+      onNavigateToProfile: () => _navigateToTab(3),
+    ),
+    CollectionsListScreen(
+      onBackToOverview: () => _navigateToTab(0),
+    ),
+    RoutesShopsScreen(
+      onBackToOverview: () => _navigateToTab(0),
+    ),
+    ProfileScreen(
+      onBackToOverview: () => _navigateToTab(0),
+    ),
+  ];
 
   @override
   void initState() {
@@ -28,6 +48,8 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       final auth = context.read<AuthProvider>();
       if (auth.currentUser != null) {
         final u = auth.currentUser!;
+        _lastSyncedUserId = u.id;
+        _lastSyncedRouteCount = u.assignedRouteIds.length;
         final provider = context.read<CollectionProvider>();
         provider.setCurrentUser(u);
         provider.updateProfile(
@@ -40,9 +62,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   }
 
   void _navigateToTab(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
+    if (_currentIndex != index) {
+      setState(() {
+        _currentIndex = index;
+      });
+    }
   }
 
   @override
@@ -51,9 +75,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     final user = auth.currentUser;
 
     if (user != null) {
-      final provider = context.read<CollectionProvider>();
-      if (provider.currentUser?.id != user.id ||
-          provider.currentUser?.assignedRouteIds.length != user.assignedRouteIds.length) {
+      if (_lastSyncedUserId != user.id || _lastSyncedRouteCount != user.assignedRouteIds.length) {
+        _lastSyncedUserId = user.id;
+        _lastSyncedRouteCount = user.assignedRouteIds.length;
+        final provider = context.read<CollectionProvider>();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           provider.setCurrentUser(user);
         });
@@ -63,23 +88,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     if (user?.isDriver == true) {
       return const DriverDashboardScreen();
     }
-    final screens = [
-      HomeDashboardScreen(
-        onNavigateToRoutes: () => _navigateToTab(2),
-        onNavigateToCollections: () => _navigateToTab(1),
-        onNavigateToOrders: null,
-        onNavigateToProfile: () => _navigateToTab(3),
-      ),
-      CollectionsListScreen(
-        onBackToOverview: () => _navigateToTab(0),
-      ),
-      RoutesShopsScreen(
-        onBackToOverview: () => _navigateToTab(0),
-      ),
-      ProfileScreen(
-        onBackToOverview: () => _navigateToTab(0),
-      ),
-    ];
 
     return PopScope(
       canPop: false,
@@ -111,7 +119,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       child: Scaffold(
         body: IndexedStack(
           index: _currentIndex,
-          children: screens,
+          children: _screens,
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentIndex,
