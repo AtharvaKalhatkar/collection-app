@@ -11,6 +11,7 @@ import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
 import 'vehicle_collection_screen.dart';
 import 'user_management_screen.dart';
+import 'live_staff_locations_screen.dart';
 import '../services/bill_ocr_service.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -1039,6 +1040,30 @@ class ProfileScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const UserManagementScreen()),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1),
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.location_on_outlined, color: Color(0xFF10B981), size: 20),
+                ),
+                title: const Text('Live Staff & Fleet Locations', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                subtitle: const Text('Live GPS tracking of salesmen & delivery staff', style: TextStyle(fontSize: 11.5)),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
                   );
                 },
               ),

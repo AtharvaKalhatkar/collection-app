@@ -100,6 +100,18 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateCurrentLocation(double latitude, double longitude, {String? landmark}) async {
+    if (_currentUser == null) return;
+    final updated = _currentUser!.copyWith(
+      latitude: latitude,
+      longitude: longitude,
+      locationUpdatedAt: DateTime.now(),
+      locationLandmark: landmark,
+    );
+    _currentUser = updated;
+    await saveUser(updated);
+  }
+
   Future<void> refreshUsers() async {
     _users = await _authService.loadUsers();
     notifyListeners();

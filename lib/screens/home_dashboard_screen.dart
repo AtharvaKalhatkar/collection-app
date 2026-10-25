@@ -19,6 +19,8 @@ import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import 'user_management_screen.dart';
+import 'live_staff_locations_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/user_model.dart';
 import '../utils/firm_details.dart';
 
@@ -499,28 +501,66 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const UserManagementScreen()),
-                  );
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.manage_accounts_outlined, color: Colors.blue.shade300, size: 15),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Manage Staff',
-                        style: TextStyle(fontSize: 11.5, color: Colors.blue.shade300, fontWeight: FontWeight.bold),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
                       ),
-                    ],
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.location_on, color: Color(0xFF34D399), size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'Live Map',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Color(0xFF34D399),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const UserManagementScreen()),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.manage_accounts_outlined, color: Colors.blue.shade300, size: 15),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Manage Staff',
+                            style: TextStyle(fontSize: 11.5, color: Colors.blue.shade300, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -573,7 +613,7 @@ class HomeDashboardScreen extends StatelessWidget {
                         currentStaffFilter.toLowerCase() == u.phone.toLowerCase());
 
                 return Container(
-                  width: 250,
+                  width: 260,
                   margin: const EdgeInsets.only(right: 12),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -662,7 +702,68 @@ class HomeDashboardScreen extends StatelessWidget {
                           fontSize: 10.5,
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 6),
+                      // Live GPS status strip
+                      InkWell(
+                        onTap: u.hasLocation
+                            ? () async {
+                                final uri = Uri.parse(u.mapsUrl);
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            : null,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: u.hasLocation
+                                ? (u.isOnline
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                    : Colors.white.withValues(alpha: 0.06))
+                                : Colors.white.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: u.hasLocation
+                                      ? (u.isOnline ? const Color(0xFF34D399) : Colors.amber.shade400)
+                                      : Colors.white24,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  u.hasLocation
+                                      ? '${u.locationLandmark ?? "GPS Active"} • ${u.locationTimeAgo}'
+                                      : 'No GPS fix yet',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: u.hasLocation
+                                        ? (u.isOnline ? const Color(0xFF6EE7B7) : Colors.white70)
+                                        : Colors.white38,
+                                    fontWeight: u.hasLocation ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (u.hasLocation) ...[
+                                const SizedBox(width: 4),
+                                const Icon(
+                                  Icons.open_in_new,
+                                  size: 11,
+                                  color: Color(0xFF6EE7B7),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(
@@ -689,6 +790,32 @@ class HomeDashboardScreen extends StatelessWidget {
                               ),
                             ),
                           ),
+                          if (u.hasLocation) ...[
+                            const SizedBox(width: 6),
+                            InkWell(
+                              onTap: () async {
+                                final uri = Uri.parse(u.mapsUrl);
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF059669).withValues(alpha: 0.35),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.5)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.location_on, color: Color(0xFF34D399), size: 12),
+                                    SizedBox(width: 3),
+                                    Text('Map', style: TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                           if (u.isDriver) ...[
                             const SizedBox(width: 6),
                             InkWell(

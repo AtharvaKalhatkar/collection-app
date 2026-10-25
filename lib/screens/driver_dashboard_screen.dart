@@ -14,6 +14,7 @@ import '../widgets/payment_receipt_dialog.dart';
 import '../widgets/payment_qr_dialog.dart';
 import '../utils/firm_details.dart';
 import '../utils/qr_data.dart';
+import '../services/location_tracking_service.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
   const DriverDashboardScreen({super.key});
@@ -26,6 +27,21 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   int _currentTab = 0;
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final auth = context.read<AuthProvider>();
+        final provider = context.read<CollectionProvider>();
+        LocationTrackingService().startTracking(
+          auth: auth,
+          collectionProvider: provider,
+        );
+      }
+    });
+  }
 
   @override
   void dispose() {

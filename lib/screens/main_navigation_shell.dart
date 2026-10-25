@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/collection_provider.dart';
+import '../services/location_tracking_service.dart';
 import '../utils/theme.dart';
 import 'home_dashboard_screen.dart';
 import 'collections_list_screen.dart';
@@ -56,6 +57,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           name: u.name,
           phone: u.phone,
           role: u.roleDisplayName,
+        );
+        LocationTrackingService().startTracking(
+          auth: auth,
+          collectionProvider: provider,
         );
       }
     });

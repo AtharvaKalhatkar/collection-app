@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../providers/collection_provider.dart';
 import '../models/user_model.dart';
 import '../utils/theme.dart';
+import 'live_staff_locations_screen.dart';
 
 class UserManagementScreen extends StatelessWidget {
   const UserManagementScreen({super.key});
@@ -232,6 +234,16 @@ class UserManagementScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.location_on_outlined),
+            tooltip: 'Live Staff Tracking',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.person_add_alt_1),
             tooltip: 'Add Staff Member',
             onPressed: () => _showAddOrEditUserDialog(context),
@@ -402,11 +414,44 @@ class UserManagementScreen extends StatelessWidget {
                                   ),
                                 ),
                               ],
+                              if (user.hasLocation) ...[
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.location_on,
+                                      size: 13,
+                                      color: user.isOnline ? const Color(0xFF15803D) : Colors.blueGrey,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        '${user.locationLandmark ?? "GPS Active"} • ${user.locationTimeAgo}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: user.isOnline ? const Color(0xFF15803D) : Colors.blueGrey,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
 
-                        // Edit Button
+                        // Action Buttons: Map & Edit
+                        if (user.hasLocation)
+                          IconButton(
+                            icon: const Icon(Icons.map_outlined, color: Color(0xFF059669)),
+                            tooltip: 'Track on Google Maps',
+                            onPressed: () async {
+                              final uri = Uri.parse(user.mapsUrl);
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            },
+                          ),
                         IconButton(
                           icon: const Icon(Icons.edit_outlined, color: AppTheme.secondary),
                           tooltip: 'Edit details & assigned routes',

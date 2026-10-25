@@ -15,6 +15,10 @@ class UserModel {
   final bool isActive;
   final DateTime createdAt;
   final DateTime? lastLoginAt;
+  final double? latitude;
+  final double? longitude;
+  final DateTime? locationUpdatedAt;
+  final String? locationLandmark;
 
   UserModel({
     required this.id,
@@ -26,6 +30,10 @@ class UserModel {
     this.isActive = true,
     DateTime? createdAt,
     this.lastLoginAt,
+    this.latitude,
+    this.longitude,
+    this.locationUpdatedAt,
+    this.locationLandmark,
   }) : createdAt = createdAt ?? DateTime.now();
 
   String get roleDisplayName {
@@ -46,12 +54,39 @@ class UserModel {
   bool get isSalesman => role == UserRole.salesman;
   bool get isDriver => role == UserRole.driver;
 
+  bool get hasLocation => latitude != null && longitude != null;
+
+  String get mapsUrl => hasLocation ? 'https://maps.google.com/?q=$latitude,$longitude' : '';
+
+  bool get isOnline {
+    if (locationUpdatedAt == null) return false;
+    return DateTime.now().difference(locationUpdatedAt!).inMinutes < 15;
+  }
+
+  bool get isLocationFresh {
+    if (locationUpdatedAt == null) return false;
+    return DateTime.now().difference(locationUpdatedAt!).inHours < 4;
+  }
+
+  String get locationTimeAgo {
+    if (locationUpdatedAt == null) return 'Never';
+    final diff = DateTime.now().difference(locationUpdatedAt!);
+    if (diff.inSeconds < 60) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
   /// Returns clean password without embedded metadata
   String get actualPassword {
-    if (password.contains(':::routes=')) {
-      return password.split(':::routes=').first;
+    var p = password;
+    if (p.contains(':::routes=')) {
+      p = p.split(':::routes=').first;
     }
-    return password;
+    if (p.contains(':::loc=')) {
+      p = p.split(':::loc=').first;
+    }
+    return p;
   }
 
   /// Normalizes phone number into 10 standard digits, or preserves alphanumeric usernames like 'user1'
@@ -77,6 +112,10 @@ class UserModel {
     bool? isActive,
     DateTime? createdAt,
     DateTime? lastLoginAt,
+    double? latitude,
+    double? longitude,
+    DateTime? locationUpdatedAt,
+    String? locationLandmark,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -88,14 +127,24 @@ class UserModel {
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      locationUpdatedAt: locationUpdatedAt ?? this.locationUpdatedAt,
+      locationLandmark: locationLandmark ?? this.locationLandmark,
     );
   }
 
   Map<String, dynamic> toJson() {
     final cleanPass = actualPassword;
-    final storedPassword = assignedRouteIds.isNotEmpty
-        ? '$cleanPass:::routes=${assignedRouteIds.join(',')}'
-        : cleanPass;
+    var storedPassword = cleanPass;
+    if (assignedRouteIds.isNotEmpty) {
+      storedPassword += ':::routes=${assignedRouteIds.join(',')}';
+    }
+    if (hasLocation) {
+      final timeStr = (locationUpdatedAt ?? DateTime.now()).toIso8601String();
+      final cleanLandmark = (locationLandmark ?? '').replaceAll(':::', '').replaceAll(',', ';');
+      storedPassword += ':::loc=$latitude,$longitude,$timeStr,$cleanLandmark';
+    }
 
     return {
       'id': id,
@@ -129,7 +178,8 @@ class UserModel {
       final parts = rawPassword.split(':::routes=');
       parsedPassword = parts[0];
       if (parts.length > 1 && parts[1].isNotEmpty) {
-        assignedRoutes = parts[1]
+        final routePart = parts[1].split(':::loc=').first;
+        assignedRoutes = routePart
             .split(',')
             .map((s) => s.trim())
             .where((s) => s.isNotEmpty)
@@ -140,6 +190,38 @@ class UserModel {
       assignedRoutes = (json['assignedRouteIds'] as List)
           .map((e) => e.toString())
           .toList();
+    }
+
+    double? lat;
+    double? lng;
+    DateTime? locTime;
+    String? landmark;
+
+    if (rawPassword.contains(':::loc=')) {
+      try {
+        final locPart = rawPassword.split(':::loc=').last;
+        final pieces = locPart.split(',');
+        if (pieces.length >= 2) {
+          lat = double.tryParse(pieces[0].trim());
+          lng = double.tryParse(pieces[1].trim());
+        }
+        if (pieces.length >= 3 && pieces[2].trim().isNotEmpty) {
+          locTime = DateTime.tryParse(pieces[2].trim());
+        }
+        if (pieces.length >= 4 && pieces[3].trim().isNotEmpty) {
+          landmark = pieces.sublist(3).join(',').replaceAll(';', ',').trim();
+        }
+      } catch (_) {}
+    }
+
+    if (json['latitude'] != null) {
+      lat = double.tryParse(json['latitude'].toString());
+    }
+    if (json['longitude'] != null) {
+      lng = double.tryParse(json['longitude'].toString());
+    }
+    if (json['locationLandmark'] != null) {
+      landmark = json['locationLandmark'].toString();
     }
 
     return UserModel(
@@ -156,6 +238,10 @@ class UserModel {
       lastLoginAt: json['lastLoginAt'] != null
           ? DateTime.tryParse(json['lastLoginAt'] as String)
           : null,
+      latitude: lat,
+      longitude: lng,
+      locationUpdatedAt: locTime,
+      locationLandmark: landmark,
     );
   }
 
