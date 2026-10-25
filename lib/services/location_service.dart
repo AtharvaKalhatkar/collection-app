@@ -22,14 +22,24 @@ class LocationService {
         return null;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.best,
+            timeLimit: Duration(seconds: 12),
+          ),
+        );
+      } catch (_) {
+        position = await Geolocator.getLastKnownPosition();
+      }
 
-      return (latitude: position.latitude, longitude: position.longitude);
+      position ??= await Geolocator.getLastKnownPosition();
+
+      if (position != null) {
+        return (latitude: position.latitude, longitude: position.longitude);
+      }
+      return null;
     } catch (_) {
       return null;
     }

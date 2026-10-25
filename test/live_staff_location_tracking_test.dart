@@ -107,6 +107,29 @@ void main() {
         testShops,
       );
       expect(landmarkClose, contains('Star Mart'));
+
+      // Test shop exclusion
+      final dummyTestShops = [
+        ShopModel(
+          id: 'test_shop_1',
+          name: 'Test2',
+          routeId: 'r_test',
+          routeName: 'TEST',
+          mobileNumber: '',
+          address: '',
+          latitude: 18.5861,
+          longitude: 74.0008,
+        ),
+      ];
+
+      final testShopResult = LocationTrackingService.findNearestLandmark(
+        18.5861,
+        74.0008,
+        dummyTestShops,
+      );
+      // Must NOT contain Test2, should resolve to real area Wagholi, Pune
+      expect(testShopResult, isNot(contains('Test2')));
+      expect(testShopResult, equals('Wagholi, Pune'));
     });
   });
 }
