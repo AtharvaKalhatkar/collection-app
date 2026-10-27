@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class AppTheme {
   // Executive Corporate Palette
@@ -83,6 +84,11 @@ class AppTheme {
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
         titleTextStyle: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w700,
