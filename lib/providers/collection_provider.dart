@@ -49,6 +49,8 @@ class CollectionProvider extends ChangeNotifier {
 
   StreamSubscription<List<PendingBillModel>>? _pendingBillsSubscription;
   StreamSubscription<List<CollectionModel>>? _collectionsSubscription;
+  StreamSubscription<List<ShopModel>>? _shopsSubscription;
+  StreamSubscription<List<RouteModel>>? _routesSubscription;
   Timer? _autoSyncTimer;
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -62,6 +64,8 @@ class CollectionProvider extends ChangeNotifier {
   List<String> _employees = [];
   Set<String> _locallyDeletedBillIds = {};
   Set<String> _locallyDeletedCollectionIds = {};
+  Set<String> _locallyDeletedShopIds = {};
+  Set<String> _locallyDeletedRouteIds = {};
   List<SalesOrderModel> _salesOrders = [];
   List<CatalogProduct> _customProducts = [];
   List<String> _businesses = ['Purva Enterprises', 'Manas Sales'];
@@ -220,9 +224,17 @@ class CollectionProvider extends ChangeNotifier {
       _employees = await _storage.loadEmployees();
       _locallyDeletedBillIds = await _storage.loadDeletedBillIds();
       _locallyDeletedCollectionIds = await _storage.loadDeletedCollectionIds();
+      _locallyDeletedShopIds = await _storage.loadDeletedShopIds();
+      _locallyDeletedRouteIds = await _storage.loadDeletedRouteIds();
 
       if (_locallyDeletedCollectionIds.isNotEmpty) {
         _collections.removeWhere((c) => _locallyDeletedCollectionIds.contains(c.id));
+      }
+      if (_locallyDeletedShopIds.isNotEmpty) {
+        _shops.removeWhere((s) => _locallyDeletedShopIds.contains(s.id));
+      }
+      if (_locallyDeletedRouteIds.isNotEmpty) {
+        _routes.removeWhere((r) => _locallyDeletedRouteIds.contains(r.id));
       }
 
       // Auto-purge any legacy sample dummy records (col-1..col-6, pb-1..pb-4, shop-*)
@@ -384,8 +396,8 @@ class CollectionProvider extends ChangeNotifier {
 
   void _startAutoSyncTimer() {
     _autoSyncTimer?.cancel();
-    // Intelligent 60-second background sync interval to prevent UI flickering, CPU freezing, and battery drain
-    _autoSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+    // Rapid 20-second background sync interval to keep all devices tightly synchronized
+    _autoSyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       syncAllWithCloud(notify: false);
     });
   }
@@ -472,6 +484,99 @@ class CollectionProvider extends ChangeNotifier {
         });
       }
     }
+
+    if (_shopsSubscription == null) {
+      final shopStream = _supabase.streamShops();
+      if (shopStream != null) {
+        _shopsSubscription = shopStream.listen((cloudShops) async {
+          final cleanCloudShops = <ShopModel>[];
+          for (final s in cloudShops) {
+            if (_isDummyShop(s)) {
+              _supabase.deleteShop(s.id);
+            } else if (!_locallyDeletedShopIds.contains(s.id)) {
+              cleanCloudShops.add(s);
+            }
+          }
+          final newShops = _deduplicateShops(cleanCloudShops);
+
+          bool changed = newShops.length != _shops.length;
+          if (!changed) {
+            final shopMap = {for (final s in newShops) s.id: s};
+            for (final os in _shops) {
+              final ns = shopMap[os.id];
+              if (ns == null ||
+                  ns.name != os.name ||
+                  ns.routeId != os.routeId ||
+                  ns.routeName != os.routeName ||
+                  ns.mobileNumber != os.mobileNumber ||
+                  ns.address != os.address ||
+                  ns.ownerName != os.ownerName ||
+                  ns.locationUrl != os.locationUrl ||
+                  ns.latitude != os.latitude ||
+                  ns.longitude != os.longitude) {
+                changed = true;
+                break;
+              }
+            }
+          }
+
+          if (changed) {
+            _shops = newShops;
+            for (final s in _shops) {
+              for (int i = 0; i < _collections.length; i++) {
+                if (_collections[i].shopId == s.id && _collections[i].shopName != s.name) {
+                  _collections[i] = _collections[i].copyWith(shopName: s.name, routeName: s.routeName);
+                }
+              }
+              for (int i = 0; i < _pendingBills.length; i++) {
+                if (_pendingBills[i].shopId == s.id && _pendingBills[i].shopName != s.name) {
+                  _pendingBills[i] = _pendingBills[i].copyWith(shopName: s.name, routeName: s.routeName);
+                }
+              }
+            }
+            _invalidateCaches();
+            notifyListeners();
+            await _storage.saveShops(_shops);
+          }
+        }, onError: (e) {
+          debugPrint('Realtime shops error: $e');
+        });
+      }
+    }
+
+    if (_routesSubscription == null) {
+      final routeStream = _supabase.streamRoutes();
+      if (routeStream != null) {
+        _routesSubscription = routeStream.listen((cloudRoutes) async {
+          final cleanRoutes = cloudRoutes
+              .where((r) => !_locallyDeletedRouteIds.contains(r.id))
+              .toList()
+            ..sort((a, b) => a.priority.compareTo(b.priority));
+
+          bool changed = cleanRoutes.length != _routes.length;
+          if (!changed) {
+            for (int i = 0; i < cleanRoutes.length; i++) {
+              if (cleanRoutes[i].id != _routes[i].id ||
+                  cleanRoutes[i].name != _routes[i].name ||
+                  cleanRoutes[i].priority != _routes[i].priority ||
+                  cleanRoutes[i].description != _routes[i].description) {
+                changed = true;
+                break;
+              }
+            }
+          }
+
+          if (changed) {
+            _routes = cleanRoutes;
+            _invalidateCaches();
+            notifyListeners();
+            await _storage.saveRoutes(_routes);
+          }
+        }, onError: (e) {
+          debugPrint('Realtime routes error: $e');
+        });
+      }
+    }
   }
 
   Future<bool> syncAllWithCloud({bool notify = true}) async {
@@ -555,22 +660,90 @@ class CollectionProvider extends ChangeNotifier {
         for (final s in cloudShops) {
           if (_isDummyShop(s)) {
             _supabase.deleteShop(s.id);
-          } else {
+          } else if (!_locallyDeletedShopIds.contains(s.id)) {
             cleanCloudShops.add(s);
           }
         }
-        final dedup = _deduplicateShops(cleanCloudShops);
-        if (dedup.length != _shops.length) {
+
+        final shopMap = <String, ShopModel>{};
+        for (final s in cleanCloudShops) {
+          shopMap[s.id] = s;
+        }
+        final unsavedLocalShops = <ShopModel>[];
+        for (final s in _shops) {
+          if (!_locallyDeletedShopIds.contains(s.id) && !shopMap.containsKey(s.id)) {
+            shopMap[s.id] = s;
+            unsavedLocalShops.add(s);
+          }
+        }
+
+        final dedup = _deduplicateShops(shopMap.values.toList());
+        bool shopsChanged = dedup.length != _shops.length;
+        if (!shopsChanged) {
+          final localMap = {for (final s in _shops) s.id: s};
+          for (final s in dedup) {
+            final loc = localMap[s.id];
+            if (loc == null ||
+                loc.name != s.name ||
+                loc.routeId != s.routeId ||
+                loc.routeName != s.routeName ||
+                loc.mobileNumber != s.mobileNumber ||
+                loc.address != s.address ||
+                loc.ownerName != s.ownerName ||
+                loc.locationUrl != s.locationUrl ||
+                loc.latitude != s.latitude ||
+                loc.longitude != s.longitude) {
+              shopsChanged = true;
+              break;
+            }
+          }
+        }
+
+        if (shopsChanged) {
           _shops = dedup;
+          for (final s in _shops) {
+            for (int i = 0; i < _collections.length; i++) {
+              if (_collections[i].shopId == s.id && _collections[i].shopName != s.name) {
+                _collections[i] = _collections[i].copyWith(shopName: s.name, routeName: s.routeName);
+              }
+            }
+            for (int i = 0; i < _pendingBills.length; i++) {
+              if (_pendingBills[i].shopId == s.id && _pendingBills[i].shopName != s.name) {
+                _pendingBills[i] = _pendingBills[i].copyWith(shopName: s.name, routeName: s.routeName);
+              }
+            }
+          }
           await _storage.saveShops(_shops);
           hasDataChanged = true;
+        }
+
+        for (final uls in unsavedLocalShops) {
+          await _supabase.saveShop(uls);
         }
       }
 
       final cloudRoutes = await _supabase.fetchRoutes();
       if (cloudRoutes.isNotEmpty) {
-        if (cloudRoutes.length != _routes.length) {
-          _routes = cloudRoutes..sort((a, b) => a.priority.compareTo(b.priority));
+        final cleanRoutes = cloudRoutes
+            .where((r) => !_locallyDeletedRouteIds.contains(r.id))
+            .toList()
+          ..sort((a, b) => a.priority.compareTo(b.priority));
+
+        bool routesChanged = cleanRoutes.length != _routes.length;
+        if (!routesChanged) {
+          for (int i = 0; i < cleanRoutes.length; i++) {
+            if (cleanRoutes[i].id != _routes[i].id ||
+                cleanRoutes[i].name != _routes[i].name ||
+                cleanRoutes[i].priority != _routes[i].priority ||
+                cleanRoutes[i].description != _routes[i].description) {
+              routesChanged = true;
+              break;
+            }
+          }
+        }
+
+        if (routesChanged) {
+          _routes = cleanRoutes;
           await _storage.saveRoutes(_routes);
           hasDataChanged = true;
         }
@@ -591,9 +764,30 @@ class CollectionProvider extends ChangeNotifier {
         for (final id in _locallyDeletedCollectionIds.toList()) {
           try {
             await _supabase.deleteCollection(id);
+            _locallyDeletedCollectionIds.remove(id);
           } catch (_) {}
         }
         await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+      }
+
+      if (_locallyDeletedShopIds.isNotEmpty) {
+        for (final id in _locallyDeletedShopIds.toList()) {
+          try {
+            await _supabase.deleteShop(id);
+            _locallyDeletedShopIds.remove(id);
+          } catch (_) {}
+        }
+        await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
+      }
+
+      if (_locallyDeletedRouteIds.isNotEmpty) {
+        for (final id in _locallyDeletedRouteIds.toList()) {
+          try {
+            await _supabase.deleteRoute(id);
+            _locallyDeletedRouteIds.remove(id);
+          } catch (_) {}
+        }
+        await _storage.saveDeletedRouteIds(_locallyDeletedRouteIds);
       }
 
       // 5. Ensure Realtime subscriptions are active
@@ -1192,12 +1386,13 @@ class CollectionProvider extends ChangeNotifier {
 
   Future<void> deleteRoute(String routeId) async {
     _routes.removeWhere((r) => r.id == routeId);
+    _locallyDeletedRouteIds.add(routeId);
+    await _storage.saveDeletedRouteIds(_locallyDeletedRouteIds);
     await _storage.saveRoutes(_routes);
     notifyListeners();
-    if (_supabase.isInitialized) {
-      _supabase.deleteRoute(routeId);
-    }
-    
+    try {
+      await _supabase.deleteRoute(routeId);
+    } catch (_) {}
   }
 
   // --- Shop Operations ---
@@ -1226,10 +1421,14 @@ class CollectionProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
     _shops.insert(0, newShop);
+    _locallyDeletedShopIds.remove(newShop.id);
     await _storage.saveShops(_shops);
+    await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
     notifyListeners();
-    if (_supabase.isInitialized) {
-      _supabase.saveShop(newShop);
+    try {
+      await _supabase.saveShop(newShop);
+    } catch (e) {
+      debugPrint('Cloud saveShop notice: $e');
     }
     
     return newShop;
@@ -1251,8 +1450,10 @@ class CollectionProvider extends ChangeNotifier {
       _shops[idx] = updated;
       await _storage.saveShops(_shops);
       notifyListeners();
-      if (_supabase.isInitialized) {
-        _supabase.saveShop(updated);
+      try {
+        await _supabase.saveShop(updated);
+      } catch (e) {
+        debugPrint('Cloud saveShop location notice: $e');
       }
       
       return updated;
@@ -1267,8 +1468,10 @@ class CollectionProvider extends ChangeNotifier {
       _shops[idx] = updated;
       await _storage.saveShops(_shops);
       notifyListeners();
-      if (_supabase.isInitialized) {
-        _supabase.saveShop(updated);
+      try {
+        await _supabase.saveShop(updated);
+      } catch (e) {
+        debugPrint('Cloud deleteShopLocation notice: $e');
       }
       
       return updated;
@@ -1290,27 +1493,42 @@ class CollectionProvider extends ChangeNotifier {
           );
         }
       }
+      // Also update shopName in pending bills for this shop
+      for (int i = 0; i < _pendingBills.length; i++) {
+        if (_pendingBills[i].shopId == updatedShop.id) {
+          _pendingBills[i] = _pendingBills[i].copyWith(
+            shopName: updatedShop.name,
+            routeId: updatedShop.routeId,
+            routeName: updatedShop.routeName,
+          );
+        }
+      }
       await _storage.saveShops(_shops);
       try {
         await _storage.saveCollections(_collections);
+        await _storage.savePendingBills(_pendingBills);
       } catch (_) {}
       notifyListeners();
-      if (_supabase.isInitialized) {
-        _supabase.saveShop(updatedShop);
+      try {
+        await _supabase.saveShop(updatedShop);
+      } catch (e) {
+        debugPrint('Cloud saveShop notice: $e');
       }
-      
     }
     return updatedShop;
   }
 
   Future<void> deleteShop(String shopId) async {
     _shops.removeWhere((s) => s.id == shopId);
+    _locallyDeletedShopIds.add(shopId);
+    await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
     await _storage.saveShops(_shops);
     notifyListeners();
-    if (_supabase.isInitialized) {
-      _supabase.deleteShop(shopId);
+    try {
+      await _supabase.deleteShop(shopId);
+    } catch (e) {
+      debugPrint('Cloud deleteShop notice: $e');
     }
-    
   }
 
   List<ShopModel> getShopsForRoute(String routeId) {
@@ -1743,6 +1961,8 @@ class CollectionProvider extends ChangeNotifier {
     _autoSyncTimer?.cancel();
     _pendingBillsSubscription?.cancel();
     _collectionsSubscription?.cancel();
+    _shopsSubscription?.cancel();
+    _routesSubscription?.cancel();
     super.dispose();
   }
 

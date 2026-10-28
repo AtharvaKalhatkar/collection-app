@@ -35,6 +35,7 @@ migrate_working_dir/
 
 # Symbolication related
 app.*.symbols
+*.apk
 
 # Obfuscation related
 app.*.map.json

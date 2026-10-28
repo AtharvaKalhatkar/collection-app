@@ -9,7 +9,6 @@ import '../utils/theme.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
-import 'vehicle_collection_screen.dart';
 import 'user_management_screen.dart';
 import 'live_staff_locations_screen.dart';
 import '../services/bill_ocr_service.dart';
@@ -177,139 +176,6 @@ class ProfileScreen extends StatelessWidget {
         );
       }
     }
-  }
-
-  void _showManageVehiclesDialog(BuildContext context, CollectionProvider provider) {
-    final newVehicleCtrl = TextEditingController();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final vehicles = provider.vehicles;
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 22),
-                          SizedBox(width: 8),
-                          Text(
-                            'Manage Delivery Vehicles',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    'Add or delete vehicles for Daily Vehicle Collection & fuel logging.',
-                    style: TextStyle(fontSize: 12, color: Colors.blueGrey),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 180),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: vehicles.isEmpty
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: Text('No vehicles added yet.'),
-                            ),
-                          )
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: vehicles.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1),
-                            itemBuilder: (_, idx) {
-                              final v = vehicles[idx];
-                              return ListTile(
-                                dense: true,
-                                leading: const Icon(Icons.directions_car_filled_outlined,
-                                    size: 20, color: Color(0xFF0284C7)),
-                                title: Text(
-                                  v,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
-                                  tooltip: 'Delete Vehicle',
-                                  onPressed: () async {
-                                    await provider.deleteVehicle(v);
-                                    setModalState(() {});
-                                  },
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: newVehicleCtrl,
-                          textCapitalization: TextCapitalization.characters,
-                          decoration: InputDecoration(
-                            labelText: 'New Vehicle Number',
-                            hintText: 'e.g. MH 14 XX 1234',
-                            isDense: true,
-                            prefixIcon: const Icon(Icons.add_road_rounded, size: 18),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('Add'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0284C7),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () async {
-                          final text = newVehicleCtrl.text.trim();
-                          if (text.isNotEmpty) {
-                            await provider.addVehicle(text);
-                            newVehicleCtrl.clear();
-                            setModalState(() {});
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   void _showManageEmployeesDialog(BuildContext context, CollectionProvider provider) {
@@ -1127,60 +993,6 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0284C7).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 20),
-              ),
-              title: const Text('Daily Vehicle Collection', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: const Text('Vehicle cash, fuel expenses & cash counter handover', style: TextStyle(fontSize: 11.5)),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => VehicleCollectionScreen(
-                      initialDate: provider.selectedDate,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const Divider(height: 1),
-
-          // Manage Delivery Vehicles
-          Material(
-            color: Colors.transparent,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0284C7).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.directions_car_filled_outlined, color: Color(0xFF0284C7), size: 20),
-              ),
-              title: const Text('Manage Vehicles', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: Text('${provider.vehicles.length} delivery vans registered • Add or remove', style: const TextStyle(fontSize: 11.5)),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-              onTap: () => _showManageVehiclesDialog(context, provider),
-            ),
-          ),
-          const Divider(height: 1),
 
           // Manage Employees / Staff
           Material(

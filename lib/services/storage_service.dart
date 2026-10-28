@@ -22,6 +22,8 @@ class StorageService {
   static const String _keyInitialized = 'app_sample_data_initialized_v1';
   static const String _keyDeletedBillIds = 'deleted_bill_ids_v1';
   static const String _keyDeletedCollectionIds = 'deleted_collection_ids_v1';
+  static const String _keyDeletedShopIds = 'deleted_shop_ids_v1';
+  static const String _keyDeletedRouteIds = 'deleted_route_ids_v1';
   static const String _keyCashHandovers = 'app_cash_handovers_v1';
   static const String _keyVehicleCollections = 'app_vehicle_collections_v1';
   static const String _keyVehicles = 'app_managed_vehicles_v1';
@@ -214,6 +216,30 @@ class StorageService {
   Future<void> saveDeletedCollectionIds(Set<String> ids) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_keyDeletedCollectionIds, ids.toList());
+  }
+
+  // --- Deleted Shop IDs Tracking ---
+  Future<Set<String>> loadDeletedShopIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_keyDeletedShopIds) ?? [];
+    return list.toSet();
+  }
+
+  Future<void> saveDeletedShopIds(Set<String> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyDeletedShopIds, ids.toList());
+  }
+
+  // --- Deleted Route IDs Tracking ---
+  Future<Set<String>> loadDeletedRouteIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_keyDeletedRouteIds) ?? [];
+    return list.toSet();
+  }
+
+  Future<void> saveDeletedRouteIds(Set<String> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyDeletedRouteIds, ids.toList());
   }
 
   // --- Sales Orders ---

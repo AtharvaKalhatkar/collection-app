@@ -95,6 +95,23 @@ class SupabaseService {
     }
   }
 
+  Stream<List<RouteModel>>? streamRoutes() {
+    if (!_isInitialized) return null;
+
+    try {
+      return client
+          .from('routes')
+          .stream(primaryKey: ['id'])
+          .order('priority', ascending: true)
+          .map((rows) => rows
+              .map((r) => RouteModel.fromJson(Map<String, dynamic>.from(r)))
+              .toList());
+    } catch (e) {
+      debugPrint('Error streaming routes from Supabase: $e');
+      return null;
+    }
+  }
+
   // --- Shops ---
   Future<List<ShopModel>> fetchShops() async {
     if (!_isInitialized) await init();
@@ -138,6 +155,23 @@ class SupabaseService {
       _lastError = e.toString();
       debugPrint('Error deleting shop from Supabase: $e');
       return false;
+    }
+  }
+
+  Stream<List<ShopModel>>? streamShops() {
+    if (!_isInitialized) return null;
+
+    try {
+      return client
+          .from('shops')
+          .stream(primaryKey: ['id'])
+          .order('name', ascending: true)
+          .map((rows) => rows
+              .map((r) => ShopModel.fromJson(Map<String, dynamic>.from(r)))
+              .toList());
+    } catch (e) {
+      debugPrint('Error streaming shops from Supabase: $e');
+      return null;
     }
   }
 

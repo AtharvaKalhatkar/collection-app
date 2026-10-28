@@ -12,7 +12,6 @@ import 'pending_bills_list_screen.dart';
 import 'make_collection_screen.dart';
 import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
-import 'vehicle_collection_screen.dart';
 import 'placeholder_screen.dart';
 import 'collection_details_dialog.dart';
 import 'add_shop_screen.dart';
@@ -192,31 +191,6 @@ class HomeDashboardScreen extends StatelessWidget {
                             builder: (_) => CashHandoverScreen(
                               initialDate: provider.selectedDate,
                               initialBusiness: provider.filterBusiness,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.local_shipping_rounded, size: 16),
-                      label: const Text('Daily Vehicle Collection'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0284C7),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 11),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => VehicleCollectionScreen(
-                              initialDate: provider.selectedDate,
                             ),
                           ),
                         );
@@ -464,7 +438,7 @@ class HomeDashboardScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row 1: Header + Live Map Button + Manage Staff
+          // Row 1: Header (Tap to view Staff Locations) + Manage Staff
           Row(
             children: [
               Container(
@@ -477,69 +451,54 @@ class HomeDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Row(
-                  children: [
-                    const Text(
-                      'Live Staff Tracking',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: activeCount > 0 ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        activeCount > 0 ? '$activeCount Active' : 'Off duty',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: activeCount > 0 ? const Color(0xFF16A34A) : Colors.blueGrey,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
-                  );
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Row(
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.map_outlined, color: Colors.white, size: 13),
-                      SizedBox(width: 4),
-                      Text(
-                        'Live Map',
-                        style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
+                      const Flexible(
+                        child: Text(
+                          'Live Staff Tracking',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: activeCount > 0 ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          activeCount > 0 ? '$activeCount Active' : 'Off duty',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: activeCount > 0 ? const Color(0xFF16A34A) : Colors.blueGrey,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
               IconButton(
-                icon: const Icon(Icons.manage_accounts_outlined, color: Colors.blueGrey, size: 18),
+                icon: const Icon(Icons.manage_accounts_outlined, color: Colors.blueGrey, size: 20),
                 tooltip: 'Manage Staff',
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -880,29 +839,39 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.send_rounded, size: 20),
-            tooltip: 'Send Bank Details',
-            onPressed: () => FirmDetailsHelper.showQuickShareModal(
-              context,
-              defaultFirm: provider.filterBusiness,
+          if (MediaQuery.of(context).size.width >= 480) ...[
+            IconButton(
+              icon: const Icon(Icons.send_rounded, size: 20),
+              tooltip: 'Send Bank Details',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => FirmDetailsHelper.showQuickShareModal(
+                context,
+                defaultFirm: provider.filterBusiness,
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.qr_code_2_rounded, size: 22),
-            tooltip: 'Payment QR',
-            onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
-          ),
+            IconButton(
+              icon: const Icon(Icons.qr_code_2_rounded, size: 22),
+              tooltip: 'Payment QR',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.calendar_month_outlined, size: 20),
             tooltip: 'Select Date',
+            visualDensity: VisualDensity.compact,
             onPressed: () => _pickDate(context),
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 20),
             tooltip: 'More Options',
             onSelected: (val) async {
-              if (val == 'bank_info') {
+              if (val == 'live_map') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+                );
+              } else if (val == 'bank_info') {
                 FirmDetailsHelper.showQuickShareModal(
                   context,
                   defaultFirm: provider.filterBusiness,
@@ -945,6 +914,17 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
+              if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true)
+                const PopupMenuItem(
+                  value: 'live_map',
+                  child: Row(
+                    children: [
+                      Icon(Icons.map_rounded, size: 18, color: Color(0xFF0F172A)),
+                      SizedBox(width: 10),
+                      Text('Live Staff Map'),
+                    ],
+                  ),
+                ),
               const PopupMenuItem(
                 value: 'bank_info',
                 child: Row(
@@ -1178,12 +1158,15 @@ class HomeDashboardScreen extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                CurrencyFormatter.format(purvaTotal + manasTotal),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: provider.filterBusiness == null ? Colors.white70 : Colors.blueGrey.shade600,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  CurrencyFormatter.format(purvaTotal + manasTotal),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: provider.filterBusiness == null ? Colors.white70 : Colors.blueGrey.shade600,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1225,14 +1208,17 @@ class HomeDashboardScreen extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                CurrencyFormatter.format(purvaTotal),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: provider.filterBusiness == 'Purva Enterprises'
-                                      ? Colors.white70
-                                      : AppTheme.purvaText,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  CurrencyFormatter.format(purvaTotal),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: provider.filterBusiness == 'Purva Enterprises'
+                                        ? Colors.white70
+                                        : AppTheme.purvaText,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1274,14 +1260,17 @@ class HomeDashboardScreen extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                CurrencyFormatter.format(manasTotal),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: provider.filterBusiness == 'Manas Sales'
-                                      ? Colors.white70
-                                      : AppTheme.manasText,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  CurrencyFormatter.format(manasTotal),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: provider.filterBusiness == 'Manas Sales'
+                                        ? Colors.white70
+                                        : AppTheme.manasText,
+                                  ),
                                 ),
                               ),
                             ],
@@ -2140,87 +2129,6 @@ class HomeDashboardScreen extends StatelessWidget {
                               ),
                               SizedBox(width: 2),
                               Icon(Icons.chevron_right, size: 14, color: Color(0xFF059669)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              // Vehicle Collection Option Card
-              Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => VehicleCollectionScreen(
-                          initialDate: provider.selectedDate,
-                        ),
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 22),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Daily Vehicle Collection',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Vehicle cash, fuel expenses & cash handover',
-                                style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0284C7).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'ENTER',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0284C7),
-                                ),
-                              ),
-                              SizedBox(width: 2),
-                              Icon(Icons.chevron_right, size: 14, color: Color(0xFF0284C7)),
                             ],
                           ),
                         ),
