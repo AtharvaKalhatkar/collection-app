@@ -7,6 +7,7 @@ import '../models/pending_bill_model.dart';
 import '../models/order_model.dart';
 import '../models/cash_handover_model.dart';
 import '../models/vehicle_collection_model.dart';
+import '../models/location_timeline_entry.dart';
 
 class StorageService {
   static const String _keyRoutes = 'app_routes_v1';
@@ -28,6 +29,7 @@ class StorageService {
   static const String _keyVehicleCollections = 'app_vehicle_collections_v1';
   static const String _keyVehicles = 'app_managed_vehicles_v1';
   static const String _keyEmployees = 'app_managed_employees_v1';
+  static const String _keyLocationTimeline = 'app_location_timeline_v1';
 
   Future<bool> isFirstLaunch() async {
     final prefs = await SharedPreferences.getInstance();
@@ -350,6 +352,45 @@ class StorageService {
   Future<void> saveEmployees(List<String> list) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_keyEmployees, list);
+  }
+
+  // --- Location Timeline ---
+  Future<List<LocationTimelineEntry>> loadLocationTimeline() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_keyLocationTimeline) ?? [];
+    return rawList
+        .map((s) => LocationTimelineEntry.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> saveLocationTimeline(List<LocationTimelineEntry> timeline) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      // Keep most recent 500 entries locally to prevent excessive memory usage
+      final boundedList = timeline.length > 500 ? timeline.sublist(0, 500) : timeline;
+      final rawList = boundedList.map((e) => jsonEncode(e.toJson())).toList();
+      await prefs.setStringList(_keyLocationTimeline, rawList);
+    } catch (e) {
+      // ignore: avoid_print
+      print('LocalStorage location timeline save notice: $e');
+    }
+  }
+
+  Future<void> addLocationTimelineEntry(LocationTimelineEntry entry) async {
+    final existing = await loadLocationTimeline();
+    // Prevent duplicate entries within 60 seconds for same user if location unchanged
+    if (existing.isNotEmpty) {
+      final last = existing.first;
+      if (last.userId == entry.userId &&
+          last.eventType == entry.eventType &&
+          entry.timestamp.difference(last.timestamp).inSeconds.abs() < 60 &&
+          (last.latitude - entry.latitude).abs() < 0.0001 &&
+          (last.longitude - entry.longitude).abs() < 0.0001) {
+        return;
+      }
+    }
+    existing.insert(0, entry);
+    await saveLocationTimeline(existing);
   }
 
   Future<void> clearAll() async {

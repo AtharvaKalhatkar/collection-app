@@ -8,6 +8,7 @@ import '../utils/theme.dart';
 import 'home_dashboard_screen.dart';
 import 'collections_list_screen.dart';
 import 'routes_shops_screen.dart';
+import 'live_staff_locations_screen.dart';
 import 'profile_screen.dart';
 import 'driver_dashboard_screen.dart';
 
@@ -23,24 +24,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   DateTime? _lastBackPressTime;
   String? _lastSyncedUserId;
   int _lastSyncedRouteCount = -1;
-
-  late final List<Widget> _screens = [
-    HomeDashboardScreen(
-      onNavigateToRoutes: () => _navigateToTab(2),
-      onNavigateToCollections: () => _navigateToTab(1),
-      onNavigateToOrders: null,
-      onNavigateToProfile: () => _navigateToTab(3),
-    ),
-    CollectionsListScreen(
-      onBackToOverview: () => _navigateToTab(0),
-    ),
-    RoutesShopsScreen(
-      onBackToOverview: () => _navigateToTab(0),
-    ),
-    ProfileScreen(
-      onBackToOverview: () => _navigateToTab(0),
-    ),
-  ];
 
   @override
   void initState() {
@@ -78,6 +61,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
+    final isSuperAdmin = user?.isSuperAdmin == true;
 
     if (user != null) {
       if (_lastSyncedUserId != user.id || _lastSyncedRouteCount != user.assignedRouteIds.length) {
@@ -93,6 +77,58 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     if (user?.isDriver == true) {
       return const DriverDashboardScreen();
     }
+
+    final screens = <Widget>[
+      HomeDashboardScreen(
+        onNavigateToRoutes: () => _navigateToTab(2),
+        onNavigateToCollections: () => _navigateToTab(1),
+        onNavigateToOrders: null,
+        onNavigateToProfile: () => _navigateToTab(isSuperAdmin ? 4 : 3),
+        onNavigateToTracking: isSuperAdmin ? () => _navigateToTab(3) : null,
+      ),
+      CollectionsListScreen(
+        onBackToOverview: () => _navigateToTab(0),
+      ),
+      RoutesShopsScreen(
+        onBackToOverview: () => _navigateToTab(0),
+      ),
+      if (isSuperAdmin)
+        const LiveStaffLocationsScreen(),
+      ProfileScreen(
+        onBackToOverview: () => _navigateToTab(0),
+      ),
+    ];
+
+    final destinations = <NavigationDestination>[
+      const NavigationDestination(
+        icon: Icon(Icons.analytics_outlined),
+        selectedIcon: Icon(Icons.analytics, color: AppTheme.primary),
+        label: 'Overview',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.receipt_long_outlined),
+        selectedIcon: Icon(Icons.receipt_long, color: AppTheme.primary),
+        label: 'Ledger',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.storefront_outlined),
+        selectedIcon: Icon(Icons.storefront, color: AppTheme.primary),
+        label: 'Outlets',
+      ),
+      if (isSuperAdmin)
+        const NavigationDestination(
+          icon: Icon(Icons.share_location_outlined),
+          selectedIcon: Icon(Icons.share_location, color: AppTheme.primary),
+          label: 'Tracking',
+        ),
+      const NavigationDestination(
+        icon: Icon(Icons.person_outline),
+        selectedIcon: Icon(Icons.person, color: AppTheme.primary),
+        label: 'Profile',
+      ),
+    ];
+
+    final clampedIndex = _currentIndex.clamp(0, screens.length - 1);
 
     return PopScope(
       canPop: false,
@@ -123,38 +159,16 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       },
       child: Scaffold(
         body: IndexedStack(
-          index: _currentIndex,
-          children: _screens,
+          index: clampedIndex,
+          children: screens,
         ),
         bottomNavigationBar: NavigationBar(
-          selectedIndex: _currentIndex,
+          selectedIndex: clampedIndex,
           onDestinationSelected: _navigateToTab,
           indicatorColor: AppTheme.primary.withValues(alpha: 0.1),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.analytics_outlined),
-              selectedIcon: Icon(Icons.analytics, color: AppTheme.primary),
-              label: 'Overview',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long, color: AppTheme.primary),
-              label: 'Ledger',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.storefront_outlined),
-              selectedIcon: Icon(Icons.storefront, color: AppTheme.primary),
-              label: 'Outlets',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person, color: AppTheme.primary),
-              label: 'Profile',
-            ),
-          ],
+          destinations: destinations,
         ),
       ),
     );
   }
 }
-

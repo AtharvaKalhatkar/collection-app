@@ -12,6 +12,7 @@ import '../models/order_model.dart';
 import '../models/cash_handover_model.dart';
 import '../models/vehicle_collection_model.dart';
 import '../models/user_model.dart';
+import '../models/location_timeline_entry.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
@@ -1569,6 +1570,39 @@ class CollectionProvider extends ChangeNotifier {
         await _supabase.saveCollection(finalCollection);
       } catch (e) {
         debugPrint('Supabase direct sync error: $e');
+      }
+    }();
+
+    // Record chronological visit & collection checkpoint in staff location timeline
+    () async {
+      try {
+        final shop = getShopById(finalCollection.shopId);
+        final lat = shop?.latitude ?? (_currentUser?.latitude ?? 18.5204);
+        final lng = shop?.longitude ?? (_currentUser?.longitude ?? 73.8567);
+        final landmark = shop != null
+            ? '${shop.name} (${shop.routeName})'
+            : finalCollection.shopName;
+
+        final tlEntry = LocationTimelineEntry(
+          id: 'tl_${_currentUser?.id ?? "staff"}_${DateTime.now().millisecondsSinceEpoch}',
+          userId: _currentUser?.id ?? 'staff',
+          staffName: finalCollection.salesmanName.isNotEmpty ? finalCollection.salesmanName : (_currentUser?.name ?? 'Akash'),
+          staffRole: _currentUser?.role.name ?? 'salesman',
+          timestamp: finalCollection.collectedAt,
+          latitude: lat,
+          longitude: lng,
+          landmark: landmark,
+          eventType: 'collection',
+          details: 'Collected ₹${finalCollection.collectedAmount.toStringAsFixed(0)} (${finalCollection.paymentMode.displayName}) for Bill #${finalCollection.billNumber}',
+          amount: finalCollection.collectedAmount,
+          shopName: finalCollection.shopName,
+          routeName: finalCollection.routeName,
+          billNumber: finalCollection.billNumber,
+        );
+        await _storage.addLocationTimelineEntry(tlEntry);
+        await _supabase.saveLocationTimelineEntry(tlEntry);
+      } catch (e) {
+        debugPrint('Timeline collection log notice: $e');
       }
     }();
     

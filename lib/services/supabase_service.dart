@@ -5,6 +5,7 @@ import '../models/shop_model.dart';
 import '../models/route_model.dart';
 import '../models/pending_bill_model.dart';
 import '../models/user_model.dart';
+import '../models/location_timeline_entry.dart';
 
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
@@ -359,7 +360,12 @@ class SupabaseService {
       final List<dynamic> data =
           await client.from('app_users').select().order('createdAt', ascending: true);
       return data
-          .where((row) => row['id'] != 'config_gemini_api')
+          .where((row) {
+            final id = row['id'] as String? ?? '';
+            return id != 'config_gemini_api' &&
+                !id.startsWith('tl_') &&
+                !id.startsWith('timeline_');
+          })
           .map((row) => UserModel.fromJson(Map<String, dynamic>.from(row as Map)))
           .toList();
     } catch (e) {
@@ -432,6 +438,67 @@ class SupabaseService {
       _lastError = e.toString();
       debugPrint('Error deleting user from Supabase: $e');
       return false;
+    }
+  }
+
+  // --- Location Timeline Breadcrumbs & Live Tracking ---
+  Future<bool> saveLocationTimelineEntry(LocationTimelineEntry entry) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').upsert(entry.toSupabaseUserRow());
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error saving location timeline entry to Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<List<LocationTimelineEntry>> fetchLocationTimeline({
+    DateTime? date,
+    String? staffName,
+  }) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return [];
+
+    try {
+      final List<dynamic> data = await client
+          .from('app_users')
+          .select()
+          .like('id', 'tl_%')
+          .order('createdAt', ascending: true);
+
+      final entries = data
+          .map((row) => LocationTimelineEntry.fromSupabaseUserRow(Map<String, dynamic>.from(row as Map)))
+          .whereType<LocationTimelineEntry>()
+          .toList();
+
+      return entries.where((e) {
+        if (date != null) {
+          final isSameDay = e.timestamp.year == date.year &&
+              e.timestamp.month == date.month &&
+              e.timestamp.day == date.day;
+          if (!isSameDay) return false;
+        }
+        if (staffName != null &&
+            staffName.isNotEmpty &&
+            staffName.toLowerCase() != 'all' &&
+            staffName.toLowerCase() != 'all staff') {
+          final s = staffName.toLowerCase();
+          final matchesStaff = e.staffName.toLowerCase() == s ||
+              e.userId.toLowerCase() == s ||
+              e.staffName.toLowerCase().contains(s) ||
+              s.contains(e.staffName.toLowerCase());
+          if (!matchesStaff) return false;
+        }
+        return true;
+      }).toList();
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error fetching location timeline from Supabase: $e');
+      return [];
     }
   }
 }

@@ -31,6 +31,7 @@ class HomeDashboardScreen extends StatelessWidget {
   final VoidCallback onNavigateToCollections;
   final VoidCallback? onNavigateToOrders;
   final VoidCallback? onNavigateToProfile;
+  final VoidCallback? onNavigateToTracking;
 
   const HomeDashboardScreen({
     super.key,
@@ -38,6 +39,7 @@ class HomeDashboardScreen extends StatelessWidget {
     required this.onNavigateToCollections,
     this.onNavigateToOrders,
     this.onNavigateToProfile,
+    this.onNavigateToTracking,
   });
 
   Color _getModeColor(PaymentMode mode) {
@@ -453,10 +455,14 @@ class HomeDashboardScreen extends StatelessWidget {
               Expanded(
                 child: InkWell(
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
-                    );
+                    if (onNavigateToTracking != null) {
+                      onNavigateToTracking!();
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+                      );
+                    }
                   },
                   borderRadius: BorderRadius.circular(6),
                   child: Row(
@@ -493,6 +499,44 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              InkWell(
+                onTap: () {
+                  if (onNavigateToTracking != null) {
+                    onNavigateToTracking!();
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LiveStaffLocationsScreen(initialTabIndex: 0),
+                      ),
+                    );
+                  }
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.route, color: Colors.white, size: 12),
+                      SizedBox(width: 3),
+                      Text(
+                        'Timeline',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.manage_accounts_outlined, color: Colors.blueGrey, size: 20),
                 tooltip: 'Manage Staff',
@@ -919,9 +963,9 @@ class HomeDashboardScreen extends StatelessWidget {
                   value: 'live_map',
                   child: Row(
                     children: [
-                      Icon(Icons.map_rounded, size: 18, color: Color(0xFF0F172A)),
+                      Icon(Icons.route_rounded, size: 18, color: Color(0xFF2563EB)),
                       SizedBox(width: 10),
-                      Text('Live Staff Map'),
+                      Text('Staff Timeline & Live GPS'),
                     ],
                   ),
                 ),

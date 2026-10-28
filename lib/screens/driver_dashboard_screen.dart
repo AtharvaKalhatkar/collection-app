@@ -50,6 +50,19 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   }
 
   void _openGoogleMaps(ShopModel shop) async {
+    final auth = context.read<AuthProvider>();
+    if (auth.currentUser != null) {
+      LocationTrackingService().recordCustomEvent(
+        user: auth.currentUser!,
+        eventType: 'deliveryVisit',
+        details: 'Driver delivery stop at ${shop.name}',
+        latitude: shop.latitude,
+        longitude: shop.longitude,
+        landmark: '${shop.name} (${shop.address})',
+        shopName: shop.name,
+        routeName: shop.routeName,
+      );
+    }
     final url = shop.mapsUrl ??
         'https://maps.google.com/?q=${Uri.encodeComponent('${shop.name}, ${shop.address}')}';
     try {

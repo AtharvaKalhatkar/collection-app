@@ -4,9 +4,13 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/shop_model.dart';
+import '../models/user_model.dart';
+import '../models/location_timeline_entry.dart';
 import '../providers/auth_provider.dart';
 import '../providers/collection_provider.dart';
 import 'location_service.dart';
+import 'storage_service.dart';
+import 'supabase_service.dart';
 
 class LocationTrackingService {
   static final LocationTrackingService _instance = LocationTrackingService._internal();
@@ -76,10 +80,72 @@ class LocationTrackingService {
       );
       _lastCapturedTime = DateTime.now();
       debugPrint('Live GPS tracked for ${user.name}: (${loc.latitude}, ${loc.longitude}) - $landmark');
+
+      // Record chronological timeline breadcrumb for staff (salesmen, drivers, etc.)
+      try {
+        final entry = LocationTimelineEntry(
+          id: 'tl_${user.id}_${DateTime.now().millisecondsSinceEpoch}',
+          userId: user.id,
+          staffName: user.name,
+          staffRole: user.role.name,
+          timestamp: DateTime.now(),
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          landmark: landmark,
+          eventType: 'gpsPing',
+          details: user.isDriver ? 'Transit on delivery beat' : 'Active on sales route',
+        );
+        await StorageService().addLocationTimelineEntry(entry);
+        SupabaseService().saveLocationTimelineEntry(entry);
+      } catch (err) {
+        debugPrint('Timeline recording notice: $err');
+      }
+
       return true;
     } catch (e) {
       debugPrint('Location tracking notice: $e');
       return false;
+    }
+  }
+
+  /// Records a dedicated event (e.g. collection, delivery checkpoint, login)
+  Future<void> recordCustomEvent({
+    required UserModel user,
+    required String eventType,
+    required String details,
+    double? latitude,
+    double? longitude,
+    String? landmark,
+    double? amount,
+    String? shopName,
+    String? routeName,
+    String? billNumber,
+  }) async {
+    try {
+      final double lat = latitude ?? user.latitude ?? 18.5204;
+      final double lng = longitude ?? user.longitude ?? 73.8567;
+      final String lm = landmark ?? user.locationLandmark ?? 'Active in Beat';
+
+      final entry = LocationTimelineEntry(
+        id: 'tl_${user.id}_${DateTime.now().millisecondsSinceEpoch}',
+        userId: user.id,
+        staffName: user.name,
+        staffRole: user.role.name,
+        timestamp: DateTime.now(),
+        latitude: lat,
+        longitude: lng,
+        landmark: lm,
+        eventType: eventType,
+        details: details,
+        amount: amount,
+        shopName: shopName,
+        routeName: routeName,
+        billNumber: billNumber,
+      );
+      await StorageService().addLocationTimelineEntry(entry);
+      await SupabaseService().saveLocationTimelineEntry(entry);
+    } catch (e) {
+      debugPrint('Error recording custom timeline event: $e');
     }
   }
 

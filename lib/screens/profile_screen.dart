@@ -921,10 +921,10 @@ class ProfileScreen extends StatelessWidget {
                     color: const Color(0xFF10B981).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.location_on_outlined, color: Color(0xFF10B981), size: 20),
+                  child: const Icon(Icons.share_location_outlined, color: Color(0xFF10B981), size: 20),
                 ),
-                title: const Text('Live Staff & Fleet Locations', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                subtitle: const Text('Live GPS tracking of salesmen & delivery staff', style: TextStyle(fontSize: 11.5)),
+                title: const Text('Live Staff Tracking & Route Timeline', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                subtitle: const Text('Live GPS tracking, route history & stops of salesmen & driver', style: TextStyle(fontSize: 11.5)),
                 trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
                 onTap: () {
                   Navigator.push(
