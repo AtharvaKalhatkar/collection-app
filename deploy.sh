@@ -12,27 +12,31 @@ echo "📦 Deploying build/web to gh-pages branch..."
 echo "=========================================="
 
 REPO_REMOTE=$(git config --get remote.origin.url)
+DEPLOY_DIR=$(mktemp -d)
 
-# Navigate into compiled web directory
-cd build/web
+# Clone only the latest gh-pages commit
+git clone --depth 1 --branch gh-pages "$REPO_REMOTE" "$DEPLOY_DIR"
 
-# Initialize a clean git tree for the deployment branch
-rm -rf .git
-git init
-git branch -M gh-pages
+# Copy newly built assets into the deployment directory
+rsync -av --exclude='.git' build/web/ "$DEPLOY_DIR/"
+
+cd "$DEPLOY_DIR"
 git config user.name "Atharva Kalhatkar"
 git config user.email "atharva@collectionapp.local"
 
-# Clean up heavy symbols files to ensure rapid, smooth git push
+# Clean up heavy symbols files if any
 find . -name "*.symbols" -delete
 
-# Add and commit all web assets
 git add -A
-git commit -m "Deploy Flutter Web to GitHub Pages $(date +'%Y-%m-%d %H:%M:%S')"
+if ! git diff --cached --quiet; then
+  git commit -m "Deploy Flutter Web to GitHub Pages $(date +'%Y-%m-%d %H:%M:%S')"
+  git push origin gh-pages
+  echo "✅ Changes pushed successfully."
+else
+  echo "ℹ️ No changes detected to commit."
+fi
 
-# Push to gh-pages branch
-git remote add origin "$REPO_REMOTE"
-git push -f origin gh-pages
+rm -rf "$DEPLOY_DIR"
 
 echo ""
 echo "=========================================="
