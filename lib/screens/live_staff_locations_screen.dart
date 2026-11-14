@@ -710,18 +710,283 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     );
   }
 
+  /// Google Maps Timeline style: stop cards + travel segments between stops.
   List<Widget> _buildTimelineCards() {
+    if (_timelineEntries.isEmpty) return [];
+
+    // ── colour palette ──────────────────────────────────────────────────────
+    const Color lineBlue = Color(0xFF1A73E8); // Google blue timeline line
+    const Color collectionGreen = Color(0xFF16A34A);
+    const Color deliveryBlue = Color(0xFF0284C7);
+    const Color loginPurple = Color(0xFF6366F1);
+    const Color gpsPingGrey = Color(0xFF64748B);
+
+    Widget buildTravelSegment({
+      required double? distKm,
+      required int? mins,
+      required bool isDriver,
+    }) {
+      final distStr = (distKm != null && distKm > 0.05)
+          ? '${distKm.toStringAsFixed(1)} km'
+          : null;
+      final timeStr = (mins != null && mins > 0) ? '$mins min' : null;
+      final detail = [distStr, timeStr].whereType<String>().join(' · ');
+      return Padding(
+        padding: const EdgeInsets.only(left: 20),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Dashed vertical line segment
+            Column(
+              children: List.generate(
+                5,
+                (_) => Container(
+                  width: 2,
+                  height: 5,
+                  margin: const EdgeInsets.symmetric(vertical: 1.5),
+                  color: lineBlue.withValues(alpha: 0.4),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(
+              isDriver ? Icons.local_shipping : Icons.two_wheeler,
+              size: 14,
+              color: lineBlue.withValues(alpha: 0.7),
+            ),
+            const SizedBox(width: 6),
+            if (detail.isNotEmpty)
+              Text(
+                detail,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.blueGrey.shade500,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    Widget buildStopCard({
+      required LocationTimelineEntry entry,
+      required bool isFirst,
+      required bool isLast,
+      required Color nodeColor,
+      required IconData nodeIcon,
+      required String badgeText,
+      required Color badgeBg,
+      required Color badgeTextCol,
+    }) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Left rail ───────────────────────────────────────────────────
+          SizedBox(
+            width: 44,
+            child: Column(
+              children: [
+                if (!isFirst)
+                  Container(width: 2, height: 8, color: lineBlue),
+                // Outer ring
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: nodeColor.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: nodeColor, width: 2.5),
+                  ),
+                  child: Center(
+                    child: Icon(nodeIcon, color: nodeColor, size: 15),
+                  ),
+                ),
+                if (!isLast)
+                  Container(width: 2, height: 10, color: lineBlue),
+              ],
+            ),
+          ),
+
+          // ── Right: card ─────────────────────────────────────────────────
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 4, left: 4),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: entry.isCollection
+                        ? const Color(0xFF86EFAC)
+                        : const Color(0xFFE2E8F0),
+                    width: entry.isCollection ? 1.5 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Time + badge row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            entry.timeFormatted,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.blueGrey.shade600,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: badgeBg,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              badgeText,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: badgeTextCol,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+
+                      // Place name (bold large)
+                      Text(
+                        entry.landmark.isNotEmpty
+                            ? entry.landmark
+                            : (entry.shopName ?? 'Transit Breadcrumb'),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+
+                      // Staff name sub-line
+                      if (_selectedStaffFilter == 'all') ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '${entry.staffName} · ${entry.staffRole}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade500,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+
+                      // Amount / details
+                      if (entry.details.isNotEmpty) ...[
+                        const SizedBox(height: 5),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: entry.isCollection
+                                ? const Color(0xFFDCFCE7)
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            entry.details,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: entry.isCollection
+                                  ? const Color(0xFF15803D)
+                                  : Colors.blueGrey.shade700,
+                              fontWeight: entry.isCollection
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      // GPS + map button
+                      if (entry.latitude != 0.0 && entry.longitude != 0.0) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '${entry.latitude.toStringAsFixed(5)}, ${entry.longitude.toStringAsFixed(5)}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.blueGrey.shade400,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            InkWell(
+                              onTap: () => _openMaps(entry.latitude, entry.longitude),
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: lineBlue,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.open_in_new, color: Colors.white, size: 10),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Maps',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     final widgets = <Widget>[];
 
     for (int i = 0; i < _timelineEntries.length; i++) {
       final entry = _timelineEntries[i];
+      final isFirst = i == 0;
       final isLast = i == _timelineEntries.length - 1;
 
-      // Distance from previous stop
-      double? distKm;
-      int? timeDiffMin;
+      // Travel segment from previous stop
       if (i > 0) {
         final prev = _timelineEntries[i - 1];
+        double? distKm;
         if (entry.latitude != 0.0 && prev.latitude != 0.0) {
           distKm = LocationTrackingService.haversineDistanceKm(
             prev.latitude,
@@ -730,256 +995,59 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
             entry.longitude,
           );
         }
-        timeDiffMin = entry.timestamp.difference(prev.timestamp).inMinutes.abs();
+        final mins = entry.timestamp.difference(prev.timestamp).inMinutes.abs();
+        widgets.add(
+          buildTravelSegment(
+            distKm: distKm,
+            mins: mins,
+            isDriver: entry.isDriver,
+          ),
+        );
       }
 
-      // Visual styling according to event type
+      // Determine styling
       Color nodeColor;
       IconData nodeIcon;
-      String eventBadgeText;
-      Color eventBadgeBg;
-      Color eventBadgeTextCol;
+      String badgeText;
+      Color badgeBg;
+      Color badgeTextCol;
 
       if (entry.isCollection) {
-        nodeColor = const Color(0xFF16A34A);
+        nodeColor = collectionGreen;
         nodeIcon = Icons.payments;
-        eventBadgeText = 'COLLECTION';
-        eventBadgeBg = const Color(0xFFDCFCE7);
-        eventBadgeTextCol = const Color(0xFF15803D);
+        badgeText = 'COLLECTION';
+        badgeBg = const Color(0xFFDCFCE7);
+        badgeTextCol = const Color(0xFF15803D);
       } else if (entry.isDelivery) {
-        nodeColor = const Color(0xFF0284C7);
+        nodeColor = deliveryBlue;
         nodeIcon = Icons.local_shipping;
-        eventBadgeText = 'DELIVERY VISIT';
-        eventBadgeBg = const Color(0xFFE0F2FE);
-        eventBadgeTextCol = const Color(0xFF0369A1);
+        badgeText = 'DELIVERY';
+        badgeBg = const Color(0xFFE0F2FE);
+        badgeTextCol = const Color(0xFF0369A1);
       } else if (entry.isLogin) {
-        nodeColor = const Color(0xFF6366F1);
+        nodeColor = loginPurple;
         nodeIcon = Icons.login;
-        eventBadgeText = 'SHIFT START';
-        eventBadgeBg = const Color(0xFFEEF2FF);
-        eventBadgeTextCol = const Color(0xFF4338CA);
+        badgeText = 'SHIFT START';
+        badgeBg = const Color(0xFFEEF2FF);
+        badgeTextCol = const Color(0xFF4338CA);
       } else {
-        nodeColor = const Color(0xFF2563EB);
+        nodeColor = gpsPingGrey;
         nodeIcon = entry.isDriver ? Icons.local_shipping : Icons.two_wheeler;
-        eventBadgeText = entry.isDriver ? 'DRIVER PING' : 'SALES GPS';
-        eventBadgeBg = const Color(0xFFEFF6FF);
-        eventBadgeTextCol = const Color(0xFF1D4ED8);
+        badgeText = entry.isDriver ? 'DRIVER' : 'GPS PING';
+        badgeBg = const Color(0xFFF1F5F9);
+        badgeTextCol = const Color(0xFF475569);
       }
 
       widgets.add(
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Left Column: Timestamp & Timeline Line + Node Icon
-              SizedBox(
-                width: 76,
-                child: Column(
-                  children: [
-                    Text(
-                      entry.timeFormatted,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      width: 26,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: nodeColor,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: nodeColor.withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Icon(nodeIcon, color: Colors.white, size: 14),
-                    ),
-                    if (!isLast)
-                      Expanded(
-                        child: Container(
-                          width: 2,
-                          color: Colors.blueGrey.shade200,
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-              // Right Column: Event Content Card
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: entry.isCollection
-                            ? const Color(0xFF86EFAC)
-                            : AppTheme.border,
-                        width: entry.isCollection ? 1.5 : 1.0,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 3,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header: Staff Name + Event Badge
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  entry.staffName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 13,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '(${entry.staffRole})',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.blueGrey.shade600,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: eventBadgeBg,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                eventBadgeText,
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: eventBadgeTextCol,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-
-                        // Landmark / Shop
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.location_on, size: 15, color: Color(0xFFDC2626)),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                entry.landmark.isNotEmpty
-                                    ? entry.landmark
-                                    : (entry.shopName ?? 'Transit Breadcrumb'),
-                                style: const TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1E293B),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Details text
-                        if (entry.details.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            entry.details,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: entry.isCollection
-                                  ? const Color(0xFF15803D)
-                                  : Colors.blueGrey.shade700,
-                              fontWeight: entry.isCollection ? FontWeight.w700 : FontWeight.normal,
-                            ),
-                          ),
-                        ],
-
-                        // Distance and travel time since last stop
-                        if (distKm != null && distKm > 0.05) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(Icons.turn_sharp_right, size: 12, color: Colors.blueGrey),
-                              const SizedBox(width: 3),
-                              Text(
-                                '${distKm.toStringAsFixed(1)} km traveled${timeDiffMin != null ? ' in $timeDiffMin min' : ''}',
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: Colors.blueGrey.shade600,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-
-                        // Bottom Actions: Open in Maps
-                        if (entry.latitude != 0.0 && entry.longitude != 0.0) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'GPS: ${entry.latitude.toStringAsFixed(4)}, ${entry.longitude.toStringAsFixed(4)}',
-                                style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade500),
-                              ),
-                              InkWell(
-                                onTap: () => _openMaps(entry.latitude, entry.longitude),
-                                borderRadius: BorderRadius.circular(6),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0F172A),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.map_outlined, color: Colors.white, size: 11),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'View on Maps',
-                                        style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        buildStopCard(
+          entry: entry,
+          isFirst: isFirst,
+          isLast: isLast,
+          nodeColor: nodeColor,
+          nodeIcon: nodeIcon,
+          badgeText: badgeText,
+          badgeBg: badgeBg,
+          badgeTextCol: badgeTextCol,
         ),
       );
     }

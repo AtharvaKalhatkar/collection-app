@@ -11,6 +11,7 @@ import 'routes_shops_screen.dart';
 import 'live_staff_locations_screen.dart';
 import 'profile_screen.dart';
 import 'driver_dashboard_screen.dart';
+import 'attendance_screen.dart';
 
 class MainNavigationShell extends StatefulWidget {
   const MainNavigationShell({super.key});
@@ -62,6 +63,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
     final isSuperAdmin = user?.isSuperAdmin == true;
+    final canSeeAttendance = user != null && canViewAttendance(user);
 
     if (user != null) {
       if (_lastSyncedUserId != user.id || _lastSyncedRouteCount != user.assignedRouteIds.length) {
@@ -83,7 +85,12 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         onNavigateToRoutes: () => _navigateToTab(2),
         onNavigateToCollections: () => _navigateToTab(1),
         onNavigateToOrders: null,
-        onNavigateToProfile: () => _navigateToTab(isSuperAdmin ? 4 : 3),
+        onNavigateToProfile: () {
+          int profileIdx = 3;
+          if (isSuperAdmin) profileIdx++;
+          if (canSeeAttendance) profileIdx++;
+          _navigateToTab(profileIdx);
+        },
         onNavigateToTracking: isSuperAdmin ? () => _navigateToTab(3) : null,
       ),
       CollectionsListScreen(
@@ -94,6 +101,8 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       ),
       if (isSuperAdmin)
         const LiveStaffLocationsScreen(),
+      if (canSeeAttendance)
+        const AttendanceScreen(),
       ProfileScreen(
         onBackToOverview: () => _navigateToTab(0),
       ),
@@ -120,6 +129,12 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           icon: Icon(Icons.share_location_outlined),
           selectedIcon: Icon(Icons.share_location, color: AppTheme.primary),
           label: 'Tracking',
+        ),
+      if (canSeeAttendance)
+        const NavigationDestination(
+          icon: Icon(Icons.calendar_month_outlined),
+          selectedIcon: Icon(Icons.calendar_month, color: AppTheme.primary),
+          label: 'Attendance',
         ),
       const NavigationDestination(
         icon: Icon(Icons.person_outline),
