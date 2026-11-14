@@ -19,6 +19,7 @@ import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import 'user_management_screen.dart';
 import 'live_staff_locations_screen.dart';
+import 'attendance_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/user_model.dart';
 import '../utils/firm_details.dart';
@@ -900,6 +901,18 @@ class HomeDashboardScreen extends StatelessWidget {
               onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
             ),
           ],
+          if (canViewAttendance(auth.currentUser))
+            IconButton(
+              icon: const Icon(Icons.badge_outlined, size: 21),
+              tooltip: 'Staff Attendance & Salary',
+              visualDensity: VisualDensity.compact,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AttendanceScreen()),
+                );
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.calendar_month_outlined, size: 20),
             tooltip: 'Select Date',
@@ -914,6 +927,11 @@ class HomeDashboardScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+                );
+              } else if (val == 'attendance') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AttendanceScreen()),
                 );
               } else if (val == 'bank_info') {
                 FirmDetailsHelper.showQuickShareModal(
@@ -966,6 +984,17 @@ class HomeDashboardScreen extends StatelessWidget {
                       Icon(Icons.route_rounded, size: 18, color: Color(0xFF2563EB)),
                       SizedBox(width: 10),
                       Text('Staff Timeline & Live GPS'),
+                    ],
+                  ),
+                ),
+              if (canViewAttendance(context.read<AuthProvider>().currentUser))
+                const PopupMenuItem(
+                  value: 'attendance',
+                  child: Row(
+                    children: [
+                      Icon(Icons.badge_outlined, size: 18, color: Color(0xFF6366F1)),
+                      SizedBox(width: 10),
+                      Text('Attendance & Salary'),
                     ],
                   ),
                 ),
@@ -2181,6 +2210,84 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              if (canViewAttendance(auth.currentUser)) ...[
+                const SizedBox(height: 10),
+                Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AttendanceScreen()),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.badge_outlined, color: Color(0xFF6366F1), size: 22),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Daily Attendance & Salary',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Check-in, monthly calendar & automatic salary calculation',
+                                  style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'OPEN',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF6366F1),
+                                  ),
+                                ),
+                                SizedBox(width: 2),
+                                Icon(Icons.chevron_right, size: 14, color: Color(0xFF6366F1)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
             ],
           ),
