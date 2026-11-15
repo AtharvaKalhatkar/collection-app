@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/user_model.dart';
+import '../models/shop_model.dart';
 import '../models/location_timeline_entry.dart';
 import '../providers/auth_provider.dart';
 import '../providers/collection_provider.dart';
@@ -12,6 +15,28 @@ import '../utils/quick_alert.dart';
 import '../services/location_tracking_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
+
+class RegionalLandmark {
+  final String name;
+  final String marathiName;
+  final ll.LatLng position;
+  final IconData icon;
+
+  const RegionalLandmark(this.name, this.marathiName, this.position, this.icon);
+}
+
+final List<RegionalLandmark> regionalLandmarks = [
+  RegionalLandmark('Khed / Rajgurunagar', 'खेड / राजगुरूनगर', ll.LatLng(18.8550, 73.8880), Icons.account_balance),
+  RegionalLandmark('Chakan MIDC', 'चाकण', ll.LatLng(18.7560, 73.8560), Icons.precision_manufacturing),
+  RegionalLandmark('Manchar', 'मंचर', ll.LatLng(19.0060, 73.9450), Icons.landscape),
+  RegionalLandmark('Bhosari', 'भोसरी', ll.LatLng(18.6290, 73.8440), Icons.location_city),
+  RegionalLandmark('Moshi', 'मोशी', ll.LatLng(18.6760, 73.8460), Icons.local_shipping),
+  RegionalLandmark('Alandi', 'आळंदी', ll.LatLng(18.6750, 73.8960), Icons.temple_hindu),
+  RegionalLandmark('Narayangaon', 'नारायणगाव', ll.LatLng(19.1200, 73.9800), Icons.nature_people),
+  RegionalLandmark('Talegaon Dabhade', 'तळेगाव दाभाडे', ll.LatLng(18.7350, 73.6760), Icons.train),
+  RegionalLandmark('Shikrapur', 'शिक्रापूर', ll.LatLng(18.7480, 74.1200), Icons.alt_route),
+  RegionalLandmark('Pune City', 'पुणे', ll.LatLng(18.5204, 73.8567), Icons.domain),
+];
 
 class LiveStaffLocationsScreen extends StatefulWidget {
   final String? initialStaffName;
@@ -30,18 +55,29 @@ class LiveStaffLocationsScreen extends StatefulWidget {
 class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late final MapController _mapController;
+
   DateTime _selectedDate = DateTime.now();
-  String _selectedStaffFilter = 'all'; // 'all', or staff name
-  String _liveRoleFilter = 'all'; // 'all', 'salesman', 'driver'
+  String _selectedStaffFilter = 'all';
+  String _liveRoleFilter = 'all';
   bool _isRefreshing = false;
   bool _isLoadingTimeline = false;
-  bool _earliestFirst = true;
+  final bool _earliestFirst = true;
+
+  // Tab 2 view mode: 'map' (interactive in-app map) or 'list' (fleet cards)
+  String _fleetViewMode = 'map';
+
+  // Map state
+  ShopModel? _selectedShop;
+  UserModel? _selectedStaffUser;
+  String _shopSearchQuery = '';
 
   List<LocationTimelineEntry> _timelineEntries = [];
 
   @override
   void initState() {
     super.initState();
+    _mapController = MapController();
     _tabController = TabController(
       length: 2,
       vsync: this,
@@ -55,6 +91,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
 
   @override
   void dispose() {
+    _mapController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -75,7 +112,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
 
     if (mounted) {
       setState(() => _isRefreshing = false);
-      QuickAlert.success(context, 'Staff locations & timeline refreshed');
+      QuickAlert.success(context, 'Locations & timeline refreshed');
     }
   }
 
@@ -110,7 +147,9 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
 
       // 3. Synthesize collection checkpoints from CollectionProvider
       final collectionProvider = context.read<CollectionProvider>();
-      final dayCollections = collectionProvider.getFilteredCollections(forDate: _selectedDate).where((c) {
+      final dayCollections = collectionProvider
+          .getFilteredCollections(forDate: _selectedDate)
+          .where((c) {
         if (_selectedStaffFilter != 'all') {
           return c.salesmanName.toLowerCase() == _selectedStaffFilter.toLowerCase() ||
               c.salesmanName.toLowerCase().contains(_selectedStaffFilter.toLowerCase());
@@ -136,7 +175,8 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
           longitude: lng,
           landmark: landmark,
           eventType: 'collection',
-          details: 'Collected ${CurrencyFormatter.format(c.collectedAmount)} (${c.paymentMode.displayName}) for Bill #${c.billNumber}',
+          details:
+              'Collected ${CurrencyFormatter.format(c.collectedAmount)} (${c.paymentMode.displayName}) for Bill #${c.billNumber}',
           amount: c.collectedAmount,
           shopName: c.shopName,
           routeName: c.routeName,
@@ -154,7 +194,6 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
         mergedMap[e.id] = e;
       }
       for (final e in synthesizedCollectionEntries) {
-        // Only add if not already present
         final exists = mergedMap.values.any((m) =>
             m.isCollection &&
             m.billNumber == e.billNumber &&
@@ -166,7 +205,6 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
 
       var list = mergedMap.values.toList();
 
-      // Apply staff filter
       if (_selectedStaffFilter != 'all') {
         final s = _selectedStaffFilter.toLowerCase();
         list = list.where((e) {
@@ -177,7 +215,6 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
         }).toList();
       }
 
-      // Sort
       list.sort((a, b) => _earliestFirst
           ? a.timestamp.compareTo(b.timestamp)
           : b.timestamp.compareTo(a.timestamp));
@@ -195,47 +232,6 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     }
   }
 
-  void _openMaps(double lat, double lng) async {
-    final url = 'https://maps.google.com/?q=$lat,$lng';
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  void _openFullDayRoute(List<LocationTimelineEntry> points) async {
-    if (points.isEmpty) return;
-    if (points.length == 1) {
-      _openMaps(points.first.latitude, points.first.longitude);
-      return;
-    }
-
-    // Google Maps multi-waypoint URL
-    final validPoints = points.where((p) => p.latitude != 0.0 && p.longitude != 0.0).toList();
-    if (validPoints.isEmpty) return;
-
-    final origin = '${validPoints.first.latitude},${validPoints.first.longitude}';
-    final destination = '${validPoints.last.latitude},${validPoints.last.longitude}';
-
-    String url;
-    if (validPoints.length > 2) {
-      // Pick up to 8 evenly spaced intermediate waypoints to stay within URL limits
-      final intermediates = <String>[];
-      final step = ((validPoints.length - 2) / 8).ceil();
-      for (int i = 1; i < validPoints.length - 1; i += (step > 0 ? step : 1)) {
-        intermediates.add('${validPoints[i].latitude},${validPoints[i].longitude}');
-      }
-      url = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination&waypoints=${intermediates.join('|')}';
-    } else {
-      url = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination';
-    }
-
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
   void _callPhone(String phone) async {
     if (phone.trim().isEmpty) return;
     final uri = Uri.parse('tel:$phone');
@@ -249,22 +245,141 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     final text = 'Live Location of ${user.name} (${user.roleDisplayName}):\n'
         '• Status: ${user.isOnline ? "Active Online" : "Last seen ${user.locationTimeAgo}"}\n'
         '• Landmark: ${user.locationLandmark ?? "Field"}\n'
-        '• Google Maps: ${user.mapsUrl}';
+        '• Coordinates: ${user.latitude}, ${user.longitude}';
     final uri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(text)}');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
+  void _showDriverRouteDialog(UserModel driver) {
+    final provider = context.read<CollectionProvider>();
+    final auth = context.read<AuthProvider>();
+    final allRoutes = provider.allRoutes;
+    List<String> selectedRoutes = List<String>.from(driver.assignedRouteIds);
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Assign Routes: ${driver.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text('Driver only delivers to selected routes', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: allRoutes.isEmpty
+                ? const Text('No routes available.')
+                : ListView(
+                    shrinkWrap: true,
+                    children: allRoutes.map((route) {
+                      final isChecked = selectedRoutes.contains(route.id);
+                      return CheckboxListTile(
+                        dense: true,
+                        value: isChecked,
+                        activeColor: const Color(0xFF0284C7),
+                        title: Text(route.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                        subtitle: Text('${provider.shops.where((s) => s.routeId == route.id).length} outlets'),
+                        onChanged: (val) {
+                          setDlgState(() {
+                            if (val == true) {
+                              selectedRoutes.add(route.id);
+                            } else {
+                              selectedRoutes.remove(route.id);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dlgCtx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0284C7),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                Navigator.pop(dlgCtx);
+                final updated = driver.copyWith(assignedRouteIds: selectedRoutes);
+                await auth.saveUser(updated);
+                provider.setCurrentUser(auth.currentUser);
+                if (mounted) {
+                  QuickAlert.success(context, 'Assigned routes saved for ${driver.name}!');
+                }
+              },
+              child: const Text('Save Routes', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Deterministically derive coordinate for shop if not yet set
+  ll.LatLng _getShopLatLng(ShopModel shop) {
+    if (shop.latitude != null && shop.longitude != null && shop.latitude != 0.0) {
+      return ll.LatLng(shop.latitude!, shop.longitude!);
+    }
+
+    final hash = shop.id.hashCode.abs();
+    final jitterLat = ((hash % 80) - 40) * 0.00045;
+    final jitterLng = (((hash ~/ 80) % 80) - 40) * 0.00045;
+
+    final r = '${shop.routeName} ${shop.address}'.toLowerCase();
+    if (r.contains('khed') || r.contains('rajguru')) {
+      return ll.LatLng(18.8550 + jitterLat, 73.8880 + jitterLng);
+    } else if (r.contains('chakan')) {
+      return ll.LatLng(18.7560 + jitterLat, 73.8560 + jitterLng);
+    } else if (r.contains('manchar')) {
+      return ll.LatLng(19.0060 + jitterLat, 73.9450 + jitterLng);
+    } else if (r.contains('bhosari') || r.contains('moshi') || r.contains('pcmc')) {
+      return ll.LatLng(18.6490 + jitterLat, 73.8460 + jitterLng);
+    } else if (r.contains('alandi')) {
+      return ll.LatLng(18.6750 + jitterLat, 73.8960 + jitterLng);
+    } else if (r.contains('narayan')) {
+      return ll.LatLng(19.1200 + jitterLat, 73.9800 + jitterLng);
+    } else if (r.contains('talegaon')) {
+      return ll.LatLng(18.7350 + jitterLat, 73.6760 + jitterLng);
+    } else if (r.contains('shikrapur')) {
+      return ll.LatLng(18.7480 + jitterLat, 74.1200 + jitterLng);
+    }
+
+    // Default trade beat corridor around Khed-Chakan
+    return ll.LatLng(18.8174 + jitterLat, 73.8833 + jitterLng);
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final users = auth.users.where((u) => u.id != 'config_gemini_api' && !u.isSuperAdmin).toList();
+    final users = auth.users
+        .where((u) => u.id != 'config_gemini_api' && !u.isSuperAdmin)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Staff Tracking & Timeline',
+          'Staff Tracking & Map',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.5),
         ),
         backgroundColor: AppTheme.primary,
@@ -291,24 +406,19 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
           unselectedLabelColor: Colors.white.withValues(alpha: 0.7),
           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
           tabs: const [
-            Tab(
-              icon: Icon(Icons.route_outlined, size: 20),
-              text: 'Location Timeline',
-            ),
-            Tab(
-              icon: Icon(Icons.sensors, size: 20),
-              text: 'Live Fleet & Map',
-            ),
+            Tab(icon: Icon(Icons.route_outlined, size: 20), text: 'Location Timeline'),
+            Tab(icon: Icon(Icons.map_outlined, size: 20), text: 'Live Fleet & Map'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
+        physics: const NeverScrollableScrollPhysics(), // Map needs full touch gesture control
         children: [
           // TAB 1: Visual Chronological Route Timeline
           _buildTimelineTab(users),
 
-          // TAB 2: Live Status Cards & Fleet Map
+          // TAB 2: Live In-App Interactive Map & Fleet Cards
           _buildLiveFleetTab(users),
         ],
       ),
@@ -319,7 +429,6 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   // TAB 1: LOCATION TIMELINE
   // =========================================================================
   Widget _buildTimelineTab(List<UserModel> users) {
-    // Calculate daily route summary metrics
     double totalKm = 0.0;
     double totalCollected = 0.0;
     int stopsCount = _timelineEntries.length;
@@ -349,260 +458,138 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         children: [
-          // 1. Date Selector Bar
+          // Filter Row: Staff dropdown + Date picker
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppTheme.border),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left, size: 22),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Previous Day',
-                  onPressed: () {
-                    setState(() {
-                      _selectedDate = _selectedDate.subtract(const Duration(days: 1));
-                    });
-                    _loadTimeline();
-                  },
-                ),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _selectedDate,
-                      firstDate: DateTime(2024),
-                      lastDate: DateTime.now().add(const Duration(days: 30)),
-                    );
-                    if (picked != null) {
-                      setState(() => _selectedDate = picked);
-                      _loadTimeline();
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today, size: 16, color: AppTheme.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          isToday
-                              ? 'Today, ${DateFormat("dd MMM yyyy").format(_selectedDate)}'
-                              : DateFormat("EEE, dd MMM yyyy").format(_selectedDate),
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                Row(
+                  children: [
+                    // Staff Selector
+                    Expanded(
+                      flex: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
-                      ],
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedStaffFilter,
+                            isExpanded: true,
+                            icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+                            items: [
+                              const DropdownMenuItem(
+                                value: 'all',
+                                child: Text('All Staff', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              ),
+                              ...users.map((u) {
+                                return DropdownMenuItem(
+                                  value: u.name,
+                                  child: Text(
+                                    '${u.name} (${u.roleDisplayName})',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _selectedStaffFilter = val);
+                                _loadTimeline();
+                              }
+                            },
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right, size: 22),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Next Day',
-                  onPressed: () {
-                    setState(() {
-                      _selectedDate = _selectedDate.add(const Duration(days: 1));
-                    });
-                    _loadTimeline();
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
+                    const SizedBox(width: 8),
 
-          // 2. Staff Selector Chips (Horizontal Scroll)
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildTimelineStaffFilterChip(
-                  label: 'All Staff',
-                  icon: Icons.groups_outlined,
-                  isSelected: _selectedStaffFilter == 'all',
-                  onTap: () {
-                    setState(() => _selectedStaffFilter = 'all');
-                    _loadTimeline();
-                  },
-                ),
-                const SizedBox(width: 6),
-                ...users.map((u) {
-                  final isSel = _selectedStaffFilter.toLowerCase() == u.name.toLowerCase() ||
-                      _selectedStaffFilter.toLowerCase() == u.phone.toLowerCase();
-                  final icon = u.isDriver
-                      ? Icons.local_shipping
-                      : (u.isSalesman ? Icons.two_wheeler : Icons.business_center);
-                  final roleTag = u.isDriver ? 'Driver' : (u.isSalesman ? 'Sales' : 'Office');
-
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6.0),
-                    child: _buildTimelineStaffFilterChip(
-                      label: '${u.name} ($roleTag)',
-                      icon: icon,
-                      isSelected: isSel,
-                      isOnline: u.isOnline,
-                      onTap: () {
-                        setState(() => _selectedStaffFilter = u.name);
-                        _loadTimeline();
-                      },
+                    // Date Button
+                    Expanded(
+                      flex: 4,
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _selectedDate,
+                            firstDate: DateTime(2024),
+                            lastDate: DateTime.now(),
+                          );
+                          if (picked != null) {
+                            setState(() => _selectedDate = picked);
+                            _loadTimeline();
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.calendar_today, size: 14, color: Color(0xFF0F172A)),
+                              const SizedBox(width: 6),
+                              Text(
+                                isToday ? 'Today' : DateFormat('d MMM').format(_selectedDate),
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  );
-                }),
+                  ],
+                ),
               ],
             ),
           ),
           const SizedBox(height: 12),
 
-          // 3. Route Summary Card
+          // Daily Summary Card
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [const Color(0xFF0F172A), const Color(0xFF1E293B)],
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.timeline, color: Color(0xFF38BDF8), size: 16),
-                        const SizedBox(width: 6),
-                        Text(
-                          _selectedStaffFilter == 'all'
-                              ? 'Combined Fleet Route Summary'
-                              : '$_selectedStaffFilter\'s Daily Route',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                    InkWell(
-                      onTap: () {
-                        setState(() => _earliestFirst = !_earliestFirst);
-                        _loadTimeline();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _earliestFirst ? Icons.arrow_downward : Icons.arrow_upward,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              _earliestFirst ? 'Earliest first' : 'Latest first',
-                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    _buildSummaryStatItem('Stops / Logs', '$stopsCount', Icons.location_on_outlined),
-                    _buildSummaryStatItem('Distance', '${totalKm.toStringAsFixed(1)} km', Icons.straighten),
-                    _buildSummaryStatItem('Collections', CurrencyFormatter.format(totalCollected), Icons.account_balance_wallet_outlined),
-                  ],
-                ),
-                if (_timelineEntries.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2563EB),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      icon: const Icon(Icons.map, size: 16),
-                      label: const Text(
-                        'Open Full Day Route on Google Maps',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () => _openFullDayRoute(_timelineEntries),
-                    ),
-                  ),
-                ],
+                _buildTimelineStat('Stops', '$stopsCount', Icons.pin_drop),
+                Container(width: 1, height: 30, color: Colors.white24),
+                _buildTimelineStat('Dist', '${totalKm.toStringAsFixed(1)} km', Icons.route),
+                Container(width: 1, height: 30, color: Colors.white24),
+                _buildTimelineStat('Collected', CurrencyFormatter.format(totalCollected), Icons.payments),
               ],
             ),
           ),
           const SizedBox(height: 14),
 
-          // 4. Chronological Timeline List
+          // Timeline Cards List
           if (_isLoadingTimeline)
-            Container(
-              padding: const EdgeInsets.all(40),
-              alignment: Alignment.center,
-              child: const CircularProgressIndicator(),
-            )
+            const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
           else if (_timelineEntries.isEmpty)
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.border),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.route, size: 36, color: Color(0xFF2563EB)),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'No Route Activity Recorded on ${DateFormat("dd MMM").format(_selectedDate)}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _selectedStaffFilter == 'all'
-                        ? 'When salesmen or driver log in and move across shop beats, their live GPS pings, collection checkpoints, and deliveries will show here.'
-                        : 'No GPS pings or collection stops logged for $_selectedStaffFilter on this date.',
-                    style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 12),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 14),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('Refresh GPS Now'),
-                    onPressed: _refresh,
-                  ),
-                ],
-              ),
+              padding: const EdgeInsets.all(24),
+              alignment: Alignment.center,
+              child: const Text('No timeline movements recorded for this date.'),
             )
           else
             ..._buildTimelineCards(),
@@ -611,454 +598,627 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     );
   }
 
-  Widget _buildTimelineStaffFilterChip({
-    required String label,
-    required IconData icon,
-    required bool isSelected,
-    bool isOnline = false,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primary : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? AppTheme.primary : AppTheme.border,
-            width: isSelected ? 1.5 : 1.0,
-          ),
-          boxShadow: isSelected
-              ? [BoxShadow(color: AppTheme.primary.withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 2))]
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isOnline) ...[
-              Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0xFF16A34A),
-                ),
-              ),
-              const SizedBox(width: 5),
-            ],
-            Icon(
-              icon,
-              size: 15,
-              color: isSelected ? Colors.white : Colors.blueGrey.shade700,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: isSelected ? Colors.white : const Color(0xFF0F172A),
-              ),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildTimelineStat(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: const Color(0xFF38BDF8), size: 16),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13.5)),
+        Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5, fontWeight: FontWeight.bold)),
+      ],
     );
   }
 
-  Widget _buildSummaryStatItem(String label, String value, IconData icon) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 12, color: const Color(0xFF94A3B8)),
-                const SizedBox(width: 4),
-                Text(
-                  label,
-                  style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Google Maps Timeline style: stop cards + travel segments between stops.
   List<Widget> _buildTimelineCards() {
-    if (_timelineEntries.isEmpty) return [];
-
-    // ── colour palette ──────────────────────────────────────────────────────
-    const Color lineBlue = Color(0xFF1A73E8); // Google blue timeline line
-    const Color collectionGreen = Color(0xFF16A34A);
-    const Color deliveryBlue = Color(0xFF0284C7);
-    const Color loginPurple = Color(0xFF6366F1);
-    const Color gpsPingGrey = Color(0xFF64748B);
-
-    Widget buildTravelSegment({
-      required double? distKm,
-      required int? mins,
-      required bool isDriver,
-    }) {
-      final distStr = (distKm != null && distKm > 0.05)
-          ? '${distKm.toStringAsFixed(1)} km'
-          : null;
-      final timeStr = (mins != null && mins > 0) ? '$mins min' : null;
-      final detail = [distStr, timeStr].whereType<String>().join(' · ');
-      return Padding(
-        padding: const EdgeInsets.only(left: 20),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Dashed vertical line segment
-            Column(
-              children: List.generate(
-                5,
-                (_) => Container(
-                  width: 2,
-                  height: 5,
-                  margin: const EdgeInsets.symmetric(vertical: 1.5),
-                  color: lineBlue.withValues(alpha: 0.4),
-                ),
+    return _timelineEntries.map((entry) {
+      final isColl = entry.isCollection;
+      return Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: isColl ? const Color(0xFF86EFAC) : Colors.grey.shade300),
+        ),
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: isColl
+                ? const Color(0xFFDCFCE7)
+                : const Color(0xFFEFF6FF),
+            foregroundColor: isColl ? const Color(0xFF15803D) : const Color(0xFF2563EB),
+            child: Icon(isColl ? Icons.payments : Icons.location_on, size: 18),
+          ),
+          title: Text(
+            entry.landmark.isNotEmpty ? entry.landmark : (entry.shopName ?? 'Breadcrumb'),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${entry.staffName} · ${entry.timeFormatted}',
+                  style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600)),
+              if (entry.details.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(entry.details,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: isColl ? const Color(0xFF15803D) : Colors.black87,
+                        fontWeight: isColl ? FontWeight.bold : FontWeight.normal)),
+              ],
+            ],
+          ),
+          trailing: InkWell(
+            onTap: () {
+              // Switch to in-app map and focus on this point!
+              _tabController.animateTo(1);
+              setState(() {
+                _fleetViewMode = 'map';
+              });
+              _mapController.move(ll.LatLng(entry.latitude, entry.longitude), 14.5);
+            },
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.map, size: 12, color: Colors.white),
+                  SizedBox(width: 4),
+                  Text('In-App Map', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            Icon(
-              isDriver ? Icons.local_shipping : Icons.two_wheeler,
-              size: 14,
-              color: lineBlue.withValues(alpha: 0.7),
-            ),
-            const SizedBox(width: 6),
-            if (detail.isNotEmpty)
-              Text(
-                detail,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.blueGrey.shade500,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-          ],
+          ),
         ),
       );
-    }
+    }).toList();
+  }
 
-    Widget buildStopCard({
-      required LocationTimelineEntry entry,
-      required bool isFirst,
-      required bool isLast,
-      required Color nodeColor,
-      required IconData nodeIcon,
-      required String badgeText,
-      required Color badgeBg,
-      required Color badgeTextCol,
-    }) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Left rail ───────────────────────────────────────────────────
-          SizedBox(
-            width: 44,
-            child: Column(
-              children: [
-                if (!isFirst)
-                  Container(width: 2, height: 8, color: lineBlue),
-                // Outer ring
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: nodeColor.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: nodeColor, width: 2.5),
-                  ),
-                  child: Center(
-                    child: Icon(nodeIcon, color: nodeColor, size: 15),
+  // =========================================================================
+  // TAB 2: LIVE FLEET & IN-APP SMOOTH MAP
+  // =========================================================================
+  Widget _buildLiveFleetTab(List<UserModel> users) {
+    final provider = context.watch<CollectionProvider>();
+    final allShops = provider.allShops;
+
+    return Column(
+      children: [
+        // Mode Selector: In-App Interactive Map vs Fleet List
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _fleetViewMode = 'map'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _fleetViewMode == 'map' ? const Color(0xFF0F172A) : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.map,
+                            size: 16,
+                            color: _fleetViewMode == 'map' ? Colors.white : Colors.black87),
+                        const SizedBox(width: 6),
+                        Text(
+                          'In-App Map (${allShops.length} Outlets)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _fleetViewMode == 'map' ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                if (!isLast)
-                  Container(width: 2, height: 10, color: lineBlue),
-              ],
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _fleetViewMode = 'list'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _fleetViewMode == 'list' ? const Color(0xFF0F172A) : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.view_list,
+                            size: 16,
+                            color: _fleetViewMode == 'list' ? Colors.white : Colors.black87),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Fleet List (${users.length} Staff)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _fleetViewMode == 'list' ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Body: In-App Interactive Map OR Fleet List
+        Expanded(
+          child: _fleetViewMode == 'map'
+              ? _buildInAppMap(users, allShops)
+              : _buildFleetListView(users),
+        ),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // IN-APP INTERACTIVE MAP (OpenStreetMap, All 351 Outlets, Staff, Landmarks)
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildInAppMap(List<UserModel> users, List<ShopModel> allShops) {
+    // Filter shops if user searches
+    final displayShops = _shopSearchQuery.trim().isEmpty
+        ? allShops
+        : allShops.where((s) {
+            final q = _shopSearchQuery.toLowerCase().trim();
+            return s.name.toLowerCase().contains(q) ||
+                s.routeName.toLowerCase().contains(q) ||
+                s.address.toLowerCase().contains(q);
+          }).toList();
+
+    return Stack(
+      children: [
+        // 1. FlutterMap Widget
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: const ll.LatLng(18.8400, 73.8800), // Khed / Rajgurunagar region
+            initialZoom: 11.5,
+            minZoom: 7.0,
+            maxZoom: 18.0,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.all,
             ),
           ),
+          children: [
+            // OpenStreetMap tile layer (reliable, completely free, buttery smooth)
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.purva.dailycollection',
+              maxZoom: 19,
+            ),
 
-          // ── Right: card ─────────────────────────────────────────────────
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 4, left: 4),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: entry.isCollection
-                        ? const Color(0xFF86EFAC)
-                        : const Color(0xFFE2E8F0),
-                    width: entry.isCollection ? 1.5 : 1.0,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Time + badge row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            entry.timeFormatted,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.blueGrey.shade600,
-                              letterSpacing: 0.3,
-                            ),
+            // Landmark Markers (Khed, Chakan, Manchar, Bhosari, etc.)
+            MarkerLayer(
+              markers: regionalLandmarks.map((lm) {
+                return Marker(
+                  point: lm.position,
+                  width: 90,
+                  height: 40,
+                  child: GestureDetector(
+                    onTap: () {
+                      _mapController.move(lm.position, 13.5);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF6366F1), width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: badgeBg,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(lm.icon, size: 13, color: const Color(0xFF4F46E5)),
+                          const SizedBox(width: 4),
+                          Flexible(
                             child: Text(
-                              badgeText,
-                              style: TextStyle(
-                                fontSize: 9,
+                              lm.name.split('/').first.trim(),
+                              style: const TextStyle(
+                                fontSize: 9.5,
                                 fontWeight: FontWeight.w800,
-                                color: badgeTextCol,
-                                letterSpacing: 0.5,
+                                color: Color(0xFF1E1B4B),
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 5),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
 
-                      // Place name (bold large)
-                      Text(
-                        entry.landmark.isNotEmpty
-                            ? entry.landmark
-                            : (entry.shopName ?? 'Transit Breadcrumb'),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+            // Shop / Outlet Markers (All 351 Outlets)
+            MarkerLayer(
+              markers: displayShops.map((shop) {
+                final pos = _getShopLatLng(shop);
+                final isSelected = _selectedShop?.id == shop.id;
+
+                return Marker(
+                  point: pos,
+                  width: isSelected ? 36 : 24,
+                  height: isSelected ? 36 : 24,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedShop = shop;
+                        _selectedStaffUser = null;
+                      });
+                      _mapController.move(pos, 14.0);
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isSelected ? const Color(0xFFEF4444) : const Color(0xFF0284C7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: isSelected ? 2.5 : 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            blurRadius: 3,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Icon(
+                          Icons.store,
+                          color: Colors.white,
+                          size: isSelected ? 20 : 13,
                         ),
                       ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
 
-                      // Staff name sub-line
-                      if (_selectedStaffFilter == 'all') ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          '${entry.staffName} · ${entry.staffRole}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.blueGrey.shade500,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+            // Live Staff Markers (Akash Bike, Driver Truck)
+            MarkerLayer(
+              markers: users.where((u) => u.hasLocation).map((user) {
+                final pos = ll.LatLng(user.latitude!, user.longitude!);
+                final isDriver = user.isDriver;
+                final isOnline = user.isOnline;
 
-                      // Amount / details
-                      if (entry.details.isNotEmpty) ...[
-                        const SizedBox(height: 5),
+                return Marker(
+                  point: pos,
+                  width: 100,
+                  height: 60,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedStaffUser = user;
+                        _selectedShop = null;
+                      });
+                      _mapController.move(pos, 14.5);
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Name badge
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: entry.isCollection
-                                ? const Color(0xFFDCFCE7)
-                                : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(6),
+                            color: isDriver ? const Color(0xFF0284C7) : const Color(0xFF16A34A),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white, width: 1.5),
                           ),
                           child: Text(
-                            entry.details,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: entry.isCollection
-                                  ? const Color(0xFF15803D)
-                                  : Colors.blueGrey.shade700,
-                              fontWeight: entry.isCollection
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
+                            '${user.name} (${user.roleDisplayName})',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                      ],
-
-                      // GPS + map button
-                      if (entry.latitude != 0.0 && entry.longitude != 0.0) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                '${entry.latitude.toStringAsFixed(5)}, ${entry.longitude.toStringAsFixed(5)}',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.blueGrey.shade400,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 2),
+                        // Pin Icon
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: isDriver ? const Color(0xFF0284C7) : const Color(0xFF16A34A),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (isOnline ? Colors.green : Colors.blueGrey).withValues(alpha: 0.4),
+                                blurRadius: 6,
+                                spreadRadius: 2,
                               ),
-                            ),
-                            const SizedBox(width: 6),
-                            InkWell(
-                              onTap: () => _openMaps(entry.latitude, entry.longitude),
-                              borderRadius: BorderRadius.circular(20),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: lineBlue,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.open_in_new, color: Colors.white, size: 10),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'Maps',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          child: Icon(
+                            isDriver ? Icons.local_shipping : Icons.two_wheeler,
+                            color: Colors.white,
+                            size: 15,
+                          ),
                         ),
                       ],
-                    ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+
+        // 2. Search & Filter Bar at the Top of Map
+        Positioned(
+          top: 10,
+          left: 12,
+          right: 12,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.shade300),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.search, size: 18, color: Colors.blueGrey),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      hintText: 'Search 351 outlets or beats (e.g. Khed, Chakan)...',
+                      hintStyle: TextStyle(fontSize: 12, color: Colors.blueGrey),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                    onChanged: (val) => setState(() => _shopSearchQuery = val),
                   ),
                 ),
+                if (_shopSearchQuery.isNotEmpty)
+                  InkWell(
+                    onTap: () => setState(() => _shopSearchQuery = ''),
+                    child: const Icon(Icons.clear, size: 16, color: Colors.grey),
+                  ),
+              ],
+            ),
+          ),
+        ),
+
+        // 3. Floating Quick Actions (Center on Staff, Center on Khed, Zoom Controls)
+        Positioned(
+          right: 12,
+          bottom: _selectedShop != null || _selectedStaffUser != null ? 140 : 20,
+          child: Column(
+            children: [
+              // Recenter on Staff
+              FloatingActionButton.small(
+                heroTag: 'recenter_staff',
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF16A34A),
+                tooltip: 'Focus on Staff',
+                onPressed: () {
+                  final liveUser = users.firstWhere(
+                    (u) => u.hasLocation,
+                    orElse: () => users.first,
+                  );
+                  if (liveUser.hasLocation) {
+                    _mapController.move(ll.LatLng(liveUser.latitude!, liveUser.longitude!), 14.5);
+                  }
+                },
+                child: const Icon(Icons.my_location, size: 18),
+              ),
+              const SizedBox(height: 6),
+
+              // Focus on Regional Trade Hub (Khed)
+              FloatingActionButton.small(
+                heroTag: 'recenter_khed',
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF0F172A),
+                tooltip: 'Focus on Khed Region',
+                onPressed: () {
+                  _mapController.move(const ll.LatLng(18.8550, 73.8880), 12.0);
+                },
+                child: const Icon(Icons.hub, size: 18),
+              ),
+              const SizedBox(height: 6),
+
+              // Zoom In
+              FloatingActionButton.small(
+                heroTag: 'zoom_in',
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black87,
+                onPressed: () {
+                  _mapController.move(
+                    _mapController.camera.center,
+                    _mapController.camera.zoom + 1,
+                  );
+                },
+                child: const Icon(Icons.add, size: 18),
+              ),
+              const SizedBox(height: 6),
+
+              // Zoom Out
+              FloatingActionButton.small(
+                heroTag: 'zoom_out',
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black87,
+                onPressed: () {
+                  _mapController.move(
+                    _mapController.camera.center,
+                    _mapController.camera.zoom - 1,
+                  );
+                },
+                child: const Icon(Icons.remove, size: 18),
+              ),
+            ],
+          ),
+        ),
+
+        // 4. Selected Outlet Detail Card at Bottom
+        if (_selectedShop != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF0284C7), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _selectedShop!.name,
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => setState(() => _selectedShop = null),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${_selectedShop!.routeName} • ${_selectedShop!.address.isNotEmpty ? _selectedShop!.address : "Beat Outlet"}',
+                    style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (_selectedShop!.mobileNumber.isNotEmpty)
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF10B981),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          icon: const Icon(Icons.phone, size: 13),
+                          label: const Text('Call Shop', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          onPressed: () => _callPhone(_selectedShop!.mobileNumber),
+                        ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Total 351 Stores Placed',
+                        style: TextStyle(fontSize: 10.5, color: Colors.blueGrey.shade500),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
-        ],
-      );
-    }
 
-    final widgets = <Widget>[];
-
-    for (int i = 0; i < _timelineEntries.length; i++) {
-      final entry = _timelineEntries[i];
-      final isFirst = i == 0;
-      final isLast = i == _timelineEntries.length - 1;
-
-      // Travel segment from previous stop
-      if (i > 0) {
-        final prev = _timelineEntries[i - 1];
-        double? distKm;
-        if (entry.latitude != 0.0 && prev.latitude != 0.0) {
-          distKm = LocationTrackingService.haversineDistanceKm(
-            prev.latitude,
-            prev.longitude,
-            entry.latitude,
-            entry.longitude,
-          );
-        }
-        final mins = entry.timestamp.difference(prev.timestamp).inMinutes.abs();
-        widgets.add(
-          buildTravelSegment(
-            distKm: distKm,
-            mins: mins,
-            isDriver: entry.isDriver,
+        // 5. Selected Staff Detail Card at Bottom
+        if (_selectedStaffUser != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _selectedStaffUser!.isDriver ? const Color(0xFF0284C7) : const Color(0xFF16A34A),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: _selectedStaffUser!.isDriver
+                        ? const Color(0xFF0284C7)
+                        : const Color(0xFF16A34A),
+                    foregroundColor: Colors.white,
+                    child: Icon(_selectedStaffUser!.isDriver ? Icons.local_shipping : Icons.two_wheeler),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_selectedStaffUser!.name} (${_selectedStaffUser!.roleDisplayName})',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                        ),
+                        Text(
+                          _selectedStaffUser!.locationLandmark ?? 'Active in Beat',
+                          style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => setState(() => _selectedStaffUser = null),
+                  ),
+                ],
+              ),
+            ),
           ),
-        );
-      }
-
-      // Determine styling
-      Color nodeColor;
-      IconData nodeIcon;
-      String badgeText;
-      Color badgeBg;
-      Color badgeTextCol;
-
-      if (entry.isCollection) {
-        nodeColor = collectionGreen;
-        nodeIcon = Icons.payments;
-        badgeText = 'COLLECTION';
-        badgeBg = const Color(0xFFDCFCE7);
-        badgeTextCol = const Color(0xFF15803D);
-      } else if (entry.isDelivery) {
-        nodeColor = deliveryBlue;
-        nodeIcon = Icons.local_shipping;
-        badgeText = 'DELIVERY';
-        badgeBg = const Color(0xFFE0F2FE);
-        badgeTextCol = const Color(0xFF0369A1);
-      } else if (entry.isLogin) {
-        nodeColor = loginPurple;
-        nodeIcon = Icons.login;
-        badgeText = 'SHIFT START';
-        badgeBg = const Color(0xFFEEF2FF);
-        badgeTextCol = const Color(0xFF4338CA);
-      } else {
-        nodeColor = gpsPingGrey;
-        nodeIcon = entry.isDriver ? Icons.local_shipping : Icons.two_wheeler;
-        badgeText = entry.isDriver ? 'DRIVER' : 'GPS PING';
-        badgeBg = const Color(0xFFF1F5F9);
-        badgeTextCol = const Color(0xFF475569);
-      }
-
-      widgets.add(
-        buildStopCard(
-          entry: entry,
-          isFirst: isFirst,
-          isLast: isLast,
-          nodeColor: nodeColor,
-          nodeIcon: nodeIcon,
-          badgeText: badgeText,
-          badgeBg: badgeBg,
-          badgeTextCol: badgeTextCol,
-        ),
-      );
-    }
-
-    return widgets;
+      ],
+    );
   }
 
-  // =========================================================================
-  // TAB 2: LIVE FLEET & REAL-TIME STATUS
-  // =========================================================================
-  Widget _buildLiveFleetTab(List<UserModel> users) {
+  // ───────────────────────────────────────────────────────────────────────────
+  // FLEET LIST VIEW
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildFleetListView(List<UserModel> users) {
     final provider = context.watch<CollectionProvider>();
 
     final filteredUsers = users.where((u) {
@@ -1067,398 +1227,167 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
       return true;
     }).toList();
 
-    final onlineCount = users.where((u) => u.isOnline).length;
-    final locatedCount = users.where((u) => u.hasLocation).length;
-
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.all(14),
         children: [
-          // Status Summary Cards
+          // Filter Tabs
           Row(
             children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.groups_outlined, size: 16, color: Colors.blueGrey),
-                          SizedBox(width: 4),
-                          Text('Staff', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${users.length}',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0FDF4),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF86EFAC)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.sensors, size: 16, color: Color(0xFF16A34A)),
-                          SizedBox(width: 4),
-                          Text('Online', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF16A34A))),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '$onlineCount Live',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF15803D)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFBFDBFE)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.location_on, size: 16, color: Color(0xFF2563EB)),
-                          SizedBox(width: 4),
-                          Text('Tracked', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2563EB))),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '$locatedCount / ${users.length}',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF1D4ED8)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _buildLiveFilterTab('all', 'All (${users.length})'),
+              _buildLiveFilterTab('salesman', 'Salesmen (${users.where((u) => u.isSalesman).length})'),
+              _buildLiveFilterTab('driver', 'Drivers (${users.where((u) => u.isDriver).length})'),
             ],
           ),
           const SizedBox(height: 12),
 
-          // Role Filter Segment
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Row(
-              children: [
-                _buildLiveFilterTab('all', 'All (${users.length})'),
-                _buildLiveFilterTab('salesman', 'Salesmen (${users.where((u) => u.isSalesman).length})'),
-                _buildLiveFilterTab('driver', 'Drivers (${users.where((u) => u.isDriver).length})'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
+          ...filteredUsers.map((u) {
+            final hasLoc = u.hasLocation;
+            final isOnline = u.isOnline;
+            final summary = provider.getStaffSummary(u.name);
 
-          // Staff Location Cards List
-          if (filteredUsers.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(24),
-              alignment: Alignment.center,
-              child: const Text('No staff members found matching filter.'),
-            )
-          else
-            ...filteredUsers.map((u) {
-              final summary = provider.getStaffSummary(u.name);
-              final hasLoc = u.hasLocation;
-              final isOnline = u.isOnline;
-
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                elevation: 1,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: isOnline ? const Color(0xFF86EFAC) : AppTheme.border,
-                    width: isOnline ? 1.5 : 1.0,
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Card Header: Avatar, Name, Role, Online Badge
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: isOnline ? const Color(0xFF86EFAC) : AppTheme.border),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: u.isDriver
+                              ? const Color(0xFF0284C7).withValues(alpha: 0.15)
+                              : const Color(0xFF10B981).withValues(alpha: 0.15),
+                          foregroundColor: u.isDriver ? const Color(0xFF0284C7) : const Color(0xFF10B981),
+                          child: Icon(u.isDriver ? Icons.local_shipping : Icons.two_wheeler, size: 18),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(u.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                              Text('${u.roleDisplayName} • ${u.phone}',
+                                  style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600)),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isOnline ? const Color(0xFFDCFCE7) : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            isOnline ? 'ONLINE' : (hasLoc ? u.locationTimeAgo : 'OFFLINE'),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: isOnline ? const Color(0xFF15803D) : Colors.blueGrey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Landmark: ${u.locationLandmark ?? (hasLoc ? "Active in beat" : "No GPS shared")}',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    if (u.isDriver) ...[
                       Row(
                         children: [
-                          Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: u.isDriver
-                                  ? const Color(0xFF0284C7).withValues(alpha: 0.15)
-                                  : (u.isSalesman
-                                      ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                      : Colors.amber.shade100),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              u.isDriver
-                                  ? Icons.local_shipping
-                                  : (u.isSalesman ? Icons.two_wheeler : Icons.business_center),
-                              color: u.isDriver
-                                  ? const Color(0xFF0284C7)
-                                  : (u.isSalesman ? const Color(0xFF059669) : Colors.amber.shade800),
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      u.name,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blueGrey.shade100,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        u.roleDisplayName.toUpperCase(),
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.blueGrey.shade800,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  u.phone,
-                                  style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Online/Offline Status Indicator
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: isOnline
-                                  ? const Color(0xFFDCFCE7)
-                                  : (hasLoc ? Colors.grey.shade100 : Colors.red.shade50),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isOnline
-                                    ? const Color(0xFF86EFAC)
-                                    : (hasLoc ? Colors.grey.shade300 : Colors.red.shade200),
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0284C7),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 7,
-                                  height: 7,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: isOnline
-                                        ? const Color(0xFF16A34A)
-                                        : (hasLoc ? Colors.blueGrey : Colors.red),
-                                  ),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  isOnline
-                                      ? 'LIVE'
-                                      : (hasLoc ? u.locationTimeAgo : 'No GPS'),
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: isOnline
-                                        ? const Color(0xFF15803D)
-                                        : (hasLoc ? Colors.blueGrey.shade700 : Colors.red.shade700),
-                                  ),
-                                ),
-                              ],
+                              icon: const Icon(Icons.alt_route, size: 16),
+                              label: Text(
+                                u.assignedRouteIds.isEmpty
+                                    ? 'Assign Delivery Routes'
+                                    : 'Routes (${u.assignedRouteIds.length} assigned)',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () => _showDriverRouteDialog(u),
                             ),
                           ),
+                          if (hasLoc) ...[
+                            const SizedBox(width: 6),
+                            IconButton(
+                              icon: const Icon(Icons.share, size: 18, color: Color(0xFF16A34A)),
+                              tooltip: 'Share Live GPS (WhatsApp)',
+                              onPressed: () => _shareLocationViaWhatsApp(u),
+                            ),
+                          ],
+                          if (u.phone.isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.phone, size: 18, color: Color(0xFF2563EB)),
+                              tooltip: 'Call Driver',
+                              onPressed: () => _callPhone(u.phone),
+                            ),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 12),
-
-                      // Location Details Container
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(11),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                      const SizedBox(height: 8),
+                    ],
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Today: ${CurrencyFormatter.format(summary.totalAmount)} (${summary.collectionsCount} bills)',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(Icons.location_on, size: 16, color: Color(0xFFDC2626)),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        hasLoc
-                                            ? (u.locationLandmark ?? 'Active in Beat Route')
-                                            : 'Location not shared yet',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
-                                          color: hasLoc ? const Color(0xFF0F172A) : Colors.blueGrey.shade500,
-                                        ),
-                                      ),
-                                      if (hasLoc) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'GPS: ${u.latitude?.toStringAsFixed(5)}, ${u.longitude?.toStringAsFixed(5)} • Updated: ${u.locationTimeAgo}',
-                                          style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
+                            if (!u.isDriver && hasLoc)
+                              IconButton(
+                                icon: const Icon(Icons.share, size: 18, color: Color(0xFF16A34A)),
+                                tooltip: 'Share Live GPS (WhatsApp)',
+                                onPressed: () => _shareLocationViaWhatsApp(u),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            if (hasLoc) ...[
+                              const SizedBox(width: 4),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0F172A),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  visualDensity: VisualDensity.compact,
                                 ),
-                              ],
-                            ),
-                            if (u.isDriver && u.assignedRouteIds.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  const Icon(Icons.alt_route, size: 14, color: Color(0xFF0284C7)),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      'Assigned: ${u.assignedRouteIds.map((id) => provider.getRouteName(id)).join(", ")}',
-                                      style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1), fontWeight: FontWeight.w600),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                                icon: const Icon(Icons.map, size: 14),
+                                label: const Text('In-App Map', style: TextStyle(fontSize: 11)),
+                                onPressed: () {
+                                  setState(() {
+                                    _fleetViewMode = 'map';
+                                    _selectedStaffUser = u;
+                                  });
+                                  _mapController.move(ll.LatLng(u.latitude!, u.longitude!), 14.5);
+                                },
                               ),
                             ],
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Performance & Summary Strip
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Today: ${CurrencyFormatter.format(summary.totalAmount)} (${summary.collectionsCount} bills)',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                          ),
-                          Row(
-                            children: [
-                              // View Timeline Button
-                              TextButton.icon(
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                                icon: const Icon(Icons.route, size: 15, color: AppTheme.primary),
-                                label: const Text('Timeline', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
-                                onPressed: () {
-                                  setState(() {
-                                    _selectedStaffFilter = u.name;
-                                    _tabController.animateTo(0);
-                                  });
-                                  _loadTimeline();
-                                },
-                              ),
-                              if (u.phone.isNotEmpty && RegExp(r'^\d+$').hasMatch(u.phone))
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  icon: const Icon(Icons.phone_outlined, size: 18, color: Color(0xFF2563EB)),
-                                  tooltip: 'Call Staff',
-                                  onPressed: () => _callPhone(u.phone),
-                                ),
-                              if (hasLoc)
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  icon: const Icon(Icons.share_outlined, size: 18, color: Color(0xFF16A34A)),
-                                  tooltip: 'Share Live Location',
-                                  onPressed: () => _shareLocationViaWhatsApp(u),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-
-                      // Main Action Button: Open Google Maps
-                      if (hasLoc) ...[
-                        const SizedBox(height: 6),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F172A),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.map_outlined, size: 16),
-                            label: Text(
-                              'Track ${u.name} on Google Maps',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
-                            ),
-                            onPressed: () => _openMaps(u.latitude!, u.longitude!),
-                          ),
-                        ),
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              );
-            }),
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -1471,9 +1400,9 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
         onTap: () => setState(() => _liveRoleFilter = role),
         borderRadius: BorderRadius.circular(6),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 7),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primary : Colors.transparent,
+            color: isSelected ? AppTheme.primary : Colors.grey.shade100,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Center(

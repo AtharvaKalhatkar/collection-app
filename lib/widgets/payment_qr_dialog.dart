@@ -22,6 +22,7 @@ class PaymentQrDialog extends StatefulWidget {
 
 class _PaymentQrDialogState extends State<PaymentQrDialog> {
   late bool _isPurva;
+  int _manasQrIndex = 1; // 1 = Primary (New Manas QR), 2 = Secondary (Alternative)
 
   @override
   void initState() {
@@ -53,7 +54,11 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
     final firmName = firmInfo.firmName;
     final firmPhone = firmInfo.mobileNumber;
     final upiId = firmInfo.upiId;
-    final assetPath = _isPurva ? 'assets/images/qr_purva.png' : 'assets/images/qr_manas.png';
+    final assetPath = _isPurva
+        ? 'assets/images/qr_purva.png'
+        : (_manasQrIndex == 1
+            ? 'assets/images/qr_manas_sales.png'
+            : 'assets/images/qr_manas.png');
     final firmPrimaryColor = firmInfo.primaryColor;
     final firmLightColor = firmInfo.lightColor;
 
@@ -198,6 +203,29 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                     const SizedBox(height: 14),
 
                     // High-Resolution QR Code Image
+                    if (!_isPurva) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('QR 1 (Primary)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            selected: _manasQrIndex == 1,
+                            selectedColor: AppTheme.manasPrimary.withValues(alpha: 0.15),
+                            checkmarkColor: AppTheme.manasPrimary,
+                            onSelected: (_) => setState(() => _manasQrIndex = 1),
+                          ),
+                          const SizedBox(width: 8),
+                          ChoiceChip(
+                            label: const Text('QR 2 (Alternative)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            selected: _manasQrIndex == 2,
+                            selectedColor: AppTheme.manasPrimary.withValues(alpha: 0.15),
+                            checkmarkColor: AppTheme.manasPrimary,
+                            onSelected: (_) => setState(() => _manasQrIndex = 2),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -214,20 +242,27 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.memory(
-                          _isPurva ? QrData.purvaBytes : QrData.manasBytes,
-                          width: 250,
-                          height: 330,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Image.asset(
-                              assetPath,
-                              width: 250,
-                              height: 330,
-                              fit: BoxFit.contain,
-                            );
-                          },
-                        ),
+                        child: (_isPurva || _manasQrIndex == 2)
+                            ? Image.memory(
+                                _isPurva ? QrData.purvaBytes : QrData.manasBytes,
+                                width: 250,
+                                height: 330,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Image.asset(
+                                    assetPath,
+                                    width: 250,
+                                    height: 330,
+                                    fit: BoxFit.contain,
+                                  );
+                                },
+                              )
+                            : Image.asset(
+                                assetPath,
+                                width: 250,
+                                height: 330,
+                                fit: BoxFit.contain,
+                              ),
                       ),
                     ),
                     const SizedBox(height: 12),

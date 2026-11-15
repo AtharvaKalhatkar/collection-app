@@ -17,11 +17,8 @@ import 'collection_details_dialog.dart';
 import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
-import 'user_management_screen.dart';
 import 'live_staff_locations_screen.dart';
 import 'attendance_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../models/user_model.dart';
 import '../utils/firm_details.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
@@ -322,440 +319,6 @@ class HomeDashboardScreen extends StatelessWidget {
     );
   }
 
-  void _showDriverRouteAssignmentDialog(
-    BuildContext context,
-    UserModel driver,
-    CollectionProvider provider,
-    AuthProvider auth,
-  ) {
-    final allRoutes = provider.allRoutes;
-    List<String> selectedRoutes = List<String>.from(driver.assignedRouteIds);
-
-    showDialog(
-      context: context,
-      builder: (dlgCtx) => StatefulBuilder(
-        builder: (ctx, setDlgState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0284C7).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 22),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Assign Route for ${driver.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const Text('Driver will only see bills & shops for these routes', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: allRoutes.isEmpty
-                ? const Text('No routes available. Please create routes first.')
-                : ListView(
-                    shrinkWrap: true,
-                    children: allRoutes.map((route) {
-                      final isChecked = selectedRoutes.contains(route.id);
-                      return CheckboxListTile(
-                        dense: true,
-                        value: isChecked,
-                        activeColor: const Color(0xFF0284C7),
-                        title: Text(route.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                        subtitle: Text(
-                          '${provider.shops.where((s) => s.routeId == route.id).length} outlets',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                        onChanged: (val) {
-                          setDlgState(() {
-                            if (val == true) {
-                              selectedRoutes.add(route.id);
-                            } else {
-                              selectedRoutes.remove(route.id);
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dlgCtx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0284C7),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: () async {
-                Navigator.pop(dlgCtx);
-                final updated = driver.copyWith(assignedRouteIds: selectedRoutes);
-                await auth.saveUser(updated);
-                provider.setCurrentUser(auth.currentUser);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Routes updated for ${driver.name}!'),
-                      backgroundColor: Colors.green.shade700,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Save Routes', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSuperAdminStaffOversight(
-    BuildContext context,
-    CollectionProvider provider,
-    AuthProvider auth,
-  ) {
-    final users = auth.users.where((u) => u.id != 'config_gemini_api' && !u.isSuperAdmin).toList();
-    final currentStaffFilter = provider.selectedStaffFilter;
-    final activeCount = users.where((u) => u.isOnline).length;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Row 1: Header (Tap to view Staff Locations) + Manage Staff
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(Icons.location_on, color: Color(0xFF059669), size: 15),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: InkWell(
-                  onTap: () {
-                    if (onNavigateToTracking != null) {
-                      onNavigateToTracking!();
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
-                      );
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(6),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Flexible(
-                        child: Text(
-                          'Live Staff Tracking',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: activeCount > 0 ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          activeCount > 0 ? '$activeCount Active' : 'Off duty',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: activeCount > 0 ? const Color(0xFF16A34A) : Colors.blueGrey,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  if (onNavigateToTracking != null) {
-                    onNavigateToTracking!();
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const LiveStaffLocationsScreen(initialTabIndex: 0),
-                      ),
-                    );
-                  }
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.route, color: Colors.white, size: 12),
-                      SizedBox(width: 3),
-                      Text(
-                        'Timeline',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(Icons.manage_accounts_outlined, color: Colors.blueGrey, size: 20),
-                tooltip: 'Manage Staff',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const UserManagementScreen()),
-                  );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // Row 2: Compact Staff Filter Pills with Real Live Location
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildCompactStaffChip(
-                  label: 'All Staff',
-                  subtitle: CurrencyFormatter.format(provider.totalCollection),
-                  icon: Icons.groups_outlined,
-                  isSelected: currentStaffFilter == null || currentStaffFilter == 'All',
-                  isOnline: false,
-                  hasLocation: false,
-                  onTap: () => provider.setSelectedStaffFilter(null),
-                ),
-                const SizedBox(width: 6),
-                ...users.map((u) {
-                  final summary = provider.getStaffSummary(u.name);
-                  final isSel = currentStaffFilter != null &&
-                      (currentStaffFilter.toLowerCase() == u.name.toLowerCase() ||
-                          currentStaffFilter.toLowerCase() == u.phone.toLowerCase());
-                  final icon = u.isDriver
-                      ? Icons.local_shipping
-                      : (u.isSalesman ? Icons.two_wheeler : Icons.business_center);
-
-                  String sub = CurrencyFormatter.format(summary.totalAmount);
-                  if (u.hasLocation && u.locationLandmark != null && u.locationLandmark!.isNotEmpty) {
-                    final cleanLm = u.locationLandmark!.split('(').first.trim();
-                    sub = '$cleanLm • $sub';
-                  }
-
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6.0),
-                    child: _buildCompactStaffChip(
-                      label: u.name,
-                      subtitle: sub,
-                      icon: icon,
-                      isSelected: isSel,
-                      isOnline: u.isOnline,
-                      hasLocation: u.hasLocation,
-                      onTap: () {
-                        if (isSel) {
-                          provider.setSelectedStaffFilter(null);
-                        } else {
-                          provider.setSelectedStaffFilter(u.name);
-                        }
-                      },
-                      onMapTap: u.hasLocation
-                          ? () async {
-                              final uri = Uri.parse(u.mapsUrl);
-                              await launchUrl(uri, mode: LaunchMode.externalApplication);
-                            }
-                          : null,
-                      onRoutesTap: u.isDriver
-                          ? () => _showDriverRouteAssignmentDialog(context, u, provider, auth)
-                          : null,
-                    ),
-                  );
-                }),
-              ],
-            ),
-          ),
-
-          // Active filter indicator if selected
-          if (currentStaffFilter != null && currentStaffFilter != 'All') ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFFBFDBFE)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.filter_alt, size: 13, color: Color(0xFF1D4ED8)),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      'Filtered to $currentStaffFilter\'s collections',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8)),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () => provider.setSelectedStaffFilter(null),
-                    child: const Text(
-                      'CLEAR',
-                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFFDC2626)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactStaffChip({
-    required String label,
-    required String subtitle,
-    required IconData icon,
-    required bool isSelected,
-    required bool isOnline,
-    required bool hasLocation,
-    required VoidCallback onTap,
-    VoidCallback? onMapTap,
-    VoidCallback? onRoutesTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF1E3A8A) : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF3B82F6) : AppTheme.border,
-            width: isSelected ? 1.5 : 1.0,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (hasLocation) ...[
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isOnline ? const Color(0xFF16A34A) : Colors.amber.shade600,
-                ),
-              ),
-              const SizedBox(width: 5),
-            ],
-            Icon(
-              icon,
-              size: 14,
-              color: isSelected ? Colors.white : Colors.blueGrey.shade700,
-            ),
-            const SizedBox(width: 5),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.bold,
-                    color: isSelected ? Colors.white : const Color(0xFF0F172A),
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                    color: isSelected ? const Color(0xFF93C5FD) : Colors.blueGrey.shade600,
-                  ),
-                ),
-              ],
-            ),
-            if (hasLocation && onMapTap != null) ...[
-              const SizedBox(width: 4),
-              InkWell(
-                onTap: onMapTap,
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.open_in_new,
-                    size: 11,
-                    color: isSelected ? Colors.white70 : const Color(0xFF059669),
-                  ),
-                ),
-              ),
-            ],
-            if (onRoutesTap != null) ...[
-              const SizedBox(width: 4),
-              InkWell(
-                onTap: onRoutesTap,
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.alt_route,
-                    size: 11,
-                    color: isSelected ? const Color(0xFF93C5FD) : const Color(0xFF0284C7),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CollectionProvider>();
@@ -868,7 +431,7 @@ class HomeDashboardScreen extends StatelessWidget {
                         ],
                       ),
                       const Text(
-                        'Purva • Manas (Tap for Profile)',
+                        'Purva • Manas',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.white70,
@@ -884,40 +447,20 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          if (MediaQuery.of(context).size.width >= 480) ...[
-            IconButton(
-              icon: const Icon(Icons.send_rounded, size: 20),
-              tooltip: 'Send Bank Details',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => FirmDetailsHelper.showQuickShareModal(
-                context,
-                defaultFirm: provider.filterBusiness,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.qr_code_2_rounded, size: 22),
-              tooltip: 'Payment QR',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
-            ),
-          ],
-          if (canViewAttendance(auth.currentUser))
-            IconButton(
-              icon: const Icon(Icons.badge_outlined, size: 21),
-              tooltip: 'Staff Attendance & Salary',
-              visualDensity: VisualDensity.compact,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-                );
-              },
-            ),
           IconButton(
-            icon: const Icon(Icons.calendar_month_outlined, size: 20),
-            tooltip: 'Select Date',
+            icon: const Icon(Icons.send_rounded, size: 20),
+            tooltip: 'Send Bank Details',
             visualDensity: VisualDensity.compact,
-            onPressed: () => _pickDate(context),
+            onPressed: () => FirmDetailsHelper.showQuickShareModal(
+              context,
+              defaultFirm: provider.filterBusiness,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.qr_code_2_rounded, size: 22),
+            tooltip: 'Payment QR',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 20),
@@ -1081,9 +624,6 @@ class HomeDashboardScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (auth.currentUser?.isSuperAdmin == true) ...[
-                _buildSuperAdminStaffOversight(context, provider, auth),
-              ],
               // Date Indicator & Business Pills Row
               Row(
                 children: [
@@ -2061,24 +1601,14 @@ class HomeDashboardScreen extends StatelessWidget {
                             child: const Icon(Icons.assessment_outlined, color: Color(0xFF6366F1), size: 22),
                           ),
                           const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                const Text(
-                                  'Statement',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Excel (.xlsx) & PDF Reports',
-                                  style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                                ),
-                              ],
+                          const Expanded(
+                            child: Text(
+                              'Statement',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                                color: Color(0xFF0F172A),
+                              ),
                             ),
                           ),
                           Container(
@@ -2144,41 +1674,31 @@ class HomeDashboardScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 14),
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
-                              Row(
-                                children: [
-                                  const Text(
-                                    'Cash Counter',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 14,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      '₹${CurrencyFormatter.format(provider.totalCash)}',
-                                      style: const TextStyle(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF059669),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              const Text(
+                                'Cash Counter',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                  color: Color(0xFF0F172A),
+                                ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Count physical notes & verify cash match',
-                                style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '₹${CurrencyFormatter.format(provider.totalCash)}',
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF059669),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -2240,24 +1760,14 @@ class HomeDashboardScreen extends StatelessWidget {
                             child: const Icon(Icons.badge_outlined, color: Color(0xFF6366F1), size: 22),
                           ),
                           const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Daily Attendance & Salary',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Check-in, monthly calendar & automatic salary calculation',
-                                  style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                                ),
-                              ],
+                          const Expanded(
+                            child: Text(
+                              'Daily Attendance',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                                color: Color(0xFF0F172A),
+                              ),
                             ),
                           ),
                           Container(

@@ -952,8 +952,8 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   child: const Icon(Icons.badge_outlined, color: Color(0xFF6366F1), size: 20),
                 ),
-                title: const Text('Staff Attendance & Salary', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                subtitle: const Text('Check-in/out, monthly attendance calendar & payroll calculation', style: TextStyle(fontSize: 11.5)),
+                title: const Text('Daily Attendance', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                subtitle: const Text('Check-in, attendance calendar & salary', style: TextStyle(fontSize: 11.5)),
                 trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
                 onTap: () {
                   Navigator.push(

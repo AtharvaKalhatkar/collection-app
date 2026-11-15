@@ -4,7 +4,7 @@ import 'package:daily_collection_app/models/user_model.dart';
 import 'package:daily_collection_app/screens/attendance_screen.dart';
 
 void main() {
-  group('Attendance & Payroll Smart Feature Tests', () {
+  group('Daily Attendance Smart Feature Tests', () {
     test('Access Control: Only SuperAdmin, Office, and Akash have access', () {
       final superAdmin = UserModel(
         id: 'u1',
@@ -49,7 +49,7 @@ void main() {
       expect(canViewAttendance(driver), isFalse);
     });
 
-    test('Monthly Salary Calculation: Full days, Half days, Holidays, and Deductions', () {
+    test('Monthly Salary Calculation: Full days (P), Half days (½), and Absents (A)', () {
       final employee = AttendanceEmployee(
         id: 'emp_akash',
         name: 'Akash',
@@ -59,14 +59,12 @@ void main() {
       );
 
       // 30 days in November 2026:
-      // 20 Present
+      // 26 Present
       // 2 Half Days (= 1.0 day)
-      // 4 Sundays / Holidays (= 4.0 days)
-      // 2 Paid Leaves (= 2.0 days)
       // 2 Absents (= 0.0 days)
-      // Total payable days = 20 + (2 * 0.5) + 4 + 2 = 27.0 days out of 30
+      // Total payable days = 26 + (2 * 0.5) = 27.0 days out of 30
       final records = <AttendanceRecord>[];
-      for (int i = 1; i <= 20; i++) {
+      for (int i = 1; i <= 26; i++) {
         records.add(AttendanceRecord(
           id: 'r_p_$i',
           userId: employee.id,
@@ -76,7 +74,7 @@ void main() {
           status: AttendanceStatus.present,
         ));
       }
-      for (int i = 21; i <= 22; i++) {
+      for (int i = 27; i <= 28; i++) {
         records.add(AttendanceRecord(
           id: 'r_hd_$i',
           userId: employee.id,
@@ -84,26 +82,6 @@ void main() {
           staffRole: employee.role,
           date: DateTime(2026, 11, i),
           status: AttendanceStatus.halfDay,
-        ));
-      }
-      for (int i = 23; i <= 26; i++) {
-        records.add(AttendanceRecord(
-          id: 'r_h_$i',
-          userId: employee.id,
-          staffName: employee.name,
-          staffRole: employee.role,
-          date: DateTime(2026, 11, i),
-          status: AttendanceStatus.holiday,
-        ));
-      }
-      for (int i = 27; i <= 28; i++) {
-        records.add(AttendanceRecord(
-          id: 'r_l_$i',
-          userId: employee.id,
-          staffName: employee.name,
-          staffRole: employee.role,
-          date: DateTime(2026, 11, i),
-          status: AttendanceStatus.leave,
         ));
       }
       for (int i = 29; i <= 30; i++) {
@@ -134,10 +112,8 @@ void main() {
       );
 
       expect(calc.totalDaysInMonth, equals(30));
-      expect(calc.presentCount, equals(20));
+      expect(calc.presentCount, equals(26));
       expect(calc.halfDayCount, equals(2));
-      expect(calc.holidayCount, equals(4));
-      expect(calc.leaveCount, equals(2));
       expect(calc.absentCount, equals(2));
       expect(calc.payableDays, equals(27.0));
 
@@ -152,10 +128,11 @@ void main() {
 
       // Check WhatsApp slip format contains key figures
       final slip = calc.formatWhatsAppSlip();
-      expect(slip.contains('MONTHLY SALARY SLIP'), isTrue);
+      expect(slip.contains('ATTENDANCE & SALARY SLIP'), isTrue);
       expect(slip.contains('Akash'), isTrue);
       expect(slip.contains('₹19400'), isTrue);
       expect(slip.contains('27.0 / 30 Days'), isTrue);
+      expect(slip.contains('Absent Dates: 29 November, 30 November'), isTrue);
     });
   });
 }

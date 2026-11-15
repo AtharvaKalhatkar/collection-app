@@ -2,12 +2,11 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'user_model.dart';
 
+/// Strictly 3 attendance statuses as requested: Present, Half Day, Absent
 enum AttendanceStatus {
   present,
-  absent,
   halfDay,
-  holiday,
-  leave,
+  absent,
 }
 
 extension AttendanceStatusExtension on AttendanceStatus {
@@ -15,14 +14,10 @@ extension AttendanceStatusExtension on AttendanceStatus {
     switch (this) {
       case AttendanceStatus.present:
         return 'Present';
-      case AttendanceStatus.absent:
-        return 'Absent';
       case AttendanceStatus.halfDay:
         return 'Half Day';
-      case AttendanceStatus.holiday:
-        return 'Holiday / Weekly Off';
-      case AttendanceStatus.leave:
-        return 'Paid Leave';
+      case AttendanceStatus.absent:
+        return 'Absent';
     }
   }
 
@@ -30,14 +25,10 @@ extension AttendanceStatusExtension on AttendanceStatus {
     switch (this) {
       case AttendanceStatus.present:
         return 'P';
-      case AttendanceStatus.absent:
-        return 'A';
       case AttendanceStatus.halfDay:
         return '½';
-      case AttendanceStatus.holiday:
-        return 'H';
-      case AttendanceStatus.leave:
-        return 'L';
+      case AttendanceStatus.absent:
+        return 'A';
     }
   }
 
@@ -45,14 +36,10 @@ extension AttendanceStatusExtension on AttendanceStatus {
     switch (this) {
       case AttendanceStatus.present:
         return 1.0;
-      case AttendanceStatus.absent:
-        return 0.0;
       case AttendanceStatus.halfDay:
         return 0.5;
-      case AttendanceStatus.holiday:
-        return 1.0;
-      case AttendanceStatus.leave:
-        return 1.0;
+      case AttendanceStatus.absent:
+        return 0.0;
     }
   }
 }
@@ -120,12 +107,7 @@ class AttendanceRecord {
       case 'halfDay':
         parsedStatus = AttendanceStatus.halfDay;
         break;
-      case 'holiday':
-        parsedStatus = AttendanceStatus.holiday;
-        break;
-      case 'leave':
-        parsedStatus = AttendanceStatus.leave;
-        break;
+      case 'present':
       default:
         parsedStatus = AttendanceStatus.present;
     }
@@ -136,10 +118,10 @@ class AttendanceRecord {
       staffRole: json['staffRole'] as String? ?? '',
       date: DateTime.parse(json['date'] as String),
       checkInTime: json['checkInTime'] != null
-          ? DateTime.parse(json['checkInTime'] as String)
+          ? DateTime.tryParse(json['checkInTime'] as String)
           : null,
       checkOutTime: json['checkOutTime'] != null
-          ? DateTime.parse(json['checkOutTime'] as String)
+          ? DateTime.tryParse(json['checkOutTime'] as String)
           : null,
       status: parsedStatus,
       note: json['note'] as String?,
@@ -177,14 +159,21 @@ class AttendanceEmployee {
   final bool isCustom;
   final DateTime? joinedAt;
 
+  static const List<String> allowedRoles = [
+    'Sales & Collection',
+    'Driver',
+    'Helper',
+    'Office Staff',
+  ];
+
   AttendanceEmployee({
     required this.id,
     required this.name,
     required this.role,
     this.phone = '',
-    this.monthlySalary = 15000.0,
+    this.monthlySalary = 18000.0,
     this.isActive = true,
-    this.isCustom = false,
+    this.isCustom = true,
     this.joinedAt,
   });
 
@@ -203,12 +192,12 @@ class AttendanceEmployee {
       AttendanceEmployee(
         id: json['id'] as String? ?? '',
         name: json['name'] as String? ?? '',
-        role: json['role'] as String? ?? 'Salesman',
+        role: json['role'] as String? ?? 'Sales & Collection',
         phone: json['phone'] as String? ?? '',
         monthlySalary:
-            (json['monthlySalary'] as num?)?.toDouble() ?? 15000.0,
+            (json['monthlySalary'] as num?)?.toDouble() ?? 18000.0,
         isActive: json['isActive'] as bool? ?? true,
-        isCustom: json['isCustom'] as bool? ?? false,
+        isCustom: json['isCustom'] as bool? ?? true,
         joinedAt: json['joinedAt'] != null
             ? DateTime.tryParse(json['joinedAt'] as String)
             : null,
@@ -294,20 +283,18 @@ class MonthlySalaryCalculation {
   final int totalDaysInMonth;
   final int presentCount;
   final int halfDayCount;
-  final int holidayCount;
-  final int leaveCount;
   final int absentCount;
   final double payableDays;
   final double dailyRate;
   final double baseMonthlySalary;
   final double earnedSalary;
-  final double absentDeduction;
   final double bonus;
   final double advanceDeduction;
   final double netSalary;
   final bool isDisbursed;
   final DateTime? disbursedAt;
   final String? paymentMode;
+  final List<DateTime> absentDates;
 
   MonthlySalaryCalculation({
     required this.employee,
@@ -316,20 +303,18 @@ class MonthlySalaryCalculation {
     required this.totalDaysInMonth,
     required this.presentCount,
     required this.halfDayCount,
-    required this.holidayCount,
-    required this.leaveCount,
     required this.absentCount,
     required this.payableDays,
     required this.dailyRate,
     required this.baseMonthlySalary,
     required this.earnedSalary,
-    required this.absentDeduction,
     required this.bonus,
     required this.advanceDeduction,
     required this.netSalary,
     required this.isDisbursed,
     this.disbursedAt,
     this.paymentMode,
+    this.absentDates = const [],
   });
 
   static MonthlySalaryCalculation compute({
@@ -345,9 +330,8 @@ class MonthlySalaryCalculation {
 
     int present = 0;
     int halfDay = 0;
-    int holiday = 0;
-    int leave = 0;
     int absent = 0;
+    final List<DateTime> absentList = [];
 
     for (final r in userRecords) {
       switch (r.status) {
@@ -357,23 +341,20 @@ class MonthlySalaryCalculation {
         case AttendanceStatus.halfDay:
           halfDay++;
           break;
-        case AttendanceStatus.holiday:
-          holiday++;
-          break;
-        case AttendanceStatus.leave:
-          leave++;
-          break;
         case AttendanceStatus.absent:
           absent++;
+          absentList.add(r.date);
           break;
       }
     }
 
-    final double payable = present + (halfDay * 0.5) + holiday + leave;
+    absentList.sort((a, b) => a.compareTo(b));
+
+    // Payable formula: Present + (HalfDay * 0.5)
+    final double payable = present + (halfDay * 0.5);
     final double base = employee.monthlySalary;
     final double daily = daysInMonth > 0 ? (base / daysInMonth) : 0.0;
     final double earned = (payable * daily);
-    final double absentDed = (absent * daily);
     final double bonus = adjustment?.bonus ?? 0.0;
     final double adv = adjustment?.advanceDeduction ?? 0.0;
     final double net =
@@ -386,45 +367,46 @@ class MonthlySalaryCalculation {
       totalDaysInMonth: daysInMonth,
       presentCount: present,
       halfDayCount: halfDay,
-      holidayCount: holiday,
-      leaveCount: leave,
       absentCount: absent,
       payableDays: payable,
       dailyRate: daily,
       baseMonthlySalary: base,
       earnedSalary: earned,
-      absentDeduction: absentDed,
       bonus: bonus,
       advanceDeduction: adv,
       netSalary: net,
       isDisbursed: adjustment?.isDisbursed ?? false,
       disbursedAt: adjustment?.disbursedAt,
       paymentMode: adjustment?.paymentMode,
+      absentDates: absentList,
     );
   }
 
   String formatWhatsAppSlip() {
     final monthName = _monthNames[month - 1];
-    return '''📄 *MONTHLY SALARY SLIP - $monthName $year*
+    final absentStr = absentDates.isNotEmpty
+        ? absentDates.map((d) => '${d.day} $monthName').join(', ')
+        : 'None';
+
+    return '''📄 *ATTENDANCE & SALARY SLIP - $monthName $year*
 👤 *Employee:* ${employee.name} (${employee.role})
-🏢 *Purva & Manas Collection*
+🏢 *Purva Enterprises & Manas Sales*
 ----------------------------------------
 🗓️ Total Month Days: $totalDaysInMonth Days
 ✅ Present Days: $presentCount
 🌗 Half Days: $halfDayCount (${(halfDayCount * 0.5).toStringAsFixed(1)} days)
-🎉 Holidays / Weekly Offs: $holidayCount
-🌴 Paid Leaves: $leaveCount
 ❌ Absent Days: $absentCount
+📌 Absent Dates: $absentStr
 ⭐ *Payable Days:* ${payableDays.toStringAsFixed(1)} / $totalDaysInMonth Days
 ----------------------------------------
 💰 Base Monthly Salary: ₹${baseMonthlySalary.toStringAsFixed(0)}
 💵 Per Day Rate: ₹${dailyRate.toStringAsFixed(2)}
-➕ Earned Amount: ₹${earnedSalary.toStringAsFixed(0)}
+➕ Earned Salary: ₹${earnedSalary.toStringAsFixed(0)}
 ${bonus > 0 ? '🎁 Bonus / Incentive: ₹${bonus.toStringAsFixed(0)}\n' : ''}${advanceDeduction > 0 ? '➖ Advance Deducted: ₹${advanceDeduction.toStringAsFixed(0)}\n' : ''}----------------------------------------
-🎯 *NET PAYABLE SALARY: ₹${netSalary.toStringAsFixed(0)}*
-${isDisbursed ? '✅ Status: Disbursed (${paymentMode ?? 'Cash'})' : '⏳ Status: Pending Payment'}
+🎯 *NET SALARY PAYABLE: ₹${netSalary.toStringAsFixed(0)}*
+${isDisbursed ? '✅ Status: Disbursed (${paymentMode ?? 'Cash'})' : '⏳ Status: Pending'}
 ----------------------------------------
-_Generated automatically from Daily Collection App_''';
+_Daily Collection App_''';
   }
 
   static const List<String> _monthNames = [
@@ -444,9 +426,11 @@ _Generated automatically from Daily Collection App_''';
 }
 
 class AttendanceService {
-  static const String _keyPrefix = 'attendance_v1_';
-  static const String _empKey = 'attendance_employees_v1';
-  static const String _adjPrefix = 'attendance_adj_v1_';
+  static const String _keyPrefix = 'attendance_v2_';
+  static const String _empKey = 'attendance_employees_v2';
+  static const String _deletedEmpKey = 'attendance_deleted_emp_ids_v2';
+  static const String _initFlagKey = 'attendance_roster_initialized_v2';
+  static const String _adjPrefix = 'attendance_adj_v2_';
 
   static String _monthKey(int year, int month) =>
       '$_keyPrefix${year}_${month.toString().padLeft(2, '0')}';
@@ -455,53 +439,34 @@ class AttendanceService {
       '$_adjPrefix${year}_${month.toString().padLeft(2, '0')}';
 
   // ── Employees Roster ──────────────────────────────────────────────────────
+  /// User requested: "remove all the employee from that list i will add by my self"
+  /// Do not auto-populate from auth users!
   static Future<List<AttendanceEmployee>> loadEmployees({
     List<UserModel>? fallbackUsers,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+
+    // Check if initialized with fresh user-managed list
+    final bool isInitialized = prefs.getBool(_initFlagKey) ?? false;
+    if (!isInitialized) {
+      // First time on v2: start clean with an empty roster so user can add staff manually
+      await prefs.setBool(_initFlagKey, true);
+      await prefs.setStringList(_empKey, []);
+      return [];
+    }
+
     final raw = prefs.getStringList(_empKey) ?? [];
+    final deletedIds = prefs.getStringList(_deletedEmpKey) ?? [];
     final employees = <AttendanceEmployee>[];
 
     for (final item in raw) {
       try {
-        employees.add(
-            AttendanceEmployee.fromJson(jsonDecode(item) as Map<String, dynamic>));
-      } catch (_) {}
-    }
-
-    // If roster is empty or missing known users, populate/merge from auth users
-    if (fallbackUsers != null && fallbackUsers.isNotEmpty) {
-      bool changed = false;
-      for (final u in fallbackUsers) {
-        final exists = employees.any((e) => e.id == u.id || e.name.toLowerCase() == u.name.toLowerCase());
-        if (!exists) {
-          double defaultSalary = 18000.0;
-          if (u.name.toLowerCase().contains('akash')) {
-            defaultSalary = 20000.0;
-          } else if (u.isSuperAdmin) {
-            defaultSalary = 30000.0;
-          } else if (u.isOffice) {
-            defaultSalary = 22000.0;
-          } else if (u.isDriver) {
-            defaultSalary = 16000.0;
-          }
-
-          employees.add(AttendanceEmployee(
-            id: u.id,
-            name: u.name,
-            role: u.roleDisplayName,
-            phone: u.phone,
-            monthlySalary: defaultSalary,
-            isActive: true,
-            isCustom: false,
-            joinedAt: u.createdAt,
-          ));
-          changed = true;
+        final emp = AttendanceEmployee.fromJson(
+            jsonDecode(item) as Map<String, dynamic>);
+        if (!deletedIds.contains(emp.id)) {
+          employees.add(emp);
         }
-      }
-      if (changed) {
-        await saveEmployees(employees);
-      }
+      } catch (_) {}
     }
 
     return employees;
@@ -521,6 +486,13 @@ class AttendanceService {
     } else {
       list.add(emp);
     }
+    // Remove from deleted list if re-added
+    final prefs = await SharedPreferences.getInstance();
+    final deletedIds = prefs.getStringList(_deletedEmpKey) ?? [];
+    if (deletedIds.contains(emp.id)) {
+      deletedIds.remove(emp.id);
+      await prefs.setStringList(_deletedEmpKey, deletedIds);
+    }
     await saveEmployees(list);
   }
 
@@ -528,6 +500,14 @@ class AttendanceService {
     final list = await loadEmployees();
     list.removeWhere((e) => e.id == empId);
     await saveEmployees(list);
+
+    // Record in deleted IDs so it never re-appears
+    final prefs = await SharedPreferences.getInstance();
+    final deletedIds = prefs.getStringList(_deletedEmpKey) ?? [];
+    if (!deletedIds.contains(empId)) {
+      deletedIds.add(empId);
+      await prefs.setStringList(_deletedEmpKey, deletedIds);
+    }
   }
 
   // ── Monthly Records ───────────────────────────────────────────────────────
@@ -577,9 +557,10 @@ class AttendanceService {
   }
 
   static Future<AttendanceRecord> checkIn(
-      String userId, String staffName, String staffRole) async {
-    final now = DateTime.now();
-    final existing = await loadForUserAndDate(userId, now);
+      String userId, String staffName, String staffRole, {DateTime? customTime}) async {
+    final now = customTime ?? DateTime.now();
+    final dateOnly = DateTime(now.year, now.month, now.day);
+    final existing = await loadForUserAndDate(userId, dateOnly);
 
     if (existing != null && existing.checkInTime != null) {
       return existing;
@@ -590,11 +571,11 @@ class AttendanceService {
           status: AttendanceStatus.present,
         ) ??
         AttendanceRecord(
-          id: '${userId}_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}',
+          id: '${userId}_${dateOnly.year}${dateOnly.month.toString().padLeft(2, '0')}${dateOnly.day.toString().padLeft(2, '0')}',
           userId: userId,
           staffName: staffName,
           staffRole: staffRole,
-          date: DateTime(now.year, now.month, now.day),
+          date: dateOnly,
           checkInTime: now,
           status: AttendanceStatus.present,
         );
@@ -603,11 +584,11 @@ class AttendanceService {
     return record;
   }
 
-  static Future<AttendanceRecord?> checkOut(String userId) async {
-    final now = DateTime.now();
-    final existing = await loadForUserAndDate(userId, now);
-    if (existing == null || existing.checkInTime == null) return null;
-    if (existing.checkOutTime != null) return existing;
+  static Future<AttendanceRecord?> checkOut(String userId, {DateTime? customTime}) async {
+    final now = customTime ?? DateTime.now();
+    final dateOnly = DateTime(now.year, now.month, now.day);
+    final existing = await loadForUserAndDate(userId, dateOnly);
+    if (existing == null) return null;
 
     final updated = existing.copyWith(checkOutTime: now);
     await saveRecord(updated);
@@ -620,53 +601,30 @@ class AttendanceService {
     required String staffRole,
     required DateTime date,
     required AttendanceStatus status,
+    DateTime? checkInTime,
+    DateTime? checkOutTime,
     String? note,
   }) async {
     final existing = await loadForUserAndDate(userId, date);
     final dateOnly = DateTime(date.year, date.month, date.day);
-    final record = existing?.copyWith(status: status, note: note) ??
+    final record = existing?.copyWith(
+          status: status,
+          checkInTime: checkInTime ?? existing.checkInTime,
+          checkOutTime: checkOutTime ?? existing.checkOutTime,
+          note: note,
+        ) ??
         AttendanceRecord(
           id: '${userId}_${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}',
           userId: userId,
           staffName: staffName,
           staffRole: staffRole,
           date: dateOnly,
+          checkInTime: checkInTime,
+          checkOutTime: checkOutTime,
           status: status,
           note: note,
         );
     await saveRecord(record);
-  }
-
-  // ── Auto-mark Sundays as Paid Holidays ────────────────────────────────────
-  static Future<int> autoMarkSundaysAsHolidays(
-      int year, int month, List<AttendanceEmployee> employees) async {
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    final existingRecords = await loadForMonth(year, month);
-    int markedCount = 0;
-
-    for (int day = 1; day <= daysInMonth; day++) {
-      final date = DateTime(year, month, day);
-      if (date.weekday == DateTime.sunday) {
-        for (final emp in employees) {
-          final dateKey =
-              '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-          final hasRecord = existingRecords.any(
-              (r) => r.userId == emp.id && r.dateKey == dateKey);
-          if (!hasRecord) {
-            await markStatus(
-              userId: emp.id,
-              staffName: emp.name,
-              staffRole: emp.role,
-              date: date,
-              status: AttendanceStatus.holiday,
-              note: 'Sunday Weekly Off',
-            );
-            markedCount++;
-          }
-        }
-      }
-    }
-    return markedCount;
   }
 
   // ── Monthly Salary Adjustments (Bonuses, Advances, Disbursed status) ───────

@@ -318,12 +318,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             Icon(Icons.touch_app_outlined, color: Colors.amber.shade400, size: 16),
                             const SizedBox(width: 8),
-                            Text(
-                              'Quick Staff Accounts (Tap to fill):',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.9),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                            Expanded(
+                              child: Text(
+                                'Quick Staff Accounts (Tap to fill):',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],
