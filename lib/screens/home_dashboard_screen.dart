@@ -12,7 +12,6 @@ import 'pending_bills_list_screen.dart';
 import 'make_collection_screen.dart';
 import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
-import 'placeholder_screen.dart';
 import 'collection_details_dialog.dart';
 import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
@@ -22,9 +21,6 @@ import 'attendance_screen.dart';
 import '../utils/firm_details.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
-  // Set to true to restore Orders and Company action cards to the Overview screen
-  static const bool _showOrdersAndCompanyOnOverview = false;
-
   final VoidCallback onNavigateToRoutes;
   final VoidCallback onNavigateToCollections;
   final VoidCallback? onNavigateToOrders;
@@ -537,7 +533,7 @@ class HomeDashboardScreen extends StatelessWidget {
                     children: [
                       Icon(Icons.badge_outlined, size: 18, color: Color(0xFF6366F1)),
                       SizedBox(width: 10),
-                      Text('Attendance & Salary'),
+                      Text('Daily Attendance'),
                     ],
                   ),
                 ),
@@ -1516,289 +1512,62 @@ class HomeDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
 
-              // Row 2: Secondary Operations (Statement, with Orders & Company code preserved)
-              if (_showOrdersAndCompanyOnOverview)
-                Row(
-                  children: [
+              // Small options directly down of the 2 big buttons:
+              // Statement, Cash Counter, and Daily Attendance (for authorized users)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildSmallActionButton(
+                      title: 'Statement',
+                      icon: Icons.assessment_outlined,
+                      color: const Color(0xFF6366F1),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const StatementScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildSmallActionButton(
+                      title: 'Cash Counter',
+                      badge: '₹${CurrencyFormatter.format(provider.totalCash)}',
+                      icon: Icons.payments_rounded,
+                      color: const Color(0xFF10B981),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CashHandoverScreen(
+                              initialDate: provider.selectedDate,
+                              initialBusiness: provider.filterBusiness,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  if (canViewAttendance(auth.currentUser)) ...[
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: _buildSecondaryActionCard(
-                        title: 'Statement',
-                        subtitle: 'Excel & PDF',
-                        icon: Icons.receipt_long_outlined,
-                        color: const Color(0xFF6366F1),
+                      child: _buildSmallActionButton(
+                        title: 'Attendance',
+                        icon: Icons.badge_outlined,
+                        color: const Color(0xFF0284C7),
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const StatementScreen()),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildSecondaryActionCard(
-                        title: 'Orders',
-                        subtitle: 'Sales orders',
-                        icon: Icons.shopping_bag_outlined,
-                        color: const Color(0xFFF59E0B),
-                        onTap: () {
-                          if (onNavigateToOrders != null) {
-                            onNavigateToOrders!();
-                          } else {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => OrdersScreen(initialFirm: provider.filterBusiness),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildSecondaryActionCard(
-                        title: 'Company',
-                        subtitle: 'Purva & Manas',
-                        icon: Icons.business_outlined,
-                        color: const Color(0xFF8B5CF6),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const CompanyScreen()),
+                            MaterialPageRoute(builder: (_) => const AttendanceScreen()),
                           );
                         },
                       ),
                     ),
                   ],
-                )
-              else
-                Material(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const StatementScreen()),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.assessment_outlined, color: Color(0xFF6366F1), size: 22),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Text(
-                              'Statement',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'VIEW',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF6366F1),
-                                  ),
-                                ),
-                                SizedBox(width: 2),
-                                Icon(Icons.chevron_right, size: 14, color: Color(0xFF6366F1)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 10),
-              // Day Closing & Cash Counter Card
-              Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CashHandoverScreen(
-                          initialDate: provider.selectedDate,
-                          initialBusiness: provider.filterBusiness,
-                        ),
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 22),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              const Text(
-                                'Cash Counter',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  '₹${CurrencyFormatter.format(provider.totalCash)}',
-                                  style: const TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF059669),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'COUNT',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF059669),
-                                ),
-                              ),
-                              SizedBox(width: 2),
-                              Icon(Icons.chevron_right, size: 14, color: Color(0xFF059669)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                ],
               ),
-              if (canViewAttendance(auth.currentUser)) ...[
-                const SizedBox(height: 10),
-                Material(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.badge_outlined, color: Color(0xFF6366F1), size: 22),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Text(
-                              'Daily Attendance',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'OPEN',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF6366F1),
-                                  ),
-                                ),
-                                SizedBox(width: 2),
-                                Icon(Icons.chevron_right, size: 14, color: Color(0xFF6366F1)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -1894,12 +1663,12 @@ class HomeDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSecondaryActionCard({
+  Widget _buildSmallActionButton({
     required String title,
-    required String subtitle,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
+    String? badge,
   }) {
     return Material(
       color: Colors.white,
@@ -1908,41 +1677,59 @@ class HomeDashboardScreen extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
+            color: Colors.white,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppTheme.border),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
-          child: Column(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                child: Icon(icon, color: color, size: 20),
+                child: Icon(icon, color: color, size: 16),
               ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12.5,
-                  color: Color(0xFF0F172A),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11.5,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (badge != null)
+                      Text(
+                        badge,
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.blueGrey.shade600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -1950,7 +1737,6 @@ class HomeDashboardScreen extends StatelessWidget {
       ),
     );
   }
-
 
   Widget _buildMinimalModePill({
     required String label,
