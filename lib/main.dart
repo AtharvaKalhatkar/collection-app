@@ -57,17 +57,59 @@ class DailyCollectionApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         builder: (context, child) {
+          final windowMediaQuery = MediaQuery.of(context);
           // Clamp text scale factor between 0.85 and 1.15 to ensure
-          // Android device accessibility scaling does not cause RenderFlex overflows
-          final mediaQuery = MediaQuery.of(context);
-          final clampedScaler = mediaQuery.textScaler.clamp(
+          // device accessibility scaling does not cause RenderFlex overflows
+          final clampedScaler = windowMediaQuery.textScaler.clamp(
             minScaleFactor: 0.85,
             maxScaleFactor: 1.15,
           );
-          return MediaQuery(
-            data: mediaQuery.copyWith(textScaler: clampedScaler),
+
+          final double screenWidth = windowMediaQuery.size.width;
+          // Responsive layout:
+          // If screen is wider than 520px (tablet, desktop browser, wide display),
+          // frame the app inside a clean mobile container (maxWidth: 480px) centered
+          // on a dark backdrop, giving an authentic smartphone experience everywhere.
+          // On actual mobile phones (screenWidth <= 520px), fill 100% of the display.
+          final bool isWideScreen = screenWidth > 520;
+          final double effectiveWidth = isWideScreen ? 480.0 : screenWidth;
+
+          final effectiveMediaQuery = windowMediaQuery.copyWith(
+            size: Size(effectiveWidth, windowMediaQuery.size.height),
+            textScaler: clampedScaler,
+          );
+
+          final Widget appWidget = MediaQuery(
+            data: effectiveMediaQuery,
             child: child ?? const SizedBox.shrink(),
           );
+
+          if (isWideScreen) {
+            return Container(
+              color: const Color(0xFF0F172A),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          blurRadius: 30,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRect(child: appWidget),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return appWidget;
         },
         home: Consumer<AuthProvider>(
           builder: (context, auth, _) {
