@@ -1493,7 +1493,6 @@ class HomeDashboardScreen extends StatelessWidget {
                   Expanded(
                     child: _buildActionTile(
                       title: 'Pending Bills',
-                      subtitle: 'View by invoice date',
                       icon: Icons.receipt_long_outlined,
                       badge: '${provider.pendingBills.where((b) => !b.isPaid).length} Active',
                       gradientColors: const [Color(0xFF0284C7), Color(0xFF0369A1)],
@@ -1510,7 +1509,6 @@ class HomeDashboardScreen extends StatelessWidget {
                   Expanded(
                     child: _buildActionTile(
                       title: 'Collection',
-                      subtitle: 'Collect against bills',
                       icon: Icons.payments_outlined,
                       badge: 'Stage 2',
                       gradientColors: const [Color(0xFF0D9488), Color(0xFF0F766E)],
@@ -1533,7 +1531,6 @@ class HomeDashboardScreen extends StatelessWidget {
                   Expanded(
                     child: _buildOverviewGridButton(
                       title: 'Statement',
-                      subtitle: 'Excel & PDF Reports',
                       icon: Icons.assessment_outlined,
                       color: const Color(0xFF6366F1),
                       onTap: () {
@@ -1548,7 +1545,6 @@ class HomeDashboardScreen extends StatelessWidget {
                   Expanded(
                     child: _buildOverviewGridButton(
                       title: 'Cash Counter',
-                      subtitle: 'Drawer Balance',
                       badge: '₹${CurrencyFormatter.format(provider.totalCash)}',
                       icon: Icons.payments_rounded,
                       color: const Color(0xFF10B981),
@@ -1574,7 +1570,6 @@ class HomeDashboardScreen extends StatelessWidget {
                     Expanded(
                       child: _buildOverviewGridButton(
                         title: 'Daily Attendance',
-                        subtitle: 'Staff Roster & Advance Salary',
                         icon: Icons.badge_outlined,
                         color: const Color(0xFF0284C7),
                         onTap: () {
@@ -1598,7 +1593,7 @@ class HomeDashboardScreen extends StatelessWidget {
 
   Widget _buildActionTile({
     required String title,
-    required String subtitle,
+    String? subtitle,
     required IconData icon,
     required String badge,
     required List<Color> gradientColors,
@@ -1668,15 +1663,17 @@ class HomeDashboardScreen extends StatelessWidget {
                   fontSize: 15,
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w500,
+              if (subtitle != null && subtitle.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
