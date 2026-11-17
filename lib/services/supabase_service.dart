@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/collection_model.dart';
@@ -6,6 +7,7 @@ import '../models/route_model.dart';
 import '../models/pending_bill_model.dart';
 import '../models/user_model.dart';
 import '../models/location_timeline_entry.dart';
+import '../models/attendance_record.dart';
 
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
@@ -364,7 +366,9 @@ class SupabaseService {
             final id = row['id'] as String? ?? '';
             return id != 'config_gemini_api' &&
                 !id.startsWith('tl_') &&
-                !id.startsWith('timeline_');
+                !id.startsWith('timeline_') &&
+                !id.startsWith('att_') &&
+                !id.startsWith('route_order_');
           })
           .map((row) => UserModel.fromJson(Map<String, dynamic>.from(row as Map)))
           .toList();
@@ -499,6 +503,225 @@ class SupabaseService {
       _lastError = e.toString();
       debugPrint('Error fetching location timeline from Supabase: $e');
       return [];
+    }
+  }
+
+  // --- Attendance Employees Cloud Sync ---
+  Future<List<AttendanceEmployee>> fetchAttendanceEmployees() async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return [];
+
+    try {
+      final List<dynamic> data = await client
+          .from('app_users')
+          .select()
+          .like('id', 'att_emp_%')
+          .order('createdAt', ascending: true);
+
+      final list = <AttendanceEmployee>[];
+      for (final row in data) {
+        try {
+          final pass = row['password'] as String? ?? '';
+          if (pass.startsWith('{') && pass.endsWith('}')) {
+            final json = jsonDecode(pass) as Map<String, dynamic>;
+            list.add(AttendanceEmployee.fromJson(json));
+          } else {
+            list.add(AttendanceEmployee(
+              id: (row['id'] as String).replaceFirst('att_emp_', ''),
+              name: row['name'] as String? ?? '',
+              role: row['role'] as String? ?? 'Sales & Collection',
+              phone: row['phone'] as String? ?? '',
+              isActive: row['isActive'] as bool? ?? true,
+            ));
+          }
+        } catch (e) {
+          debugPrint('Error parsing attendance employee row: $e');
+        }
+      }
+      return list;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error fetching attendance employees from Supabase: $e');
+      return [];
+    }
+  }
+
+  Future<bool> saveAttendanceEmployee(AttendanceEmployee emp) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').upsert({
+        'id': 'att_emp_${emp.id}',
+        'name': emp.name,
+        'role': emp.role,
+        'phone': emp.phone,
+        'password': jsonEncode(emp.toJson()),
+        'isActive': emp.isActive,
+        'createdAt': emp.joinedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error saving attendance employee to Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteAttendanceEmployee(String id) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').delete().eq('id', 'att_emp_$id');
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error deleting attendance employee from Supabase: $e');
+      return false;
+    }
+  }
+
+  // --- Attendance Records Cloud Sync ---
+  Future<List<AttendanceRecord>> fetchAttendanceRecords(int year, int month) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return [];
+
+    try {
+      final monthStr = '$year${month.toString().padLeft(2, '0')}';
+      final List<dynamic> data = await client
+          .from('app_users')
+          .select()
+          .like('id', 'att_rec_%$monthStr%');
+
+      final list = <AttendanceRecord>[];
+      for (final row in data) {
+        try {
+          final pass = row['password'] as String? ?? '';
+          if (pass.startsWith('{') && pass.endsWith('}')) {
+            final json = jsonDecode(pass) as Map<String, dynamic>;
+            list.add(AttendanceRecord.fromJson(json));
+          }
+        } catch (_) {}
+      }
+      return list;
+    } catch (e) {
+      debugPrint('Error fetching attendance records: $e');
+      return [];
+    }
+  }
+
+  Future<bool> saveAttendanceRecord(AttendanceRecord record) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').upsert({
+        'id': 'att_rec_${record.id}',
+        'name': record.staffName,
+        'role': record.staffRole,
+        'phone': record.userId,
+        'password': jsonEncode(record.toJson()),
+        'isActive': true,
+        'createdAt': record.date.toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error saving attendance record to Supabase: $e');
+      return false;
+    }
+  }
+
+  // --- Attendance Monthly Adjustments / Advances Cloud Sync ---
+  Future<List<SalaryMonthlyAdjustment>> fetchAttendanceAdjustments(int year, int month) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return [];
+
+    try {
+      final List<dynamic> data = await client
+          .from('app_users')
+          .select()
+          .like('id', 'att_adj_${year}_${month}_%');
+
+      final list = <SalaryMonthlyAdjustment>[];
+      for (final row in data) {
+        try {
+          final pass = row['password'] as String? ?? '';
+          if (pass.startsWith('{') && pass.endsWith('}')) {
+            final json = jsonDecode(pass) as Map<String, dynamic>;
+            list.add(SalaryMonthlyAdjustment.fromJson(json));
+          }
+        } catch (_) {}
+      }
+      return list;
+    } catch (e) {
+      debugPrint('Error fetching attendance adjustments: $e');
+      return [];
+    }
+  }
+
+  Future<bool> saveAttendanceAdjustment(SalaryMonthlyAdjustment adj) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').upsert({
+        'id': 'att_adj_${adj.year}_${adj.month}_${adj.employeeId}',
+        'name': adj.employeeId,
+        'role': 'advance',
+        'phone': '${adj.year}-${adj.month}',
+        'password': jsonEncode(adj.toJson()),
+        'isActive': true,
+        'createdAt': adj.disbursedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error saving attendance adjustment to Supabase: $e');
+      return false;
+    }
+  }
+
+  // --- Route Outlet Order Cloud Sync ---
+  Future<List<String>> fetchRouteOutletOrder(String routeId) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return [];
+
+    try {
+      final res = await client
+          .from('app_users')
+          .select('password')
+          .eq('id', 'route_order_$routeId')
+          .maybeSingle();
+
+      if (res != null && res['password'] != null) {
+        final pass = res['password'] as String;
+        final decoded = jsonDecode(pass) as List<dynamic>;
+        return decoded.map((e) => e.toString()).toList();
+      }
+    } catch (e) {
+      debugPrint('Error fetching route outlet order: $e');
+    }
+    return [];
+  }
+
+  Future<bool> saveRouteOutletOrder(String routeId, List<String> shopIds) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').upsert({
+        'id': 'route_order_$routeId',
+        'name': 'Route Order $routeId',
+        'role': 'route_order',
+        'phone': routeId,
+        'password': jsonEncode(shopIds),
+        'isActive': true,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error saving route outlet order to Supabase: $e');
+      return false;
     }
   }
 }

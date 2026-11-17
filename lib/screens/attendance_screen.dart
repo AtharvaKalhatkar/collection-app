@@ -628,7 +628,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     final nameCtrl = TextEditingController(text: toEdit?.name ?? '');
     final phoneCtrl = TextEditingController(text: toEdit?.phone ?? '');
     final salaryCtrl = TextEditingController(
-      text: toEdit != null ? toEdit.monthlySalary.toStringAsFixed(0) : '18000',
+      text: toEdit != null ? toEdit.monthlySalary.toStringAsFixed(0) : '',
     );
 
     // Exactly 4 allowed roles
@@ -655,7 +655,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   controller: nameCtrl,
                   decoration: InputDecoration(
                     labelText: 'Full Name *',
-                    hintText: 'e.g. Akash, Rahul, Driver Ramesh',
+                    hintText: 'Employee Name',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
@@ -746,8 +746,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   controller: salaryCtrl,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    labelText: 'Monthly Base Salary (₹) *',
-                    hintText: 'e.g. 18000',
+                    labelText: 'Monthly Base Salary (₹)',
+                    hintText: 'Optional',
                     prefixText: '₹ ',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
@@ -767,7 +767,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               ),
               onPressed: () async {
                 final name = nameCtrl.text.trim();
-                final salary = double.tryParse(salaryCtrl.text.trim()) ?? 18000.0;
+                final salary = double.tryParse(salaryCtrl.text.trim()) ?? 0.0;
                 if (name.isEmpty) return;
 
                 final messenger = ScaffoldMessenger.of(context);
@@ -896,7 +896,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       child: const Icon(Icons.price_change_outlined, color: Color(0xFFDC2626), size: 20),
                     ),
                     const SizedBox(width: 10),
-                    const Text('Advance Salary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                    const Text('Advance', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
                   ],
                 ),
                 IconButton(
@@ -930,7 +930,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     items: _employees.map((e) {
                       return DropdownMenuItem(
                         value: e.id,
-                        child: Text('${e.name} (${e.role}) - Base: ₹${e.monthlySalary.toStringAsFixed(0)}',
+                        child: Text('${e.name} (${e.role})',
                             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       );
                     }).toList(),
@@ -973,18 +973,17 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       ),
                     ),
 
-                  // 2. Advance Salary Amount
+                  // 2. Advance Amount
                   TextField(
                     controller: advCtrl,
                     keyboardType: TextInputType.number,
                     autofocus: true,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     decoration: InputDecoration(
-                      labelText: 'Advance Salary Amount (₹) *',
+                      labelText: 'Advance Amount (₹) *',
                       hintText: 'e.g. 2000, 5000',
                       prefixIcon: const Icon(Icons.currency_rupee, color: Color(0xFFDC2626)),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      helperText: 'Will be automatically deducted from monthly salary',
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -1164,7 +1163,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           if (isAdmin) ...[
             IconButton(
               icon: const Icon(Icons.price_change_outlined),
-              tooltip: 'Give Advance Salary',
+              tooltip: 'Give Advance',
               onPressed: () => _openAdvanceSalaryDialog(),
             ),
             IconButton(
@@ -1458,36 +1457,48 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
       children: [
-        // Employee Selector Chips
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              if (isAdmin && _employees.length > 1)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    selected: _selectedEmployeeId == null,
-                    label: const Text('All Staff Overview'),
-                    avatar: const Icon(Icons.groups, size: 16),
-                    selectedColor: AppTheme.primary.withValues(alpha: 0.15),
-                    onSelected: (_) => setState(() => _selectedEmployeeId = null),
+        // Employee Selector Dropdown (Clean, replaces scrolling chips)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: _selectedEmployeeId,
+              isExpanded: true,
+              icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
+              items: [
+                if (isAdmin)
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Row(
+                      children: [
+                        Icon(Icons.groups, size: 18, color: AppTheme.primary),
+                        SizedBox(width: 8),
+                        Text('All Staff Overview',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                      ],
+                    ),
                   ),
-                ),
-              ..._employees.map((emp) {
-                final isSelected = _selectedEmployeeId == emp.id;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    selected: isSelected,
-                    label: Text('${emp.name} (${emp.role})'),
-                    selectedColor: AppTheme.primary.withValues(alpha: 0.15),
-                    checkmarkColor: AppTheme.primary,
-                    onSelected: (_) => setState(() => _selectedEmployeeId = emp.id),
-                  ),
-                );
-              }),
-            ],
+                ..._employees.map((emp) => DropdownMenuItem<String?>(
+                      value: emp.id,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_outline, size: 18, color: Colors.blueGrey),
+                          const SizedBox(width: 8),
+                          Text('${emp.name} (${emp.role})',
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                        ],
+                      ),
+                    )),
+              ],
+              onChanged: (val) {
+                setState(() => _selectedEmployeeId = val);
+              },
+            ),
           ),
         ),
         const SizedBox(height: 14),
@@ -1555,7 +1566,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                       ),
                       Text(
-                        '${emp.role} · Base ₹${emp.monthlySalary.toStringAsFixed(0)}/month',
+                        emp.role,
                         style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                       ),
                     ],
@@ -1630,7 +1641,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                             const Icon(Icons.price_change_outlined, size: 14, color: Color(0xFFDC2626)),
                             const SizedBox(width: 4),
                             Text(
-                              calc.advanceDeduction > 0 ? 'Edit Advance' : '+ Advance Salary',
+                              calc.advanceDeduction > 0 ? 'Edit Advance' : '+ Advance',
                               style: const TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w800,
@@ -2152,24 +2163,12 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                             '${emp.role} · ${emp.phone.isNotEmpty ? emp.phone : 'No phone'}',
                             style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
                           ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'Salary: ₹${emp.monthlySalary.toStringAsFixed(0)} / month',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
-                            ),
-                          ),
                         ],
                       ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.price_change_outlined, size: 20, color: Color(0xFFDC2626)),
-                      tooltip: 'Give Advance Salary',
+                      tooltip: 'Give Advance',
                       onPressed: () => _openAdvanceSalaryDialog(targetEmp: emp),
                     ),
                     IconButton(

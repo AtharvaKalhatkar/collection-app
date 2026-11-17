@@ -320,7 +320,6 @@ class HomeDashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CollectionProvider>();
-    final auth = context.watch<AuthProvider>();
 
     if (provider.isLoading) {
       return const Scaffold(
@@ -470,7 +469,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
                 );
               } else if (val == 'assign_driver_routes') {
-                _showAssignDriverRouteDialog(context);
+                _showAssignRouteDialog(context);
               } else if (val == 'attendance') {
                 Navigator.push(
                   context,
@@ -534,9 +533,9 @@ class HomeDashboardScreen extends StatelessWidget {
                   value: 'assign_driver_routes',
                   child: Row(
                     children: [
-                      Icon(Icons.local_shipping_rounded, size: 18, color: Color(0xFF0284C7)),
+                      Icon(Icons.alt_route_rounded, size: 18, color: Color(0xFF0D9488)),
                       SizedBox(width: 10),
-                      Text('Assign Route to Driver'),
+                      Text('Assign Route'),
                     ],
                   ),
                 ),
@@ -1563,26 +1562,35 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              if (canViewAttendance(auth.currentUser)) ...[
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildOverviewGridButton(
-                        title: 'Daily Attendance',
-                        icon: Icons.badge_outlined,
-                        color: const Color(0xFF0284C7),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-                          );
-                        },
-                      ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildOverviewGridButton(
+                      title: 'Daily Attendance',
+                      icon: Icons.badge_outlined,
+                      color: const Color(0xFF0284C7),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const AttendanceScreen()),
+                        );
+                      },
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildOverviewGridButton(
+                      title: 'Assign Route',
+                      icon: Icons.alt_route_rounded,
+                      color: const Color(0xFF0D9488),
+                      onTap: () {
+                        _showAssignRouteDialog(context);
+                      },
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 20),
             ],
           ),
@@ -1681,50 +1689,38 @@ class HomeDashboardScreen extends StatelessWidget {
     );
   }
 
-  void _showAssignDriverRouteDialog(BuildContext context) {
+  void _showAssignRouteDialog(BuildContext context) {
     final auth = context.read<AuthProvider>();
     final provider = context.read<CollectionProvider>();
     final allRoutes = provider.allRoutes;
+
     final drivers = auth.users.where((u) => u.isDriver).toList();
+    final salesmen = auth.users.where((u) => u.isSalesman).toList();
+    final collectionStaff = auth.users.where((u) => u.role == UserRole.salesman || u.role == UserRole.office).toList();
+    final vehicles = provider.vehicles.isNotEmpty ? provider.vehicles : ['MH 14 EM 4724', 'MH 14 GH 1122'];
 
-    if (drivers.isEmpty) {
-      QuickAlert.info(
-        context,
-        'No driver account found. Please ensure a driver is added in Users / Staff.',
-      );
-      return;
-    }
-
-    UserModel selectedDriver = drivers.first;
-    List<String> selectedRoutes = List<String>.from(selectedDriver.assignedRouteIds);
+    String roleOption = 'driver'; // 'driver', 'sales', 'collection'
+    String selectedVehicle = vehicles.first;
+    UserModel? selectedUser = drivers.isNotEmpty ? drivers.first : (salesmen.isNotEmpty ? salesmen.first : null);
+    List<String> selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
 
     showDialog(
       context: context,
       builder: (dlgCtx) => StatefulBuilder(
         builder: (ctx, setDlgState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-          contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
           title: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                  color: const Color(0xFF0D9488).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 22),
+                child: const Icon(Icons.alt_route_rounded, color: Color(0xFF0D9488), size: 22),
               ),
               const SizedBox(width: 10),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Assign Route to Driver', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    Text('Driver only delivers to assigned routes', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                  ],
-                ),
-              ),
+              const Text('Assign Route', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
             ],
           ),
           content: SizedBox(
@@ -1732,55 +1728,122 @@ class HomeDashboardScreen extends StatelessWidget {
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (drivers.length > 1) ...[
-                    const Text('Select Driver', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
-                    const SizedBox(height: 6),
+                  // 1. Role Dropdown
+                  DropdownButtonFormField<String>(
+                    initialValue: roleOption,
+                    decoration: InputDecoration(
+                      labelText: 'Role',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'driver', child: Text('Driver')),
+                      DropdownMenuItem(value: 'sales', child: Text('Sales')),
+                      DropdownMenuItem(value: 'collection', child: Text('Collection')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDlgState(() {
+                          roleOption = val;
+                          if (roleOption == 'driver') {
+                            selectedUser = drivers.isNotEmpty ? drivers.first : null;
+                          } else if (roleOption == 'sales') {
+                            selectedUser = salesmen.isNotEmpty ? salesmen.first : null;
+                          } else {
+                            selectedUser = collectionStaff.isNotEmpty ? collectionStaff.first : (salesmen.isNotEmpty ? salesmen.first : null);
+                          }
+                          selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 2. Cascading Selectors
+                  if (roleOption == 'driver') ...[
+                    // Vehicle Selector
                     DropdownButtonFormField<String>(
-                      initialValue: selectedDriver.id,
+                      initialValue: selectedVehicle,
                       decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        labelText: 'Vehicle',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
-                      items: drivers.map((d) {
-                        return DropdownMenuItem(
-                          value: d.id,
-                          child: Text('${d.name} (${d.phone})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        );
-                      }).toList(),
+                      items: vehicles.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                      onChanged: (v) {
+                        if (v != null) setDlgState(() => selectedVehicle = v);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    // Driver Selector
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedUser?.id,
+                      decoration: InputDecoration(
+                        labelText: 'Driver Name',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: drivers.map((d) => DropdownMenuItem(value: d.id, child: Text(d.name))).toList(),
                       onChanged: (val) {
                         if (val != null) {
                           setDlgState(() {
-                            selectedDriver = drivers.firstWhere((d) => d.id == val);
-                            selectedRoutes = List<String>.from(selectedDriver.assignedRouteIds);
+                            selectedUser = drivers.firstWhere((d) => d.id == val);
+                            selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ] else if (roleOption == 'sales') ...[
+                    // Salesman Selector
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedUser?.id,
+                      decoration: InputDecoration(
+                        labelText: 'Salesman Name',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: salesmen.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDlgState(() {
+                            selectedUser = salesmen.firstWhere((s) => s.id == val);
+                            selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
                           });
                         }
                       },
                     ),
                     const SizedBox(height: 12),
                   ] else ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(8),
+                    // Collection Staff Selector
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedUser?.id,
+                      decoration: InputDecoration(
+                        labelText: 'Collection Staff Name',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person, size: 16, color: Color(0xFF0284C7)),
-                          const SizedBox(width: 8),
-                          Text('Driver: ${selectedDriver.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        ],
-                      ),
+                      items: collectionStaff.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDlgState(() {
+                            selectedUser = collectionStaff.firstWhere((s) => s.id == val);
+                            selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
+                          });
+                        }
+                      },
                     ),
                     const SizedBox(height: 12),
                   ],
+
+                  // 3. Assign Route Checkboxes
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Routes (${selectedRoutes.length}/${allRoutes.length} selected)',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                      Text('Routes (${selectedRoutes.length}/${allRoutes.length})',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                       TextButton(
                         style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
                         onPressed: () {
@@ -1800,7 +1863,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   if (allRoutes.isEmpty)
                     const Padding(
                       padding: EdgeInsets.all(16.0),
-                      child: Text('No routes created yet in Routes / Outlets.'),
+                      child: Text('No routes created yet.'),
                     )
                   else
                     ...allRoutes.map((route) {
@@ -1809,10 +1872,10 @@ class HomeDashboardScreen extends StatelessWidget {
                       return CheckboxListTile(
                         dense: true,
                         value: isChecked,
-                        activeColor: const Color(0xFF0284C7),
+                        activeColor: const Color(0xFF0D9488),
                         contentPadding: EdgeInsets.zero,
                         title: Text(route.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                        subtitle: Text('$outletCount outlets • ${route.description ?? ""}'),
+                        subtitle: Text('$outletCount outlets'),
                         onChanged: (val) {
                           setDlgState(() {
                             if (val == true) {
@@ -1832,16 +1895,18 @@ class HomeDashboardScreen extends StatelessWidget {
             TextButton(onPressed: () => Navigator.pop(dlgCtx), child: const Text('Cancel')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0284C7),
+                backgroundColor: const Color(0xFF0D9488),
                 foregroundColor: Colors.white,
               ),
               onPressed: () async {
                 Navigator.pop(dlgCtx);
-                final updated = selectedDriver.copyWith(assignedRouteIds: selectedRoutes);
-                await auth.saveUser(updated);
-                provider.setCurrentUser(auth.currentUser);
-                if (context.mounted) {
-                  QuickAlert.success(context, 'Assigned ${selectedRoutes.length} routes to ${selectedDriver.name}!');
+                if (selectedUser != null) {
+                  final updated = selectedUser!.copyWith(assignedRouteIds: selectedRoutes);
+                  await auth.saveUser(updated);
+                  provider.setCurrentUser(auth.currentUser);
+                  if (context.mounted) {
+                    QuickAlert.success(context, 'Assigned ${selectedRoutes.length} routes to ${selectedUser!.name}!');
+                  }
                 }
               },
               child: const Text('Save Routes', style: TextStyle(fontWeight: FontWeight.bold)),

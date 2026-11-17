@@ -172,11 +172,7 @@ class LocationTrackingService {
     }
 
     if (nearestShop != null && minDistanceKm <= 0.25) {
-      final routeStr = nearestShop.routeName.isNotEmpty ? ' (${nearestShop.routeName})' : '';
-      if (minDistanceKm <= 0.08) {
-        return 'At ${nearestShop.name}$routeStr';
-      }
-      return 'Near ${nearestShop.name}$routeStr (~${(minDistanceKm * 1000).round()}m)';
+      return nearestShop.name;
     }
 
     // 2. Beyond 250m, get real locality / suburb / town name via reverse geocoding
@@ -270,11 +266,7 @@ class LocationTrackingService {
     }
 
     if (nearestShop != null && minDistanceKm <= 0.25) {
-      final routeStr = nearestShop.routeName.isNotEmpty ? ' (${nearestShop.routeName})' : '';
-      if (minDistanceKm <= 0.08) {
-        return 'At ${nearestShop.name}$routeStr';
-      }
-      return 'Near ${nearestShop.name}$routeStr (~${(minDistanceKm * 1000).round()}m)';
+      return nearestShop.name;
     }
 
     // 2. Known region fallback

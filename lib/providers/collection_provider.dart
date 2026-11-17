@@ -1536,6 +1536,32 @@ class CollectionProvider extends ChangeNotifier {
     return _shops.where((s) => s.routeId == routeId).toList();
   }
 
+  Future<void> reorderShopsForRoute(String routeId, List<String> orderedShopIds) async {
+    final routeShops = _shops.where((s) => s.routeId == routeId).toList();
+    routeShops.sort((a, b) {
+      final idxA = orderedShopIds.indexOf(a.id);
+      final idxB = orderedShopIds.indexOf(b.id);
+      if (idxA == -1 && idxB == -1) return 0;
+      if (idxA == -1) return 1;
+      if (idxB == -1) return -1;
+      return idxA.compareTo(idxB);
+    });
+
+    final otherShops = _shops.where((s) => s.routeId != routeId).toList();
+    _shops = [...otherShops, ...routeShops];
+    notifyListeners();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('route_order_$routeId', orderedShopIds);
+      await _storage.saveShops(_shops);
+    } catch (_) {}
+
+    try {
+      await _supabase.saveRouteOutletOrder(routeId, orderedShopIds);
+    } catch (_) {}
+  }
+
   ShopModel? getShopById(String id) {
     try {
       return _shops.firstWhere((s) => s.id == id);

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'user_model.dart';
+import '../services/supabase_service.dart';
 
 /// Strictly 3 attendance statuses as requested: Present, Half Day, Absent
 enum AttendanceStatus {
@@ -429,7 +430,6 @@ class AttendanceService {
   static const String _keyPrefix = 'attendance_v2_';
   static const String _empKey = 'attendance_employees_v2';
   static const String _deletedEmpKey = 'attendance_deleted_emp_ids_v2';
-  static const String _initFlagKey = 'attendance_roster_initialized_v2';
   static const String _adjPrefix = 'attendance_adj_v2_';
 
   static String _monthKey(int year, int month) =>
@@ -440,20 +440,11 @@ class AttendanceService {
 
   // ── Employees Roster ──────────────────────────────────────────────────────
   /// User requested: "remove all the employee from that list i will add by my self"
-  /// Do not auto-populate from auth users!
+  /// Cross-device seamless sync via Supabase app_users table
   static Future<List<AttendanceEmployee>> loadEmployees({
     List<UserModel>? fallbackUsers,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-
-    // Check if initialized with fresh user-managed list
-    final bool isInitialized = prefs.getBool(_initFlagKey) ?? false;
-    if (!isInitialized) {
-      // First time on v2: start clean with an empty roster so user can add staff manually
-      await prefs.setBool(_initFlagKey, true);
-      await prefs.setStringList(_empKey, []);
-      return [];
-    }
 
     final raw = prefs.getStringList(_empKey) ?? [];
     final deletedIds = prefs.getStringList(_deletedEmpKey) ?? [];
@@ -468,6 +459,27 @@ class AttendanceService {
         }
       } catch (_) {}
     }
+
+    // Seamless Cloud Sync from Supabase
+    try {
+      final cloudList = await SupabaseService().fetchAttendanceEmployees();
+      if (cloudList.isNotEmpty) {
+        bool changed = false;
+        for (final cloudEmp in cloudList) {
+          if (deletedIds.contains(cloudEmp.id)) continue;
+          final idx = employees.indexWhere((e) => e.id == cloudEmp.id);
+          if (idx >= 0) {
+            employees[idx] = cloudEmp;
+          } else {
+            employees.add(cloudEmp);
+            changed = true;
+          }
+        }
+        if (changed || raw.isEmpty) {
+          await saveEmployees(employees);
+        }
+      }
+    } catch (_) {}
 
     return employees;
   }
@@ -494,6 +506,11 @@ class AttendanceService {
       await prefs.setStringList(_deletedEmpKey, deletedIds);
     }
     await saveEmployees(list);
+
+    // Push immediately to cloud for seamless cross-device sync
+    try {
+      await SupabaseService().saveAttendanceEmployee(emp);
+    } catch (_) {}
   }
 
   static Future<void> deleteEmployee(String empId) async {
@@ -508,6 +525,11 @@ class AttendanceService {
       deletedIds.add(empId);
       await prefs.setStringList(_deletedEmpKey, deletedIds);
     }
+
+    // Delete immediately from cloud for seamless cross-device sync
+    try {
+      await SupabaseService().deleteAttendanceEmployee(empId);
+    } catch (_) {}
   }
 
   // ── Monthly Records ───────────────────────────────────────────────────────
@@ -521,6 +543,24 @@ class AttendanceService {
             AttendanceRecord.fromJson(jsonDecode(item) as Map<String, dynamic>));
       } catch (_) {}
     }
+
+    // Seamless Cloud Sync for Records
+    try {
+      final cloudRecords = await SupabaseService().fetchAttendanceRecords(year, month);
+      if (cloudRecords.isNotEmpty) {
+        for (final cr in cloudRecords) {
+          final idx = records.indexWhere((r) => r.userId == cr.userId && r.dateKey == cr.dateKey);
+          if (idx >= 0) {
+            records[idx] = cr;
+          } else {
+            records.add(cr);
+          }
+        }
+        final newRaw = records.map((r) => jsonEncode(r.toJson())).toList();
+        await prefs.setStringList(_monthKey(year, month), newRaw);
+      }
+    } catch (_) {}
+
     return records;
   }
 
@@ -542,6 +582,11 @@ class AttendanceService {
 
     final newRaw = records.map((r) => jsonEncode(r.toJson())).toList();
     await prefs.setStringList(key, newRaw);
+
+    // Push immediately to cloud for seamless cross-device sync
+    try {
+      await SupabaseService().saveAttendanceRecord(record);
+    } catch (_) {}
   }
 
   static Future<AttendanceRecord?> loadForUserAndDate(
@@ -639,6 +684,24 @@ class AttendanceService {
             SalaryMonthlyAdjustment.fromJson(jsonDecode(item) as Map<String, dynamic>));
       } catch (_) {}
     }
+
+    // Seamless Cloud Sync for Adjustments
+    try {
+      final cloudAdjs = await SupabaseService().fetchAttendanceAdjustments(year, month);
+      if (cloudAdjs.isNotEmpty) {
+        for (final ca in cloudAdjs) {
+          final idx = list.indexWhere((a) => a.employeeId == ca.employeeId);
+          if (idx >= 0) {
+            list[idx] = ca;
+          } else {
+            list.add(ca);
+          }
+        }
+        final newRaw = list.map((a) => jsonEncode(a.toJson())).toList();
+        await prefs.setStringList(_adjKey(year, month), newRaw);
+      }
+    } catch (_) {}
+
     return list;
   }
 
@@ -650,5 +713,10 @@ class AttendanceService {
     list.add(adj);
     final raw = list.map((a) => jsonEncode(a.toJson())).toList();
     await prefs.setStringList(key, raw);
+
+    // Push immediately to cloud for seamless cross-device sync
+    try {
+      await SupabaseService().saveAttendanceAdjustment(adj);
+    } catch (_) {}
   }
 }

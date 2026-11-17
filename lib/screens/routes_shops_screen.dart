@@ -578,6 +578,161 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
     }
   }
 
+  void _openReorderDialog(BuildContext context, CollectionProvider provider) {
+    final routes = provider.routes;
+    if (routes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No routes available to reorder.')),
+      );
+      return;
+    }
+
+    String activeRouteId = (_selectedRouteId != null && _selectedRouteId != 'all')
+        ? _selectedRouteId!
+        : routes.first.id;
+
+    List<ShopModel> routeShops = List<ShopModel>.from(provider.getShopsForRoute(activeRouteId));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.low_priority_rounded, color: AppTheme.primary, size: 20),
+                ),
+                const SizedBox(width: 10),
+                const Text('Reorder Outlets', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 480,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: activeRouteId,
+                        isExpanded: true,
+                        items: routes.map((r) => DropdownMenuItem(
+                          value: r.id,
+                          child: Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        )).toList(),
+                        onChanged: (newRId) {
+                          if (newRId != null) {
+                            setDlgState(() {
+                              activeRouteId = newRId;
+                              routeShops = List<ShopModel>.from(provider.getShopsForRoute(activeRouteId));
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '${routeShops.length} Outlets • Drag handle to change sequence',
+                    style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: routeShops.isEmpty
+                        ? const Center(child: Text('No outlets in this route.'))
+                        : Theme(
+                            data: Theme.of(context).copyWith(canvasColor: Colors.transparent),
+                            child: ReorderableListView.builder(
+                              itemCount: routeShops.length,
+                              onReorder: (oldIndex, newIndex) {
+                                setDlgState(() {
+                                  if (newIndex > oldIndex) newIndex -= 1;
+                                  final item = routeShops.removeAt(oldIndex);
+                                  routeShops.insert(newIndex, item);
+                                });
+                              },
+                              itemBuilder: (context, index) {
+                                final s = routeShops[index];
+                                return Card(
+                                  key: ValueKey(s.id),
+                                  margin: const EdgeInsets.symmetric(vertical: 3),
+                                  elevation: 1,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(color: Colors.grey.shade200),
+                                  ),
+                                  child: ListTile(
+                                    dense: true,
+                                    leading: CircleAvatar(
+                                      radius: 13,
+                                      backgroundColor: AppTheme.primary.withValues(alpha: 0.12),
+                                      foregroundColor: AppTheme.primary,
+                                      child: Text('${index + 1}',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    ),
+                                    title: Text(s.name,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                        overflow: TextOverflow.ellipsis),
+                                    subtitle: s.address.isNotEmpty
+                                        ? Text(s.address, style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis)
+                                        : null,
+                                    trailing: const Icon(Icons.drag_indicator, color: Colors.grey, size: 20),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  final orderedIds = routeShops.map((s) => s.id).toList();
+                  await provider.reorderShopsForRoute(activeRouteId, orderedIds);
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Outlet sequence saved successfully!'),
+                        backgroundColor: Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save Order'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CollectionProvider>();
@@ -632,6 +787,11 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
               )
             : null,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.low_priority_rounded, size: 20),
+            tooltip: 'Reorder Outlets',
+            onPressed: () => _openReorderDialog(context, provider),
+          ),
           IconButton(
             icon: const Icon(Icons.add_location_alt_outlined, size: 20),
             tooltip: 'Add Route',

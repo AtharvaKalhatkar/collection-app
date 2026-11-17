@@ -51,7 +51,18 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   bool _showOutletsOnMap = true;
   ShopModel? _selectedShop;
   UserModel? _selectedStaffUser;
+  String? _selectedMapRouteId;
   String _shopSearchQuery = '';
+
+  static String cleanLandmark(String raw) {
+    var s = raw.trim();
+    if (s.startsWith(RegExp(r'^(At|Near)\s+', caseSensitive: false))) {
+      s = s.replaceFirst(RegExp(r'^(At|Near)\s+', caseSensitive: false), '');
+    }
+    s = s.replaceAll(RegExp(r'\s*\(\s*~?\s*\d+\s*m\s*\)', caseSensitive: false), '');
+    s = s.replaceAll(RegExp(r'\s*\([^)]*\)'), '');
+    return s.trim();
+  }
 
   String _getMapUrlTemplate() {
     if (_mapLayer == 'satellite') {
@@ -152,7 +163,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
         final lat = shop?.latitude ?? 18.5204;
         final lng = shop?.longitude ?? 73.8567;
         final landmark = shop != null
-            ? '${shop.name} (${shop.routeName})'
+            ? shop.name
             : c.shopName;
 
         return LocationTimelineEntry(
@@ -642,7 +653,11 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final users = auth.users
-        .where((u) => u.id != 'config_gemini_api' && !u.isSuperAdmin)
+        .where((u) =>
+            u.id != 'config_gemini_api' &&
+            !u.isSuperAdmin &&
+            !u.isOffice &&
+            (u.isSalesman || u.isDriver))
         .toList();
 
     return Scaffold(
@@ -698,24 +713,12 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   // TAB 1: LOCATION TIMELINE
   // =========================================================================
   Widget _buildTimelineTab(List<UserModel> users) {
-    double totalKm = 0.0;
     double totalCollected = 0.0;
     int stopsCount = _timelineEntries.length;
 
     for (int i = 0; i < _timelineEntries.length; i++) {
       final cur = _timelineEntries[i];
       if (cur.amount != null) totalCollected += cur.amount!;
-      if (i > 0) {
-        final prev = _timelineEntries[i - 1];
-        if (cur.latitude != 0.0 && prev.latitude != 0.0) {
-          totalKm += LocationTrackingService.haversineDistanceKm(
-            prev.latitude,
-            prev.longitude,
-            cur.latitude,
-            cur.longitude,
-          );
-        }
-      }
     }
 
     final isToday = _selectedDate.year == DateTime.now().year &&
@@ -843,8 +846,6 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
               children: [
                 _buildTimelineStat('Stops', '$stopsCount', Icons.pin_drop),
                 Container(width: 1, height: 30, color: Colors.white24),
-                _buildTimelineStat('Dist', '${totalKm.toStringAsFixed(1)} km', Icons.route),
-                Container(width: 1, height: 30, color: Colors.white24),
                 _buildTimelineStat('Collected', CurrencyFormatter.format(totalCollected), Icons.payments),
               ],
             ),
@@ -897,7 +898,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
             child: Icon(isColl ? Icons.payments : Icons.location_on, size: 18),
           ),
           title: Text(
-            entry.landmark.isNotEmpty ? entry.landmark : (entry.shopName ?? 'Breadcrumb'),
+            cleanLandmark(entry.landmark.isNotEmpty ? entry.landmark : (entry.shopName ?? 'Breadcrumb')),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
           ),
           subtitle: Column(
@@ -1040,10 +1041,18 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   // IN-APP INTERACTIVE GOOGLE MAP (Google Satellite Hybrid, Clean Pins, Staff)
   // ───────────────────────────────────────────────────────────────────────────
   Widget _buildInAppMap(List<UserModel> users, List<ShopModel> allShops) {
+    final provider = context.watch<CollectionProvider>();
+    final allRoutes = provider.allRoutes;
+
+    var baseShops = allShops;
+    if (_selectedMapRouteId != null && _selectedMapRouteId!.isNotEmpty) {
+      baseShops = baseShops.where((s) => s.routeId == _selectedMapRouteId).toList();
+    }
+
     // Filter shops if user searches
     final displayShops = _shopSearchQuery.trim().isEmpty
-        ? allShops
-        : allShops.where((s) {
+        ? baseShops
+        : baseShops.where((s) {
             final q = _shopSearchQuery.toLowerCase().trim();
             return s.name.toLowerCase().contains(q) ||
                 s.routeName.toLowerCase().contains(q) ||
@@ -1269,7 +1278,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                     Expanded(
                       child: TextField(
                         decoration: const InputDecoration(
-                          hintText: 'Search 351 outlets or beats (e.g. Khed, Chakan)...',
+                          hintText: 'Search outlets or beats (e.g. Khed, Chakan)...',
                           hintStyle: TextStyle(fontSize: 12, color: Colors.blueGrey),
                           border: InputBorder.none,
                           isDense: true,
@@ -1285,6 +1294,110 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                       ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 6),
+              // Route & Staff Dropdowns Row
+              Row(
+                children: [
+                  // 1. Route Dropdown
+                  Expanded(
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 4, offset: const Offset(0, 1)),
+                        ],
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedMapRouteId,
+                          isExpanded: true,
+                          icon: const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
+                          hint: const Text('All Routes', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('All Routes', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                            ),
+                            ...allRoutes.map((r) => DropdownMenuItem<String?>(
+                                  value: r.id,
+                                  child: Text(r.name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                                )),
+                          ],
+                          onChanged: (val) {
+                            setState(() {
+                              _selectedMapRouteId = val;
+                              _selectedShop = null;
+                            });
+                            if (val != null) {
+                              final routeShops = allShops.where((s) => s.routeId == val).toList();
+                              if (routeShops.isNotEmpty) {
+                                final s = routeShops.firstWhere((s) => s.latitude != null && s.longitude != null, orElse: () => routeShops.first);
+                                final pos = _getShopLatLng(s);
+                                _mapController.move(pos, 13.0);
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 2. Staff Dropdown (Salesman & Driver Only)
+                  Expanded(
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 4, offset: const Offset(0, 1)),
+                        ],
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: _selectedStaffUser?.id,
+                          isExpanded: true,
+                          icon: const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
+                          hint: const Text('All Live Staff', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('All Live Staff', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                            ),
+                            ...users.map((u) => DropdownMenuItem<String?>(
+                                  value: u.id,
+                                  child: Text('${u.name} (${u.roleDisplayName})',
+                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                                )),
+                          ],
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == null) {
+                                _selectedStaffUser = null;
+                              } else {
+                                _selectedStaffUser = users.firstWhere((u) => u.id == val);
+                                _selectedShop = null;
+                                if (_selectedStaffUser!.hasLocation) {
+                                  _mapController.move(
+                                    ll.LatLng(_selectedStaffUser!.latitude!, _selectedStaffUser!.longitude!),
+                                    15.5,
+                                  );
+                                }
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
               // Filter & Mode Pills Row
