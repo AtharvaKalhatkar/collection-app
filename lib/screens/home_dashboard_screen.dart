@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../utils/theme.dart';
+import '../utils/quick_alert.dart';
+import '../models/user_model.dart';
 import '../providers/collection_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/payment_mode.dart';
@@ -467,6 +469,8 @@ class HomeDashboardScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
                 );
+              } else if (val == 'assign_driver_routes') {
+                _showAssignDriverRouteDialog(context);
               } else if (val == 'attendance') {
                 Navigator.push(
                   context,
@@ -515,7 +519,7 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
-              if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true)
+              if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true) ...[
                 const PopupMenuItem(
                   value: 'live_map',
                   child: Row(
@@ -526,6 +530,17 @@ class HomeDashboardScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                const PopupMenuItem(
+                  value: 'assign_driver_routes',
+                  child: Row(
+                    children: [
+                      Icon(Icons.local_shipping_rounded, size: 18, color: Color(0xFF0284C7)),
+                      SizedBox(width: 10),
+                      Text('Assign Route to Driver'),
+                    ],
+                  ),
+                ),
+              ],
               if (canViewAttendance(context.read<AuthProvider>().currentUser))
                 const PopupMenuItem(
                   value: 'attendance',
@@ -1512,13 +1527,13 @@ class HomeDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
 
-              // Small options directly down of the 2 big buttons:
-              // Statement, Cash Counter, and Daily Attendance (for authorized users)
+              // 2-by-2 Column Layout for Secondary Operations (Comfortable, large, easy to read and tap)
               Row(
                 children: [
                   Expanded(
-                    child: _buildSmallActionButton(
+                    child: _buildOverviewGridButton(
                       title: 'Statement',
+                      subtitle: 'Excel & PDF Reports',
                       icon: Icons.assessment_outlined,
                       color: const Color(0xFF6366F1),
                       onTap: () {
@@ -1529,10 +1544,11 @@ class HomeDashboardScreen extends StatelessWidget {
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: _buildSmallActionButton(
+                    child: _buildOverviewGridButton(
                       title: 'Cash Counter',
+                      subtitle: 'Drawer Balance',
                       badge: '₹${CurrencyFormatter.format(provider.totalCash)}',
                       icon: Icons.payments_rounded,
                       color: const Color(0xFF10B981),
@@ -1549,11 +1565,16 @@ class HomeDashboardScreen extends StatelessWidget {
                       },
                     ),
                   ),
-                  if (canViewAttendance(auth.currentUser)) ...[
-                    const SizedBox(width: 8),
+                ],
+              ),
+              if (canViewAttendance(auth.currentUser)) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
                     Expanded(
-                      child: _buildSmallActionButton(
-                        title: 'Attendance',
+                      child: _buildOverviewGridButton(
+                        title: 'Daily Attendance',
+                        subtitle: 'Staff Roster & Advance Salary',
                         icon: Icons.badge_outlined,
                         color: const Color(0xFF0284C7),
                         onTap: () {
@@ -1565,8 +1586,8 @@ class HomeDashboardScreen extends StatelessWidget {
                       ),
                     ),
                   ],
-                ],
-              ),
+                ),
+              ],
               const SizedBox(height: 20),
             ],
           ),
@@ -1663,71 +1684,267 @@ class HomeDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSmallActionButton({
+  void _showAssignDriverRouteDialog(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    final provider = context.read<CollectionProvider>();
+    final allRoutes = provider.allRoutes;
+    final drivers = auth.users.where((u) => u.isDriver).toList();
+
+    if (drivers.isEmpty) {
+      QuickAlert.info(
+        context,
+        'No driver account found. Please ensure a driver is added in Users / Staff.',
+      );
+      return;
+    }
+
+    UserModel selectedDriver = drivers.first;
+    List<String> selectedRoutes = List<String>.from(selectedDriver.assignedRouteIds);
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+          contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0284C7), size: 22),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Assign Route to Driver', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('Driver only delivers to assigned routes', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (drivers.length > 1) ...[
+                    const Text('Select Driver', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedDriver.id,
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      items: drivers.map((d) {
+                        return DropdownMenuItem(
+                          value: d.id,
+                          child: Text('${d.name} (${d.phone})', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDlgState(() {
+                            selectedDriver = drivers.firstWhere((d) => d.id == val);
+                            selectedRoutes = List<String>.from(selectedDriver.assignedRouteIds);
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person, size: 16, color: Color(0xFF0284C7)),
+                          const SizedBox(width: 8),
+                          Text('Driver: ${selectedDriver.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Routes (${selectedRoutes.length}/${allRoutes.length} selected)',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                      TextButton(
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        onPressed: () {
+                          setDlgState(() {
+                            if (selectedRoutes.length == allRoutes.length) {
+                              selectedRoutes.clear();
+                            } else {
+                              selectedRoutes = allRoutes.map((r) => r.id).toList();
+                            }
+                          });
+                        },
+                        child: Text(selectedRoutes.length == allRoutes.length ? 'Clear All' : 'Select All'),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 8),
+                  if (allRoutes.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text('No routes created yet in Routes / Outlets.'),
+                    )
+                  else
+                    ...allRoutes.map((route) {
+                      final isChecked = selectedRoutes.contains(route.id);
+                      final outletCount = provider.shops.where((s) => s.routeId == route.id).length;
+                      return CheckboxListTile(
+                        dense: true,
+                        value: isChecked,
+                        activeColor: const Color(0xFF0284C7),
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(route.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                        subtitle: Text('$outletCount outlets • ${route.description ?? ""}'),
+                        onChanged: (val) {
+                          setDlgState(() {
+                            if (val == true) {
+                              selectedRoutes.add(route.id);
+                            } else {
+                              selectedRoutes.remove(route.id);
+                            }
+                          });
+                        },
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dlgCtx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0284C7),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                Navigator.pop(dlgCtx);
+                final updated = selectedDriver.copyWith(assignedRouteIds: selectedRoutes);
+                await auth.saveUser(updated);
+                provider.setCurrentUser(auth.currentUser);
+                if (context.mounted) {
+                  QuickAlert.success(context, 'Assigned ${selectedRoutes.length} routes to ${selectedDriver.name}!');
+                }
+              },
+              child: const Text('Save Routes', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverviewGridButton({
     required String title,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
+    String? subtitle,
     String? badge,
   }) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFE2E8F0)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 4,
-                offset: const Offset(0, 1),
+                blurRadius: 5,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(5),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: color, size: 16),
+                child: Icon(icon, color: color, size: 20),
               ),
-              const SizedBox(width: 6),
-              Flexible(
+              const SizedBox(width: 10),
+              Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11.5,
-                        color: Color(0xFF0F172A),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              color: Color(0xFF0F172A),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (badge != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              badge,
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: color,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    if (badge != null)
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
                       Text(
-                        badge,
+                        subtitle,
                         style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          color: color,
+                          fontSize: 10.5,
+                          color: Colors.blueGrey.shade600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                    ],
                   ],
                 ),
               ),

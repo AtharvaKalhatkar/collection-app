@@ -841,16 +841,28 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     }
   }
 
-  // Edit salary adjustment (bonus/advance)
-  void _openSalaryAdjustmentDialog(AttendanceEmployee emp) {
+  // ───────────────────────────────────────────────────────────────────────────
+  // ADVANCE SALARY DIALOG (Record advance given to employee for selected month)
+  // ───────────────────────────────────────────────────────────────────────────
+  void _openAdvanceSalaryDialog({AttendanceEmployee? targetEmp}) {
+    if (_employees.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add an employee first in Staff Roster.')),
+      );
+      return;
+    }
+
+    AttendanceEmployee currentEmp = targetEmp ??
+        (_selectedEmployeeId != null
+            ? _employees.firstWhere((e) => e.id == _selectedEmployeeId,
+                orElse: () => _employees.first)
+            : _employees.first);
+
     final adj = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
-          (a) => a?.employeeId == emp.id,
+          (a) => a?.employeeId == currentEmp.id,
           orElse: () => null,
         );
 
-    final bonusCtrl = TextEditingController(
-      text: (adj?.bonus ?? 0.0) > 0 ? (adj!.bonus.toStringAsFixed(0)) : '',
-    );
     final advCtrl = TextEditingController(
       text: (adj?.advanceDeduction ?? 0.0) > 0 ? (adj!.advanceDeduction.toStringAsFixed(0)) : '',
     );
@@ -858,95 +870,190 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Bonus / Advance: ${emp.name}',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Month: ${DateFormat("MMMM yyyy").format(_selectedMonth)}',
-                style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: bonusCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Incentive / Bonus (₹)',
-                  hintText: 'e.g. 1000',
-                  prefixIcon: const Icon(Icons.card_giftcard, color: Colors.green),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setLocal) {
+          final curAdj = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
+                (a) => a?.employeeId == currentEmp.id,
+                orElse: () => null,
+              );
+          final existingAdv = curAdj?.advanceDeduction ?? 0.0;
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+            contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDC2626).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.price_change_outlined, color: Color(0xFFDC2626), size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Advance Salary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: advCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Advance Deduction (₹)',
-                  hintText: 'e.g. 500',
-                  prefixIcon: const Icon(Icons.money_off, color: Colors.red),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => Navigator.pop(ctx),
+                  visualDensity: VisualDensity.compact,
                 ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Month: ${DateFormat("MMMM yyyy").format(_selectedMonth)}',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey.shade700),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 1. Employee Selector
+                  const Text('Select Employee *',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    initialValue: currentEmp.id,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    items: _employees.map((e) {
+                      return DropdownMenuItem(
+                        value: e.id,
+                        child: Text('${e.name} (${e.role}) - Base: ₹${e.monthlySalary.toStringAsFixed(0)}',
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setLocal(() {
+                          currentEmp = _employees.firstWhere((e) => e.id == val);
+                          final a = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
+                                (x) => x?.employeeId == currentEmp.id,
+                                orElse: () => null,
+                              );
+                          advCtrl.text = (a?.advanceDeduction ?? 0.0) > 0 ? a!.advanceDeduction.toStringAsFixed(0) : '';
+                          noteCtrl.text = a?.note ?? '';
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  if (existingAdv > 0)
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFFCA5A5)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, size: 16, color: Color(0xFFDC2626)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Current Advance: ₹${existingAdv.toStringAsFixed(0)} for ${DateFormat("MMMM").format(_selectedMonth)}',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // 2. Advance Salary Amount
+                  TextField(
+                    controller: advCtrl,
+                    keyboardType: TextInputType.number,
+                    autofocus: true,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    decoration: InputDecoration(
+                      labelText: 'Advance Salary Amount (₹) *',
+                      hintText: 'e.g. 2000, 5000',
+                      prefixIcon: const Icon(Icons.currency_rupee, color: Color(0xFFDC2626)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      helperText: 'Will be automatically deducted from monthly salary',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 3. Reason / Notes
+                  TextField(
+                    controller: noteCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Reason / Note (Optional)',
+                      hintText: 'e.g. Festival advance, Emergency, Medical',
+                      prefixIcon: const Icon(Icons.note_alt_outlined, color: Colors.blueGrey),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: noteCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Note (Optional)',
-                  hintText: 'e.g. Festival advance',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDC2626),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  Navigator.pop(ctx);
+                  final adv = double.tryParse(advCtrl.text.trim()) ?? 0.0;
+
+                  final existing = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
+                        (a) => a?.employeeId == currentEmp.id,
+                        orElse: () => null,
+                      );
+
+                  final updated = SalaryMonthlyAdjustment(
+                    employeeId: currentEmp.id,
+                    year: _selectedMonth.year,
+                    month: _selectedMonth.month,
+                    bonus: existing?.bonus ?? 0.0,
+                    advanceDeduction: adv,
+                    isDisbursed: existing?.isDisbursed ?? false,
+                    disbursedAt: existing?.disbursedAt,
+                    paymentMode: existing?.paymentMode,
+                    note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+                  );
+
+                  await AttendanceService.saveAdjustment(updated);
+                  await _loadAll();
+                  if (mounted) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(adv > 0
+                            ? '✅ Advance of ₹${adv.toStringAsFixed(0)} recorded for ${currentEmp.name}'
+                            : 'Advance cleared for ${currentEmp.name}'),
+                        backgroundColor: const Color(0xFF10B981),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save Advance', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final bonus = double.tryParse(bonusCtrl.text.trim()) ?? 0.0;
-              final adv = double.tryParse(advCtrl.text.trim()) ?? 0.0;
-
-              final updated = SalaryMonthlyAdjustment(
-                employeeId: emp.id,
-                year: _selectedMonth.year,
-                month: _selectedMonth.month,
-                bonus: bonus,
-                advanceDeduction: adv,
-                isDisbursed: adj?.isDisbursed ?? false,
-                disbursedAt: adj?.disbursedAt,
-                paymentMode: adj?.paymentMode,
-                note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
-              );
-
-              await AttendanceService.saveAdjustment(updated);
-              await _loadAll();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Updated adjustments for ${emp.name}'),
-                    backgroundColor: const Color(0xFF10B981),
-                  ),
-                );
-              }
-            },
-            child: const Text('Save Adjustments'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -1054,12 +1161,18 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          if (isAdmin)
+          if (isAdmin) ...[
+            IconButton(
+              icon: const Icon(Icons.price_change_outlined),
+              tooltip: 'Give Advance Salary',
+              onPressed: () => _openAdvanceSalaryDialog(),
+            ),
             IconButton(
               icon: const Icon(Icons.person_add_alt_1),
               tooltip: 'Add Employee',
               onPressed: () => _openAddEmployeeDialog(),
             ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
@@ -1476,6 +1589,61 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   _buildStatBadge('Payable Days', calc.payableDays.toStringAsFixed(1), const Color(0xFF1E293B), const Color(0xFFF1F5F9)),
                 ],
               ),
+              if (isAdmin) ...[
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.payments_outlined,
+                            size: 16,
+                            color: calc.advanceDeduction > 0 ? const Color(0xFFDC2626) : Colors.blueGrey),
+                        const SizedBox(width: 6),
+                        Text(
+                          calc.advanceDeduction > 0
+                              ? 'Advance Given: ₹${calc.advanceDeduction.toStringAsFixed(0)}'
+                              : 'No Advance Given',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: calc.advanceDeduction > 0 ? const Color(0xFFDC2626) : Colors.blueGrey,
+                          ),
+                        ),
+                      ],
+                    ),
+                    InkWell(
+                      onTap: () => _openAdvanceSalaryDialog(targetEmp: emp),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDC2626).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.price_change_outlined, size: 14, color: Color(0xFFDC2626)),
+                            const SizedBox(width: 4),
+                            Text(
+                              calc.advanceDeduction > 0 ? 'Edit Advance' : '+ Advance Salary',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFDC2626),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -1690,12 +1858,23 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                   if (isAdmin) ...[
                     const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.edit_note, size: 20, color: Colors.blueGrey),
-                      tooltip: 'Adjust Bonus / Advance',
-                      onPressed: () => _openSalaryAdjustmentDialog(calc.employee),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFDC2626),
+                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      icon: const Icon(Icons.price_change_outlined, size: 15),
+                      label: Text(
+                        calc.advanceDeduction > 0
+                            ? 'Adv: ₹${calc.advanceDeduction.toStringAsFixed(0)}'
+                            : '+ Advance',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () => _openAdvanceSalaryDialog(targetEmp: calc.employee),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: calc.isDisbursed ? Colors.blueGrey.shade700 : const Color(0xFF10B981),
@@ -1987,6 +2166,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                           ),
                         ],
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.price_change_outlined, size: 20, color: Color(0xFFDC2626)),
+                      tooltip: 'Give Advance Salary',
+                      onPressed: () => _openAdvanceSalaryDialog(targetEmp: emp),
                     ),
                     IconButton(
                       icon: const Icon(Icons.edit, size: 18, color: Colors.blueGrey),

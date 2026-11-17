@@ -3,8 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:daily_collection_app/models/user_model.dart';
 import 'package:daily_collection_app/models/collection_model.dart';
 import 'package:daily_collection_app/models/pending_bill_model.dart';
-import 'package:daily_collection_app/models/shop_model.dart';
-import 'package:daily_collection_app/models/route_model.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
 import 'package:daily_collection_app/utils/firm_details.dart';
 

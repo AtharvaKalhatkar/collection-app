@@ -30,7 +30,6 @@ void main() {
       final date1 = DateTime(2026, 11, 1);
       final date2 = DateTime(2026, 11, 2);
       final date3 = DateTime(2026, 11, 3);
-      final date4 = DateTime(2026, 11, 4);
 
       final records = [
         AttendanceRecord(
@@ -76,6 +75,53 @@ void main() {
       expect(calc.netSalary, 1500.0);
       expect(calc.absentDates.length, 1);
       expect(calc.absentDates.first.day, 3);
+    });
+
+    test('Advance salary deduction correctly subtracts from net salary and shows on slip', () {
+      final emp = AttendanceEmployee(
+        id: 'emp_advance_test',
+        name: 'Rahul Advance',
+        role: 'Driver',
+        monthlySalary: 24000.0,
+      );
+
+      final records = [
+        for (int i = 1; i <= 10; i++)
+          AttendanceRecord(
+            id: 'rec_$i',
+            userId: emp.id,
+            staffName: emp.name,
+            staffRole: emp.role,
+            date: DateTime(2026, 11, i),
+            status: AttendanceStatus.present,
+          ),
+      ];
+
+      // 10 days present at 800/day = 8000 earned. Advance given = 2500.
+      final adjustment = SalaryMonthlyAdjustment(
+        employeeId: emp.id,
+        year: 2026,
+        month: 11,
+        advanceDeduction: 2500.0,
+      );
+
+      final calc = MonthlySalaryCalculation.compute(
+        employee: emp,
+        year: 2026,
+        month: 11,
+        monthRecords: records,
+        adjustment: adjustment,
+      );
+
+      expect(calc.payableDays, 10.0);
+      expect(calc.dailyRate, 800.0);
+      expect(calc.earnedSalary, 8000.0);
+      expect(calc.advanceDeduction, 2500.0);
+      expect(calc.netSalary, 5500.0); // 8000 - 2500
+
+      final slip = calc.formatWhatsAppSlip();
+      expect(slip.contains('➖ Advance Deducted: ₹2500'), isTrue);
+      expect(slip.contains('NET SALARY PAYABLE: ₹5500'), isTrue);
     });
   });
 }

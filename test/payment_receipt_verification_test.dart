@@ -13,7 +13,6 @@ void main() {
       const balanceRemaining = 1000.0;
       const paymentMode = PaymentMode.cash;
       const salesmanName = 'Akash';
-      final collectionDate = DateTime(2026, 10, 22, 15, 30);
 
       final message = '''*Payment Receipt (PARTIAL PAYMENT)*
 Dear $customerName,

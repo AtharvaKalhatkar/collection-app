@@ -13,6 +13,7 @@ import '../utils/currency_formatter.dart';
 import '../utils/theme.dart';
 import '../utils/quick_alert.dart';
 import '../services/location_tracking_service.dart';
+import '../services/location_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
 
@@ -325,37 +326,316 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     );
   }
 
+  void _openSetShopLocationDialog(ShopModel shop) {
+    final locCtrl = TextEditingController(
+      text: shop.locationUrl ?? (shop.hasLocation ? '${shop.latitude}, ${shop.longitude}' : ''),
+    );
+    double? tempLat = shop.latitude;
+    double? tempLng = shop.longitude;
+    bool isDetecting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Icon(Icons.pin_drop, color: Color(0xFF0284C7)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Exact Location: ${shop.name}',
+                    style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Route: ${shop.routeName}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                  ),
+                  if (shop.address.isNotEmpty)
+                    Text(
+                      'Address: ${shop.address}',
+                      style: const TextStyle(fontSize: 11.5, color: Colors.blueGrey),
+                    ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Set exact GPS pin so this store appears on its exact real-world spot on the map.',
+                    style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: locCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Google Maps Link or Lat, Lng',
+                      hintText: 'https://maps.google.com/?q=... or 18.7565, 73.8550',
+                      prefixIcon: const Icon(Icons.link, size: 20),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      isDense: true,
+                    ),
+                    onChanged: (val) {
+                      final match = RegExp(r'(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)').firstMatch(val);
+                      if (match != null) {
+                        tempLat = double.tryParse(match.group(1)!);
+                        tempLng = double.tryParse(match.group(2)!);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: isDetecting
+                        ? null
+                        : () async {
+                            setDialogState(() => isDetecting = true);
+                            final pos = await LocationService.getCurrentLocation();
+                            setDialogState(() => isDetecting = false);
+                            if (pos != null) {
+                              tempLat = pos.latitude;
+                              tempLng = pos.longitude;
+                              locCtrl.text = LocationService.buildMapsUrl(pos.latitude, pos.longitude);
+                            } else {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Could not fetch GPS. Please enter coordinates manually.'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    icon: isDetecting
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.my_location, size: 16),
+                    label: Text(isDetecting ? 'Detecting Device GPS...' : 'Use Current Device GPS Pin'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0284C7),
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  final text = locCtrl.text.trim();
+                  if (tempLat == null || tempLng == null) {
+                    final match = RegExp(r'(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)').firstMatch(text);
+                    if (match != null) {
+                      tempLat = double.tryParse(match.group(1)!);
+                      tempLng = double.tryParse(match.group(2)!);
+                    }
+                  }
+
+                  final updated = await context.read<CollectionProvider>().updateShopLocation(
+                    shop.id,
+                    locationUrl: text.isNotEmpty ? text : null,
+                    latitude: tempLat,
+                    longitude: tempLng,
+                  );
+
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    if (updated != null) {
+                      setState(() {
+                        _selectedShop = updated;
+                      });
+                      final newPos = _getShopLatLng(updated);
+                      _mapController.move(newPos, 16.0);
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Exact location saved for "${shop.name}"!'),
+                        backgroundColor: const Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save Exact Pin', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   // Deterministically derive coordinate for shop if not yet set
   ll.LatLng _getShopLatLng(ShopModel shop) {
     if (shop.latitude != null && shop.longitude != null && shop.latitude != 0.0) {
       return ll.LatLng(shop.latitude!, shop.longitude!);
     }
 
+    // Check if locationUrl contains coordinates: e.g. "18.7565,73.8550" or "q=18.7565,73.8550" or "@18.7565,73.8550"
+    if (shop.locationUrl != null && shop.locationUrl!.trim().isNotEmpty) {
+      final match = RegExp(r'(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)').firstMatch(shop.locationUrl!);
+      if (match != null) {
+        final lat = double.tryParse(match.group(1)!);
+        final lng = double.tryParse(match.group(2)!);
+        if (lat != null && lng != null && lat != 0.0) {
+          return ll.LatLng(lat, lng);
+        }
+      }
+    }
+
     final hash = shop.id.hashCode.abs();
-    final jitterLat = ((hash % 80) - 40) * 0.00045;
-    final jitterLng = (((hash ~/ 80) % 80) - 40) * 0.00045;
+    final jitterLat = ((hash % 60) - 30) * 0.00030;
+    final jitterLng = (((hash ~/ 60) % 60) - 30) * 0.00030;
 
     final r = '${shop.routeName} ${shop.address}'.toLowerCase();
-    if (r.contains('khed') || r.contains('rajguru')) {
+
+    // 1. खराबवाडी महाळुंगे (Kharabwadi / Mahalunge / Sara City / Kelkar Nagar)
+    if (r.contains('खराबवाडी') ||
+        r.contains('महाळुंगे') ||
+        r.contains('महालुंगे') ||
+        r.contains('kharabwadi') ||
+        r.contains('mahalunge') ||
+        r.contains('सारा सिटी') ||
+        r.contains('केळकर नगर') ||
+        r.contains('द्वारका सिटी') ||
+        r.contains('sara city')) {
+      return ll.LatLng(18.7380 + jitterLat, 73.8120 + jitterLng);
+    }
+
+    // 2. बालाजीनगर / मेदनकरवाडी (Balajinagar / Medankarwadi)
+    if (r.contains('बालाजीनगर') ||
+        r.contains('मेदनकरवाडी') ||
+        r.contains('balaji') ||
+        r.contains('medankarwadi')) {
+      return ll.LatLng(18.7460 + jitterLat, 73.8520 + jitterLng);
+    }
+
+    // 3. नाणेकरवाडी कुरुळी / चिंबळी (Nanekarwadi / Kuruli / Chimbali)
+    if (r.contains('नाणेकरवाडी') ||
+        r.contains('कुरुळी') ||
+        r.contains('चिंबळी') ||
+        r.contains('nanekarwadi') ||
+        r.contains('kuruli') ||
+        r.contains('chimbali')) {
+      return ll.LatLng(18.7300 + jitterLat, 73.8580 + jitterLng);
+    }
+
+    // 4. आंबेठाण वासुलीफाटा (Ambethan / Vasuli Phata)
+    if (r.contains('आंबेठाण') ||
+        r.contains('वासुली') ||
+        r.contains('ambethan') ||
+        r.contains('vasuli')) {
+      return ll.LatLng(18.7480 + jitterLat, 73.8050 + jitterLng);
+    }
+
+    // 5. चाकण (Chakan)
+    if (r.contains('चाकण') || r.contains('chakan')) {
+      return ll.LatLng(18.7565 + jitterLat, 73.8550 + jitterLng);
+    }
+
+    // 6. वाकी भाम (Waki / Bham)
+    if (r.contains('वाकी') || r.contains('भाम') || r.contains('waki') || r.contains('bham')) {
+      return ll.LatLng(18.7820 + jitterLat, 73.8520 + jitterLng);
+    }
+
+    // 7. दावडी निमगाव (Dawadi / Nimgaon)
+    if (r.contains('दावडी') ||
+        r.contains('निमगाव') ||
+        r.contains('dawadi') ||
+        r.contains('nimgaon')) {
+      return ll.LatLng(18.9050 + jitterLat, 73.9280 + jitterLng);
+    }
+
+    // 8. वाफगाव / कनेरसर (Wafgaon / Kanersar)
+    if (r.contains('वाफगाव') ||
+        r.contains('वाफगावं') ||
+        r.contains('कनेरसर') ||
+        r.contains('wafgaon') ||
+        r.contains('kanersar')) {
+      return ll.LatLng(18.9280 + jitterLat, 73.9850 + jitterLng);
+    }
+
+    // 9. कडूस पाइट (Kadus / Pait)
+    if (r.contains('कडूस') ||
+        r.contains('पाइट') ||
+        r.contains('kadus') ||
+        r.contains('pait')) {
+      return ll.LatLng(18.9250 + jitterLat, 73.7850 + jitterLng);
+    }
+
+    // 10. वाडा चास (Wada / Chas)
+    if (r.contains('चास') ||
+        (r.contains('वाडा') && !r.contains('वाडा रोड')) ||
+        r.contains('chas')) {
+      return ll.LatLng(18.9350 + jitterLat, 73.7700 + jitterLng);
+    }
+
+    // 11. पाबळ रोड (Pabal Road)
+    if (r.contains('पाबळ') || r.contains('pabal') || r.contains('pabl')) {
+      return ll.LatLng(18.8450 + jitterLat, 73.9350 + jitterLng);
+    }
+
+    // 12. वाडा रोड (Wada Road)
+    if (r.contains('वाडा रोड') || r.contains('wada road')) {
+      return ll.LatLng(18.8680 + jitterLat, 73.8550 + jitterLng);
+    }
+
+    // 13. खेड / राजगुरूनगर (Khed / Rajgurunagar)
+    if (r.contains('खेड') ||
+        r.contains('राजगुरूनगर') ||
+        r.contains('राजगुरु') ||
+        r.contains('khed') ||
+        r.contains('rajgurunagar') ||
+        r.contains('rajguru')) {
       return ll.LatLng(18.8550 + jitterLat, 73.8880 + jitterLng);
-    } else if (r.contains('chakan')) {
-      return ll.LatLng(18.7560 + jitterLat, 73.8560 + jitterLng);
-    } else if (r.contains('manchar')) {
+    }
+
+    // 14. मंचर (Manchar)
+    if (r.contains('मंचर') || r.contains('manchar')) {
       return ll.LatLng(19.0060 + jitterLat, 73.9450 + jitterLng);
-    } else if (r.contains('bhosari') || r.contains('moshi') || r.contains('pcmc')) {
-      return ll.LatLng(18.6490 + jitterLat, 73.8460 + jitterLng);
-    } else if (r.contains('alandi')) {
-      return ll.LatLng(18.6750 + jitterLat, 73.8960 + jitterLng);
-    } else if (r.contains('narayan')) {
+    }
+
+    // 15. नारायणगाव (Narayangaon)
+    if (r.contains('नारायणगाव') || r.contains('narayan')) {
       return ll.LatLng(19.1200 + jitterLat, 73.9800 + jitterLng);
-    } else if (r.contains('talegaon')) {
+    }
+
+    // 16. भोसरी / मोशी / PCMC
+    if (r.contains('भोसरी') ||
+        r.contains('मोशी') ||
+        r.contains('bhosari') ||
+        r.contains('moshi') ||
+        r.contains('pcmc')) {
+      return ll.LatLng(18.6490 + jitterLat, 73.8460 + jitterLng);
+    }
+
+    // 17. आळंदी (Alandi)
+    if (r.contains('आळंदी') || r.contains('alandi')) {
+      return ll.LatLng(18.6750 + jitterLat, 73.8960 + jitterLng);
+    }
+
+    // 18. तळेगाव (Talegaon)
+    if (r.contains('तळेगाव') || r.contains('talegaon')) {
       return ll.LatLng(18.7350 + jitterLat, 73.6760 + jitterLng);
-    } else if (r.contains('shikrapur')) {
+    }
+
+    // 19. शिक्रापूर (Shikrapur)
+    if (r.contains('शिक्रापूर') || r.contains('shikrapur')) {
       return ll.LatLng(18.7480 + jitterLat, 74.1200 + jitterLng);
     }
 
-    // Default trade beat corridor around Khed-Chakan
-    return ll.LatLng(18.8174 + jitterLat, 73.8833 + jitterLng);
+    // Regional market hub around Khed / Rajgurunagar
+    return ll.LatLng(18.8550 + jitterLat, 73.8880 + jitterLng);
   }
 
   @override
@@ -1225,7 +1505,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      if (_selectedShop!.mobileNumber.isNotEmpty)
+                      if (_selectedShop!.mobileNumber.isNotEmpty) ...[
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF10B981),
@@ -1234,13 +1514,54 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                             visualDensity: VisualDensity.compact,
                           ),
                           icon: const Icon(Icons.phone, size: 13),
-                          label: const Text('Call Shop', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          label: const Text('Call', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                           onPressed: () => _callPhone(_selectedShop!.mobileNumber),
                         ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Total 351 Stores Placed',
-                        style: TextStyle(fontSize: 10.5, color: Colors.blueGrey.shade500),
+                        const SizedBox(width: 8),
+                      ],
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0284C7),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.edit_location_alt, size: 13),
+                        label: Text(
+                          _selectedShop!.hasLocation ? 'Update Pin' : 'Set Exact Pin',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () => _openSetShopLocationDialog(_selectedShop!),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                        decoration: BoxDecoration(
+                          color: _selectedShop!.hasLocation ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: _selectedShop!.hasLocation ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _selectedShop!.hasLocation ? Icons.check_circle : Icons.near_me,
+                              size: 11,
+                              color: _selectedShop!.hasLocation ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _selectedShop!.hasLocation ? 'Exact GPS Set' : 'Beat Estimated',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: _selectedShop!.hasLocation ? const Color(0xFF15803D) : const Color(0xFF475569),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
