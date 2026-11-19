@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/attendance_record.dart';
 import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
@@ -165,7 +163,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
             : _employees.first);
 
     DateTime chosenDate = targetDate ?? DateTime.now();
-    final now = DateTime.now();
 
     final dateKey =
         '${chosenDate.year}-${chosenDate.month.toString().padLeft(2, '0')}-${chosenDate.day.toString().padLeft(2, '0')}';
@@ -179,9 +176,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     // Time defaults
     TimeOfDay checkInTime = existing?.checkInTime != null
         ? TimeOfDay.fromDateTime(existing!.checkInTime!)
-        : (chosenDate.day == now.day && chosenDate.month == now.month && chosenDate.year == now.year
-            ? TimeOfDay.fromDateTime(now)
-            : const TimeOfDay(hour: 9, minute: 30));
+        : TimeOfDay.fromDateTime(DateTime.now());
 
     TimeOfDay? checkOutTime = existing?.checkOutTime != null
         ? TimeOfDay.fromDateTime(existing!.checkOutTime!)
@@ -194,6 +189,27 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (context, setLocal) {
           final isCheckOutSet = checkOutTime != null;
+
+          void syncFieldsFor(String empId, DateTime date) {
+            final dKey =
+                '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            final rec = _records.cast<AttendanceRecord?>().firstWhere(
+                  (r) => r?.userId == empId && r?.dateKey == dKey,
+                  orElse: () => null,
+                );
+            chosenStatus = rec?.status ?? AttendanceStatus.present;
+            if (rec?.checkInTime != null) {
+              checkInTime = TimeOfDay.fromDateTime(rec!.checkInTime!);
+            } else {
+              checkInTime = TimeOfDay.fromDateTime(DateTime.now());
+            }
+            if (rec?.checkOutTime != null) {
+              checkOutTime = TimeOfDay.fromDateTime(rec!.checkOutTime!);
+            } else {
+              checkOutTime = null;
+            }
+            noteCtrl.text = rec?.note ?? '';
+          }
 
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -238,6 +254,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       if (val != null) {
                         setLocal(() {
                           currentEmp = _employees.firstWhere((e) => e.id == val);
+                          syncFieldsFor(currentEmp.id, chosenDate);
                         });
                       }
                     },
@@ -257,7 +274,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                         lastDate: DateTime(2030),
                       );
                       if (picked != null) {
-                        setLocal(() => chosenDate = picked);
+                        setLocal(() {
+                          chosenDate = picked;
+                          syncFieldsFor(currentEmp.id, chosenDate);
+                        });
                       }
                     },
                     borderRadius: BorderRadius.circular(10),
@@ -437,8 +457,17 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Check-In Time',
-                                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Check-In Time',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                                  InkWell(
+                                    onTap: () => setLocal(() => checkInTime = TimeOfDay.fromDateTime(DateTime.now())),
+                                    child: const Text('Now', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: 4),
                               InkWell(
                                 onTap: () async {
@@ -484,11 +513,21 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                 children: [
                                   const Text('Leaving Time',
                                       style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                  if (isCheckOutSet)
-                                    InkWell(
-                                      onTap: () => setLocal(() => checkOutTime = null),
-                                      child: const Text('Clear', style: TextStyle(fontSize: 10.5, color: Colors.red)),
-                                    ),
+                                  Row(
+                                    children: [
+                                      InkWell(
+                                        onTap: () => setLocal(() => checkOutTime = TimeOfDay.fromDateTime(DateTime.now())),
+                                        child: const Text('Now', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue)),
+                                      ),
+                                      if (isCheckOutSet) ...[
+                                        const SizedBox(width: 8),
+                                        InkWell(
+                                          onTap: () => setLocal(() => checkOutTime = null),
+                                          child: const Text('Clear', style: TextStyle(fontSize: 11, color: Colors.red)),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 4),
@@ -858,15 +897,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 orElse: () => _employees.first)
             : _employees.first);
 
-    final adj = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
-          (a) => a?.employeeId == currentEmp.id,
-          orElse: () => null,
-        );
-
-    final advCtrl = TextEditingController(
-      text: (adj?.advanceDeduction ?? 0.0) > 0 ? (adj!.advanceDeduction.toStringAsFixed(0)) : '',
-    );
-    final noteCtrl = TextEditingController(text: adj?.note ?? '');
+    final advCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    DateTime advanceDate = DateTime.now();
 
     showDialog(
       context: context,
@@ -876,7 +909,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 (a) => a?.employeeId == currentEmp.id,
                 orElse: () => null,
               );
-          final existingAdv = curAdj?.advanceDeduction ?? 0.0;
+          final totalAdv = curAdj?.totalAdvanceDeduction ?? curAdj?.advanceDeduction ?? 0.0;
 
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -938,19 +971,53 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       if (val != null) {
                         setLocal(() {
                           currentEmp = _employees.firstWhere((e) => e.id == val);
-                          final a = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
-                                (x) => x?.employeeId == currentEmp.id,
-                                orElse: () => null,
-                              );
-                          advCtrl.text = (a?.advanceDeduction ?? 0.0) > 0 ? a!.advanceDeduction.toStringAsFixed(0) : '';
-                          noteCtrl.text = a?.note ?? '';
                         });
                       }
                     },
                   ),
                   const SizedBox(height: 14),
 
-                  if (existingAdv > 0)
+                  // 2. Advance Date Picker
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(10),
+                      color: Colors.grey.shade50,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 16, color: Color(0xFFDC2626)),
+                            const SizedBox(width: 8),
+                            Text(
+                              DateFormat('d MMM yyyy').format(advanceDate),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: advanceDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                            );
+                            if (picked != null) {
+                              setLocal(() => advanceDate = picked);
+                            }
+                          },
+                          child: const Text('Change', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF2563EB))),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  if (totalAdv > 0)
                     Container(
                       padding: const EdgeInsets.all(10),
                       margin: const EdgeInsets.only(bottom: 12),
@@ -965,7 +1032,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Current Advance: ₹${existingAdv.toStringAsFixed(0)} for ${DateFormat("MMMM").format(_selectedMonth)}',
+                              'Total Advances This Month: ₹${totalAdv.toStringAsFixed(0)}',
                               style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFFB91C1C)),
                             ),
                           ),
@@ -973,7 +1040,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       ),
                     ),
 
-                  // 2. Advance Amount
+                  // 3. Advance Amount (starts empty)
                   TextField(
                     controller: advCtrl,
                     keyboardType: TextInputType.number,
@@ -988,7 +1055,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                   const SizedBox(height: 14),
 
-                  // 3. Reason / Notes
+                  // 4. Reason / Notes
                   TextField(
                     controller: noteCtrl,
                     decoration: InputDecoration(
@@ -1015,34 +1082,28 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 ),
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
-                  Navigator.pop(ctx);
                   final adv = double.tryParse(advCtrl.text.trim()) ?? 0.0;
+                  if (adv <= 0) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Please enter a valid advance amount.')),
+                    );
+                    return;
+                  }
 
-                  final existing = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
-                        (a) => a?.employeeId == currentEmp.id,
-                        orElse: () => null,
-                      );
-
-                  final updated = SalaryMonthlyAdjustment(
+                  Navigator.pop(ctx);
+                  await AttendanceService.addAdvance(
                     employeeId: currentEmp.id,
                     year: _selectedMonth.year,
                     month: _selectedMonth.month,
-                    bonus: existing?.bonus ?? 0.0,
-                    advanceDeduction: adv,
-                    isDisbursed: existing?.isDisbursed ?? false,
-                    disbursedAt: existing?.disbursedAt,
-                    paymentMode: existing?.paymentMode,
+                    amount: adv,
+                    date: advanceDate,
                     note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
                   );
-
-                  await AttendanceService.saveAdjustment(updated);
                   await _loadAll();
                   if (mounted) {
                     messenger.showSnackBar(
                       SnackBar(
-                        content: Text(adv > 0
-                            ? '✅ Advance of ₹${adv.toStringAsFixed(0)} recorded for ${currentEmp.name}'
-                            : 'Advance cleared for ${currentEmp.name}'),
+                        content: Text('Saved advance of ₹${adv.toStringAsFixed(0)} for ${currentEmp.name}'),
                         backgroundColor: const Color(0xFF10B981),
                       ),
                     );
@@ -1057,90 +1118,42 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     );
   }
 
-  // Toggle disbursed status
-  Future<void> _toggleDisbursed(AttendanceEmployee emp, MonthlySalaryCalculation calc) async {
-    final adj = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
-          (a) => a?.employeeId == emp.id,
-          orElse: () => null,
-        );
-
-    final currentlyDisbursed = adj?.isDisbursed ?? false;
-    String paymentMode = adj?.paymentMode ?? 'Cash';
-
-    if (!currentlyDisbursed) {
-      final selectedMode = await showDialog<String>(
-        context: context,
-        builder: (ctx) => SimpleDialog(
-          title: Text('Mark Salary Paid to ${emp.name}'),
-          children: [
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'Cash'),
-              child: const Row(children: [Icon(Icons.payments_outlined, color: Colors.green), SizedBox(width: 10), Text('Paid via Cash')]),
-            ),
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, 'Bank Transfer / UPI'),
-              child: const Row(children: [Icon(Icons.account_balance, color: Colors.blue), SizedBox(width: 10), Text('Paid via Bank / UPI')]),
-            ),
-          ],
+  void _confirmDeleteAdvance(AttendanceEmployee emp, SalaryAdvanceEntry adv) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Delete Advance', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Text(
+          'Delete advance of ₹${adv.amount.toStringAsFixed(0)} given on ${DateFormat("d MMM yyyy").format(adv.date)}?',
         ),
-      );
-      if (selectedMode == null) return;
-      paymentMode = selectedMode;
-    }
-
-    final newAdj = SalaryMonthlyAdjustment(
-      employeeId: emp.id,
-      year: _selectedMonth.year,
-      month: _selectedMonth.month,
-      bonus: adj?.bonus ?? 0.0,
-      advanceDeduction: adj?.advanceDeduction ?? 0.0,
-      isDisbursed: !currentlyDisbursed,
-      disbursedAt: !currentlyDisbursed ? DateTime.now() : null,
-      paymentMode: !currentlyDisbursed ? paymentMode : null,
-      note: adj?.note,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await AttendanceService.deleteAdvance(
+                employeeId: emp.id,
+                advanceId: adv.id,
+                year: _selectedMonth.year,
+                month: _selectedMonth.month,
+              );
+              await _loadAll();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Advance removed')),
+                );
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
-
-    await AttendanceService.saveAdjustment(newAdj);
-    await _loadAll();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(!currentlyDisbursed
-              ? '✅ Salary marked as Paid ($paymentMode)'
-              : 'Salary marked as Pending'),
-          backgroundColor: !currentlyDisbursed ? const Color(0xFF10B981) : Colors.blueGrey,
-        ),
-      );
-    }
-  }
-
-  // Share salary slip via WhatsApp
-  Future<void> _shareSalarySlip(MonthlySalaryCalculation calc) async {
-    final text = calc.formatWhatsAppSlip();
-    final phone = calc.employee.phone.replaceAll(RegExp(r'\D'), '');
-
-    final url = phone.isNotEmpty
-        ? Uri.parse('https://api.whatsapp.com/send?phone=91$phone&text=${Uri.encodeComponent(text)}')
-        : Uri.parse('https://api.whatsapp.com/send?text=${Uri.encodeComponent(text)}');
-
-    try {
-      final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
-      if (!launched) {
-        await Clipboard.setData(ClipboardData(text: text));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('📋 Salary Slip copied to clipboard!')),
-          );
-        }
-      }
-    } catch (_) {
-      await Clipboard.setData(ClipboardData(text: text));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('📋 Salary Slip copied to clipboard!')),
-        );
-      }
-    }
   }
 
   @override
@@ -1615,7 +1628,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                         const SizedBox(width: 6),
                         Text(
                           calc.advanceDeduction > 0
-                              ? 'Advance Given: ₹${calc.advanceDeduction.toStringAsFixed(0)}'
+                              ? 'Total Advance: ₹${calc.advanceDeduction.toStringAsFixed(0)}'
                               : 'No Advance Given',
                           style: TextStyle(
                             fontSize: 12,
@@ -1635,14 +1648,14 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(color: const Color(0xFFFCA5A5)),
                         ),
-                        child: Row(
+                        child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.price_change_outlined, size: 14, color: Color(0xFFDC2626)),
-                            const SizedBox(width: 4),
+                            Icon(Icons.add, size: 14, color: Color(0xFFDC2626)),
+                            SizedBox(width: 4),
                             Text(
-                              calc.advanceDeduction > 0 ? 'Edit Advance' : '+ Advance',
-                              style: const TextStyle(
+                              '+ Advance',
+                              style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFFDC2626),
@@ -1654,6 +1667,53 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     ),
                   ],
                 ),
+                if (adj != null && adj.advances.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ...adj.advances.map((adv) => Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFECACA)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 13, color: Color(0xFFDC2626)),
+                            const SizedBox(width: 6),
+                            Text(
+                              DateFormat('d MMM yyyy').format(adv.date),
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF991B1B)),
+                            ),
+                            if (adv.note != null && adv.note!.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Text('(${adv.note})', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                            ],
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              '₹${adv.amount.toStringAsFixed(0)}',
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFFDC2626)),
+                            ),
+                            const SizedBox(width: 6),
+                            InkWell(
+                              onTap: () => _confirmDeleteAdvance(emp, adv),
+                              child: const Padding(
+                                padding: EdgeInsets.all(2.0),
+                                child: Icon(Icons.close, size: 15, color: Colors.red),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  )),
+                ],
               ],
             ],
           ),
@@ -1789,29 +1849,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Calculated Monthly Salary',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: calc.isDisbursed ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      calc.isDisbursed ? 'PAID' : 'PENDING',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                        color: calc.isDisbursed ? const Color(0xFF15803D) : const Color(0xFFB45309),
-                      ),
-                    ),
-                  ),
-                ],
+              const Text(
+                'Calculated Monthly Salary',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
               ),
               const Divider(height: 18),
 
@@ -1847,59 +1887,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       color: Color(0xFF0F172A),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Action buttons: WhatsApp Slip & Mark Paid
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF15803D),
-                        side: const BorderSide(color: Color(0xFF86EFAC)),
-                        padding: const EdgeInsets.symmetric(vertical: 9),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      icon: const Icon(Icons.share, size: 15),
-                      label: const Text('WhatsApp Slip', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      onPressed: () => _shareSalarySlip(calc),
-                    ),
-                  ),
-                  if (isAdmin) ...[
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFDC2626),
-                        side: const BorderSide(color: Color(0xFFFCA5A5)),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      icon: const Icon(Icons.price_change_outlined, size: 15),
-                      label: Text(
-                        calc.advanceDeduction > 0
-                            ? 'Adv: ₹${calc.advanceDeduction.toStringAsFixed(0)}'
-                            : '+ Advance',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () => _openAdvanceSalaryDialog(targetEmp: calc.employee),
-                    ),
-                    const SizedBox(width: 6),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: calc.isDisbursed ? Colors.blueGrey.shade700 : const Color(0xFF10B981),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      onPressed: () => _toggleDisbursed(calc.employee, calc),
-                      child: Text(
-                        calc.isDisbursed ? 'Mark Pending' : 'Mark Paid',
-                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ],
@@ -2143,45 +2130,54 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 borderRadius: BorderRadius.circular(12),
                 side: const BorderSide(color: AppTheme.border),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
-                      foregroundColor: AppTheme.primary,
-                      child: Text(emp.name.isNotEmpty ? emp.name[0].toUpperCase() : 'E',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(emp.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                          Text(
-                            '${emp.role} · ${emp.phone.isNotEmpty ? emp.phone : 'No phone'}',
-                            style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                          ),
-                        ],
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  setState(() {
+                    _selectedEmployeeId = emp.id;
+                  });
+                  _tabController.animateTo(0);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                        foregroundColor: AppTheme.primary,
+                        child: Text(emp.name.isNotEmpty ? emp.name[0].toUpperCase() : 'E',
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.price_change_outlined, size: 20, color: Color(0xFFDC2626)),
-                      tooltip: 'Give Advance',
-                      onPressed: () => _openAdvanceSalaryDialog(targetEmp: emp),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit, size: 18, color: Colors.blueGrey),
-                      tooltip: 'Edit Details',
-                      onPressed: () => _openAddEmployeeDialog(toEdit: emp),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                      tooltip: 'Remove Employee',
-                      onPressed: () => _confirmRemoveEmployee(emp),
-                    ),
-                  ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(emp.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            Text(
+                              '${emp.role} · ${emp.phone.isNotEmpty ? emp.phone : 'No phone'}',
+                              style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.price_change_outlined, size: 20, color: Color(0xFFDC2626)),
+                        tooltip: 'Give Advance',
+                        onPressed: () => _openAdvanceSalaryDialog(targetEmp: emp),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 18, color: Colors.blueGrey),
+                        tooltip: 'Edit Details',
+                        onPressed: () => _openAddEmployeeDialog(toEdit: emp),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                        tooltip: 'Remove Employee',
+                        onPressed: () => _confirmRemoveEmployee(emp),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );

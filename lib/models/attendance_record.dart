@@ -225,12 +225,56 @@ class AttendanceEmployee {
       );
 }
 
+class SalaryAdvanceEntry {
+  final String id;
+  final String employeeId;
+  final int year;
+  final int month;
+  final double amount;
+  final DateTime date;
+  final String? note;
+
+  SalaryAdvanceEntry({
+    required this.id,
+    required this.employeeId,
+    required this.year,
+    required this.month,
+    required this.amount,
+    required this.date,
+    this.note,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'employeeId': employeeId,
+        'year': year,
+        'month': month,
+        'amount': amount,
+        'date': date.toIso8601String(),
+        'note': note,
+      };
+
+  factory SalaryAdvanceEntry.fromJson(Map<String, dynamic> json) =>
+      SalaryAdvanceEntry(
+        id: json['id'] as String? ?? '',
+        employeeId: json['employeeId'] as String? ?? '',
+        year: json['year'] as int? ?? DateTime.now().year,
+        month: json['month'] as int? ?? DateTime.now().month,
+        amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+        date: json['date'] != null
+            ? (DateTime.tryParse(json['date'] as String) ?? DateTime.now())
+            : DateTime.now(),
+        note: json['note'] as String?,
+      );
+}
+
 class SalaryMonthlyAdjustment {
   final String employeeId;
   final int year;
   final int month;
   final double bonus;
   final double advanceDeduction;
+  final List<SalaryAdvanceEntry> advances;
   final bool isDisbursed;
   final DateTime? disbursedAt;
   final String? paymentMode;
@@ -242,39 +286,56 @@ class SalaryMonthlyAdjustment {
     required this.month,
     this.bonus = 0.0,
     this.advanceDeduction = 0.0,
+    this.advances = const [],
     this.isDisbursed = false,
     this.disbursedAt,
     this.paymentMode,
     this.note,
   });
 
+  double get totalAdvanceDeduction {
+    if (advances.isNotEmpty) {
+      return advances.fold(0.0, (sum, a) => sum + a.amount);
+    }
+    return advanceDeduction;
+  }
+
   Map<String, dynamic> toJson() => {
         'employeeId': employeeId,
         'year': year,
         'month': month,
         'bonus': bonus,
-        'advanceDeduction': advanceDeduction,
+        'advanceDeduction': totalAdvanceDeduction,
+        'advances': advances.map((a) => a.toJson()).toList(),
         'isDisbursed': isDisbursed,
         'disbursedAt': disbursedAt?.toIso8601String(),
         'paymentMode': paymentMode,
         'note': note,
       };
 
-  factory SalaryMonthlyAdjustment.fromJson(Map<String, dynamic> json) =>
-      SalaryMonthlyAdjustment(
-        employeeId: json['employeeId'] as String? ?? '',
-        year: json['year'] as int? ?? DateTime.now().year,
-        month: json['month'] as int? ?? DateTime.now().month,
-        bonus: (json['bonus'] as num?)?.toDouble() ?? 0.0,
-        advanceDeduction:
-            (json['advanceDeduction'] as num?)?.toDouble() ?? 0.0,
-        isDisbursed: json['isDisbursed'] as bool? ?? false,
-        disbursedAt: json['disbursedAt'] != null
-            ? DateTime.tryParse(json['disbursedAt'] as String)
-            : null,
-        paymentMode: json['paymentMode'] as String?,
-        note: json['note'] as String?,
-      );
+  factory SalaryMonthlyAdjustment.fromJson(Map<String, dynamic> json) {
+    List<SalaryAdvanceEntry> parsedAdvances = [];
+    if (json['advances'] != null && json['advances'] is List) {
+      parsedAdvances = (json['advances'] as List)
+          .map((item) => SalaryAdvanceEntry.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return SalaryMonthlyAdjustment(
+      employeeId: json['employeeId'] as String? ?? '',
+      year: json['year'] as int? ?? DateTime.now().year,
+      month: json['month'] as int? ?? DateTime.now().month,
+      bonus: (json['bonus'] as num?)?.toDouble() ?? 0.0,
+      advanceDeduction:
+          (json['advanceDeduction'] as num?)?.toDouble() ?? 0.0,
+      advances: parsedAdvances,
+      isDisbursed: json['isDisbursed'] as bool? ?? false,
+      disbursedAt: json['disbursedAt'] != null
+          ? DateTime.tryParse(json['disbursedAt'] as String)
+          : null,
+      paymentMode: json['paymentMode'] as String?,
+      note: json['note'] as String?,
+    );
+  }
 }
 
 class MonthlySalaryCalculation {
@@ -357,7 +418,7 @@ class MonthlySalaryCalculation {
     final double daily = daysInMonth > 0 ? (base / daysInMonth) : 0.0;
     final double earned = (payable * daily);
     final double bonus = adjustment?.bonus ?? 0.0;
-    final double adv = adjustment?.advanceDeduction ?? 0.0;
+    final double adv = adjustment?.totalAdvanceDeduction ?? adjustment?.advanceDeduction ?? 0.0;
     final double net =
         (earned + bonus - adv).clamp(0.0, double.infinity);
 
@@ -650,29 +711,102 @@ class AttendanceService {
     DateTime? checkOutTime,
     String? note,
   }) async {
-    final existing = await loadForUserAndDate(userId, date);
     final dateOnly = DateTime(date.year, date.month, date.day);
-    final record = existing?.copyWith(
-          status: status,
-          checkInTime: checkInTime ?? existing.checkInTime,
-          checkOutTime: checkOutTime ?? existing.checkOutTime,
-          note: note,
-        ) ??
-        AttendanceRecord(
-          id: '${userId}_${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}',
-          userId: userId,
-          staffName: staffName,
-          staffRole: staffRole,
-          date: dateOnly,
-          checkInTime: checkInTime,
-          checkOutTime: checkOutTime,
-          status: status,
-          note: note,
-        );
+    final id =
+        '${userId}_${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}';
+    final record = AttendanceRecord(
+      id: id,
+      userId: userId,
+      staffName: staffName,
+      staffRole: staffRole,
+      date: dateOnly,
+      checkInTime: status == AttendanceStatus.absent ? null : checkInTime,
+      checkOutTime: status == AttendanceStatus.absent ? null : checkOutTime,
+      status: status,
+      note: note,
+    );
     await saveRecord(record);
   }
 
   // ── Monthly Salary Adjustments (Bonuses, Advances, Disbursed status) ───────
+  static Future<void> addAdvance({
+    required String employeeId,
+    required int year,
+    required int month,
+    required double amount,
+    required DateTime date,
+    String? note,
+  }) async {
+    final adjList = await loadAdjustments(year, month);
+    final existingAdj = adjList.firstWhere(
+      (a) => a.employeeId == employeeId,
+      orElse: () => SalaryMonthlyAdjustment(
+        employeeId: employeeId,
+        year: year,
+        month: month,
+      ),
+    );
+
+    final newAdvance = SalaryAdvanceEntry(
+      id: 'adv_${DateTime.now().millisecondsSinceEpoch}',
+      employeeId: employeeId,
+      year: year,
+      month: month,
+      amount: amount,
+      date: date,
+      note: note,
+    );
+
+    final updatedAdvances = [...existingAdj.advances, newAdvance];
+    final updatedAdj = SalaryMonthlyAdjustment(
+      employeeId: employeeId,
+      year: year,
+      month: month,
+      bonus: existingAdj.bonus,
+      advanceDeduction: updatedAdvances.fold(0.0, (sum, a) => sum + a.amount),
+      advances: updatedAdvances,
+      isDisbursed: existingAdj.isDisbursed,
+      disbursedAt: existingAdj.disbursedAt,
+      paymentMode: existingAdj.paymentMode,
+      note: existingAdj.note,
+    );
+
+    await saveAdjustment(updatedAdj);
+  }
+
+  static Future<void> deleteAdvance({
+    required String employeeId,
+    required String advanceId,
+    required int year,
+    required int month,
+  }) async {
+    final adjList = await loadAdjustments(year, month);
+    final existingAdj = adjList.firstWhere(
+      (a) => a.employeeId == employeeId,
+      orElse: () => SalaryMonthlyAdjustment(
+        employeeId: employeeId,
+        year: year,
+        month: month,
+      ),
+    );
+
+    final updatedAdvances =
+        existingAdj.advances.where((a) => a.id != advanceId).toList();
+    final updatedAdj = SalaryMonthlyAdjustment(
+      employeeId: employeeId,
+      year: year,
+      month: month,
+      bonus: existingAdj.bonus,
+      advanceDeduction: updatedAdvances.fold(0.0, (sum, a) => sum + a.amount),
+      advances: updatedAdvances,
+      isDisbursed: existingAdj.isDisbursed,
+      disbursedAt: existingAdj.disbursedAt,
+      paymentMode: existingAdj.paymentMode,
+      note: existingAdj.note,
+    );
+
+    await saveAdjustment(updatedAdj);
+  }
   static Future<List<SalaryMonthlyAdjustment>> loadAdjustments(
       int year, int month) async {
     final prefs = await SharedPreferences.getInstance();

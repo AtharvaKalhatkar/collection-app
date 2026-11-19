@@ -123,5 +123,67 @@ void main() {
       expect(slip.contains('➖ Advance Deducted: ₹2500'), isTrue);
       expect(slip.contains('NET SALARY PAYABLE: ₹5500'), isTrue);
     });
+
+    test('Multiple advances with exact dates correctly aggregate totalAdvanceDeduction', () {
+      final emp = AttendanceEmployee(
+        id: 'emp_multi_adv',
+        name: 'Suresh Helper',
+        role: 'Helper',
+        monthlySalary: 15000.0,
+      );
+
+      final adv1 = SalaryAdvanceEntry(
+        id: 'adv_1',
+        employeeId: emp.id,
+        year: 2026,
+        month: 11,
+        amount: 2000.0,
+        date: DateTime(2026, 11, 5),
+        note: 'Diwali expense',
+      );
+      final adv2 = SalaryAdvanceEntry(
+        id: 'adv_2',
+        employeeId: emp.id,
+        year: 2026,
+        month: 11,
+        amount: 3000.0,
+        date: DateTime(2026, 11, 15),
+        note: 'Emergency medical',
+      );
+
+      final adjustment = SalaryMonthlyAdjustment(
+        employeeId: emp.id,
+        year: 2026,
+        month: 11,
+        advances: [adv1, adv2],
+      );
+
+      expect(adjustment.totalAdvanceDeduction, 5000.0);
+      expect(adjustment.advances.length, 2);
+      expect(adjustment.advances[0].date.day, 5);
+      expect(adjustment.advances[1].date.day, 15);
+
+      final calc = MonthlySalaryCalculation.compute(
+        employee: emp,
+        year: 2026,
+        month: 11,
+        monthRecords: [
+          for (int i = 1; i <= 20; i++)
+            AttendanceRecord(
+              id: 'rec_s_$i',
+              userId: emp.id,
+              staffName: emp.name,
+              staffRole: emp.role,
+              date: DateTime(2026, 11, i),
+              status: AttendanceStatus.present,
+            ),
+        ],
+        adjustment: adjustment,
+      );
+
+      expect(calc.earnedSalary, 10000.0); // 20 * (15000 / 30) = 10000
+      expect(calc.advanceDeduction, 5000.0); // 2000 + 3000
+      expect(calc.netSalary, 5000.0); // 10000 - 5000
+    });
   });
 }

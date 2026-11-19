@@ -47,7 +47,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   String _fleetViewMode = 'map';
 
   // Map state
-  String _mapLayer = 'satellite'; // 'satellite' (Google Hybrid Satellite) or 'streets' (Google Streets)
+  String _mapLayer = 'streets'; // Default to Google Maps Roadmap ('streets'), with toggle to 'satellite'
   bool _showOutletsOnMap = true;
   ShopModel? _selectedShop;
   UserModel? _selectedStaffUser;
@@ -59,8 +59,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     if (s.startsWith(RegExp(r'^(At|Near)\s+', caseSensitive: false))) {
       s = s.replaceFirst(RegExp(r'^(At|Near)\s+', caseSensitive: false), '');
     }
-    s = s.replaceAll(RegExp(r'\s*\(\s*~?\s*\d+\s*m\s*\)', caseSensitive: false), '');
-    s = s.replaceAll(RegExp(r'\s*\([^)]*\)'), '');
+    s = s.replaceAll(RegExp(r'\s*\(\s*~?\s*\d+\s*[a-zA-Z]*\s*\)', caseSensitive: false), '');
     return s.trim();
   }
 
@@ -1083,7 +1082,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
               maxZoom: 20,
             ),
 
-            // Shop / Outlet Markers (Small clean 16x16 circular pins that don't block satellite roads)
+            // Shop / Outlet Markers with store name pill
             if (_showOutletsOnMap)
               MarkerLayer(
                 markers: displayShops.map((shop) {
@@ -1092,8 +1091,9 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
 
                   return Marker(
                     point: pos,
-                    width: isSelected ? 30 : 16,
-                    height: isSelected ? 30 : 16,
+                    width: 90,
+                    height: 38,
+                    alignment: Alignment.bottomCenter,
                     child: GestureDetector(
                       onTap: () {
                         setState(() {
@@ -1102,24 +1102,55 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                         });
                         _mapController.move(pos, 15.0);
                       },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFFEF4444) : const Color(0xFF0284C7),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: isSelected ? 2.5 : 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.35),
-                              blurRadius: 3,
-                              offset: const Offset(0, 1),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFFEF4444) : Colors.white,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: isSelected ? Colors.red.shade900 : const Color(0xFF0284C7),
+                                width: 0.8,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.25),
+                                  blurRadius: 2,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: isSelected
-                            ? const Center(
-                                child: Icon(Icons.store, color: Colors.white, size: 16),
-                              )
-                            : null,
+                            child: Text(
+                              shop.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 1),
+                          Container(
+                            width: isSelected ? 12 : 8,
+                            height: isSelected ? 12 : 8,
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFFEF4444) : const Color(0xFF0284C7),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1.2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.35),
+                                  blurRadius: 2,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -1437,7 +1468,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            _mapLayer == 'satellite' ? 'Satellite' : 'Roadmap',
+                            _mapLayer == 'satellite' ? 'Satellite' : 'Google Map',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
