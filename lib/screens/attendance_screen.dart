@@ -35,6 +35,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   bool _isLoading = false;
 
   Timer? _ticker;
+  Timer? _syncTimer;
   DateTime _now = DateTime.now();
   AttendanceRecord? _myTodayRecord;
 
@@ -46,22 +47,27 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
+    // Seamless Cross-Device Auto-Sync: Poll every 10 seconds in background
+    _syncTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _loadAll(silent: true);
+    });
     _loadAll();
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _syncTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadAll() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadAll({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     final auth = context.read<AuthProvider>();
     final me = auth.currentUser;
 
-    // Load user-managed roster
+    // Load user-managed roster with cloud sync
     final emps = await AttendanceService.loadEmployees();
 
     final bool isAdmin = me != null && (me.isSuperAdmin || me.isOffice);
@@ -69,12 +75,14 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     if (isAdmin) {
       visibleEmployees = emps.where((e) => e.isActive).toList();
     } else {
-      visibleEmployees = emps
+      final matched = emps
           .where((e) =>
               e.id == me?.id ||
-              e.name.toLowerCase().contains('akash') ||
-              e.phone == me?.phone)
+              (me?.phone.isNotEmpty == true && e.phone == me?.phone) ||
+              (me?.name.isNotEmpty == true && e.name.toLowerCase() == me?.name.toLowerCase()) ||
+              e.name.toLowerCase().contains('akash'))
           .toList();
+      visibleEmployees = matched.isNotEmpty ? matched : emps.where((e) => e.isActive).toList();
     }
 
     final records = await AttendanceService.loadForMonth(

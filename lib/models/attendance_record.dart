@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'user_model.dart';
 import '../services/supabase_service.dart';
@@ -490,7 +491,6 @@ _Daily Collection App_''';
 class AttendanceService {
   static const String _keyPrefix = 'attendance_v2_';
   static const String _empKey = 'attendance_employees_v2';
-  static const String _deletedEmpKey = 'attendance_deleted_emp_ids_v2';
   static const String _adjPrefix = 'attendance_adj_v2_';
 
   static String _monthKey(int year, int month) =>
@@ -500,7 +500,6 @@ class AttendanceService {
       '$_adjPrefix${year}_${month.toString().padLeft(2, '0')}';
 
   // ── Employees Roster ──────────────────────────────────────────────────────
-  /// User requested: "remove all the employee from that list i will add by my self"
   /// Cross-device seamless sync via Supabase app_users table
   static Future<List<AttendanceEmployee>> loadEmployees({
     List<UserModel>? fallbackUsers,
@@ -508,16 +507,13 @@ class AttendanceService {
     final prefs = await SharedPreferences.getInstance();
 
     final raw = prefs.getStringList(_empKey) ?? [];
-    final deletedIds = prefs.getStringList(_deletedEmpKey) ?? [];
     final employees = <AttendanceEmployee>[];
 
     for (final item in raw) {
       try {
         final emp = AttendanceEmployee.fromJson(
             jsonDecode(item) as Map<String, dynamic>);
-        if (!deletedIds.contains(emp.id)) {
-          employees.add(emp);
-        }
+        employees.add(emp);
       } catch (_) {}
     }
 
@@ -525,22 +521,28 @@ class AttendanceService {
     try {
       final cloudList = await SupabaseService().fetchAttendanceEmployees();
       if (cloudList.isNotEmpty) {
-        bool changed = false;
-        for (final cloudEmp in cloudList) {
-          if (deletedIds.contains(cloudEmp.id)) continue;
-          final idx = employees.indexWhere((e) => e.id == cloudEmp.id);
-          if (idx >= 0) {
-            employees[idx] = cloudEmp;
-          } else {
-            employees.add(cloudEmp);
-            changed = true;
+        final cloudMap = {for (final e in cloudList) e.id: e};
+        final merged = <AttendanceEmployee>[...cloudList];
+
+        // Also check if any local employee hasn't synced to cloud yet
+        for (final loc in employees) {
+          if (!cloudMap.containsKey(loc.id)) {
+            // Push unsynced local employee to cloud
+            SupabaseService().saveAttendanceEmployee(loc);
+            merged.add(loc);
           }
         }
-        if (changed || raw.isEmpty) {
-          await saveEmployees(employees);
+        await saveEmployees(merged);
+        return merged;
+      } else if (employees.isNotEmpty) {
+        // Push all existing local employees to cloud
+        for (final loc in employees) {
+          SupabaseService().saveAttendanceEmployee(loc);
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Cloud sync employees notice: $e');
+    }
 
     return employees;
   }
@@ -559,19 +561,14 @@ class AttendanceService {
     } else {
       list.add(emp);
     }
-    // Remove from deleted list if re-added
-    final prefs = await SharedPreferences.getInstance();
-    final deletedIds = prefs.getStringList(_deletedEmpKey) ?? [];
-    if (deletedIds.contains(emp.id)) {
-      deletedIds.remove(emp.id);
-      await prefs.setStringList(_deletedEmpKey, deletedIds);
-    }
     await saveEmployees(list);
 
     // Push immediately to cloud for seamless cross-device sync
     try {
       await SupabaseService().saveAttendanceEmployee(emp);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error pushing employee to cloud: $e');
+    }
   }
 
   static Future<void> deleteEmployee(String empId) async {
@@ -579,18 +576,12 @@ class AttendanceService {
     list.removeWhere((e) => e.id == empId);
     await saveEmployees(list);
 
-    // Record in deleted IDs so it never re-appears
-    final prefs = await SharedPreferences.getInstance();
-    final deletedIds = prefs.getStringList(_deletedEmpKey) ?? [];
-    if (!deletedIds.contains(empId)) {
-      deletedIds.add(empId);
-      await prefs.setStringList(_deletedEmpKey, deletedIds);
-    }
-
     // Delete immediately from cloud for seamless cross-device sync
     try {
       await SupabaseService().deleteAttendanceEmployee(empId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error deleting employee from cloud: $e');
+    }
   }
 
   // ── Monthly Records ───────────────────────────────────────────────────────
@@ -609,6 +600,7 @@ class AttendanceService {
     try {
       final cloudRecords = await SupabaseService().fetchAttendanceRecords(year, month);
       if (cloudRecords.isNotEmpty) {
+        final cloudMap = {for (final cr in cloudRecords) '${cr.userId}_${cr.dateKey}': cr};
         for (final cr in cloudRecords) {
           final idx = records.indexWhere((r) => r.userId == cr.userId && r.dateKey == cr.dateKey);
           if (idx >= 0) {
@@ -617,10 +609,22 @@ class AttendanceService {
             records.add(cr);
           }
         }
+        for (final r in records) {
+          final key = '${r.userId}_${r.dateKey}';
+          if (!cloudMap.containsKey(key)) {
+            SupabaseService().saveAttendanceRecord(r);
+          }
+        }
         final newRaw = records.map((r) => jsonEncode(r.toJson())).toList();
         await prefs.setStringList(_monthKey(year, month), newRaw);
+      } else if (records.isNotEmpty) {
+        for (final r in records) {
+          SupabaseService().saveAttendanceRecord(r);
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Cloud sync attendance records notice: $e');
+    }
 
     return records;
   }
@@ -823,6 +827,7 @@ class AttendanceService {
     try {
       final cloudAdjs = await SupabaseService().fetchAttendanceAdjustments(year, month);
       if (cloudAdjs.isNotEmpty) {
+        final cloudMap = {for (final ca in cloudAdjs) ca.employeeId: ca};
         for (final ca in cloudAdjs) {
           final idx = list.indexWhere((a) => a.employeeId == ca.employeeId);
           if (idx >= 0) {
@@ -831,10 +836,21 @@ class AttendanceService {
             list.add(ca);
           }
         }
+        for (final a in list) {
+          if (!cloudMap.containsKey(a.employeeId)) {
+            SupabaseService().saveAttendanceAdjustment(a);
+          }
+        }
         final newRaw = list.map((a) => jsonEncode(a.toJson())).toList();
         await prefs.setStringList(_adjKey(year, month), newRaw);
+      } else if (list.isNotEmpty) {
+        for (final a in list) {
+          SupabaseService().saveAttendanceAdjustment(a);
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Cloud sync adjustments notice: $e');
+    }
 
     return list;
   }

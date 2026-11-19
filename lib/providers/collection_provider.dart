@@ -13,6 +13,7 @@ import '../models/cash_handover_model.dart';
 import '../models/vehicle_collection_model.dart';
 import '../models/user_model.dart';
 import '../models/location_timeline_entry.dart';
+import '../models/attendance_record.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
@@ -813,6 +814,14 @@ class CollectionProvider extends ChangeNotifier {
         }
       } catch (e) {
         debugPrint('Auto backup notice: $e');
+      }
+
+      // 5. Synchronize App Users & Attendance Roster across all devices
+      try {
+        await AuthService().loadUsers();
+        await AttendanceService.loadEmployees();
+      } catch (e) {
+        debugPrint('Auto background sync users/attendance notice: $e');
       }
 
       if (hasDataChanged) {

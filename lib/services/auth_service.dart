@@ -35,6 +35,9 @@ class AuthService {
 
     // 3. Sync from Supabase in background / online
     try {
+      if (!_supabase.isInitialized) {
+        await _supabase.init();
+      }
       if (_supabase.isInitialized) {
         final cloudUsers = await _supabase.fetchUsers();
         if (cloudUsers.isNotEmpty) {
@@ -110,6 +113,9 @@ class AuthService {
     }
 
     await saveUsersLocally(users);
+    if (!_supabase.isInitialized) {
+      await _supabase.init();
+    }
     if (_supabase.isInitialized) {
       await _supabase.saveUser(user);
     }
@@ -120,6 +126,9 @@ class AuthService {
     users.removeWhere((u) => u.id == userId);
     await saveUsersLocally(users);
 
+    if (!_supabase.isInitialized) {
+      await _supabase.init();
+    }
     if (_supabase.isInitialized) {
       await _supabase.deleteUser(userId);
     }
