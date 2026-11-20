@@ -21,6 +21,7 @@ import 'profile_screen.dart';
 import 'live_staff_locations_screen.dart';
 import 'attendance_screen.dart';
 import '../utils/firm_details.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
   final VoidCallback onNavigateToRoutes;
@@ -393,7 +394,7 @@ class HomeDashboardScreen extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              context.watch<AuthProvider>().currentUser?.name ?? provider.salesmanName,
+                              context.watch<AuthProvider>().currentUser?.plainName ?? provider.salesmanName,
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
@@ -444,6 +445,10 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ),
         actions: [
+          // Live Payment Alert Bell with Red Notification Badge (Super Admin & Office Staff Only)
+          if (context.watch<AuthProvider>().currentUser?.isSuperAdmin == true ||
+              context.watch<AuthProvider>().currentUser?.isOffice == true)
+            _PaymentAlertBell(provider: provider),
           IconButton(
             icon: const Icon(Icons.send_rounded, size: 20),
             tooltip: 'Send Bank Details',
@@ -2098,4 +2103,488 @@ class HomeDashboardScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYMENT ALERT BELL WITH RED NOTIFICATION BADGE (Super Admin & Office Staff)
+// ─────────────────────────────────────────────────────────────────────────────
+class _PaymentAlertBell extends StatefulWidget {
+  final CollectionProvider provider;
+  const _PaymentAlertBell({required this.provider});
+
+  @override
+  State<_PaymentAlertBell> createState() => _PaymentAlertBellState();
+}
+
+class _PaymentAlertBellState extends State<_PaymentAlertBell> {
+  DateTime? _lastSeenTime;
+  static const _seenKey = 'last_seen_payment_alert_time';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastSeen();
+  }
+
+  Future<void> _loadLastSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    final s = prefs.getString(_seenKey);
+    if (s != null && s.isNotEmpty) {
+      final dt = DateTime.tryParse(s);
+      if (mounted) setState(() => _lastSeenTime = dt);
+    }
+  }
+
+  Future<void> _markSeen() async {
+    final now = DateTime.now();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_seenKey, now.toIso8601String());
+    if (mounted) setState(() => _lastSeenTime = now);
+  }
+
+  int _calculateUnreadCount() {
+    final now = DateTime.now();
+    final todayCollections = widget.provider.collections.where((c) {
+      return c.collectedAt.year == now.year &&
+          c.collectedAt.month == now.month &&
+          c.collectedAt.day == now.day;
+    }).toList();
+
+    if (_lastSeenTime == null) {
+      return todayCollections.length;
+    }
+    return todayCollections.where((c) => c.collectedAt.isAfter(_lastSeenTime!)).length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final unread = _calculateUnreadCount();
+
+    return IconButton(
+      tooltip: 'Live Payment Alerts',
+      visualDensity: VisualDensity.compact,
+      onPressed: () {
+        _markSeen();
+        _showPaymentAlertsSheet(context, widget.provider);
+      },
+      icon: unread > 0
+          ? Badge.count(
+              count: unread,
+              backgroundColor: const Color(0xFFEF4444), // Red notification badge
+              textColor: Colors.white,
+              textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+              child: const Icon(Icons.notifications_active_rounded, size: 22, color: Colors.amberAccent),
+            )
+          : const Icon(Icons.notifications_outlined, size: 22, color: Colors.white),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOOGLE PAY FOR BUSINESS STYLE PAYMENT ALERTS SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+void _showPaymentAlertsSheet(BuildContext context, CollectionProvider provider) {
+  DateTime selectedDate = provider.selectedDate;
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final isToday = selectedDate.year == DateTime.now().year &&
+              selectedDate.month == DateTime.now().month &&
+              selectedDate.day == DateTime.now().day;
+
+          // Filter collections for selected date (all businesses, latest first)
+          final dayCollections = provider.collections.where((c) {
+            return c.collectedAt.year == selectedDate.year &&
+                c.collectedAt.month == selectedDate.month &&
+                c.collectedAt.day == selectedDate.day;
+          }).toList()
+            ..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+
+          final double totalReceived =
+              dayCollections.fold(0.0, (sum, c) => sum + c.collectedAmount);
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.85,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            builder: (_, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(
+                  children: [
+                    // Drag Handle
+                    Container(
+                      margin: const EdgeInsets.only(top: 10, bottom: 6),
+                      width: 42,
+                      height: 4.5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+
+                    // Top Bar
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF86EFAC)),
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.notifications_active_rounded,
+                                  color: Color(0xFF15803D), size: 20),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Payment Alerts',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                Text(
+                                  'Google Pay / Business Live Feed',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.blueGrey.shade600,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Date Picker Pill (defaults to today/selected date, tap to pick ANY date)
+                          InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate,
+                                firstDate: DateTime(2023),
+                                lastDate: DateTime(2035),
+                              );
+                              if (picked != null) {
+                                setSheetState(() => selectedDate = picked);
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: AppTheme.border),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.calendar_today_rounded,
+                                      size: 13, color: AppTheme.primary),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    isToday ? 'Today' : DateFormat('dd MMM').format(selectedDate),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const Icon(Icons.arrow_drop_down,
+                                      size: 16, color: Colors.blueGrey),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 20, color: Colors.blueGrey),
+                            onPressed: () => Navigator.pop(ctx),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Total Received Summary Banner (Google Pay for Business style)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF064E3B), Color(0xFF047857)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF047857).withValues(alpha: 0.25),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text(
+                                      'TOTAL RECEIVED',
+                                      style: TextStyle(
+                                        color: Color(0xFFA7F3D0),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.6,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      DateFormat('dd MMM yyyy').format(selectedDate),
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.8),
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  CurrencyFormatter.format(totalReceived),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    '${dayCollections.length}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const Text(
+                                    'Payments',
+                                    style: TextStyle(
+                                      color: Color(0xFFA7F3D0),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    // Payments List
+                    Expanded(
+                      child: dayCollections.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.receipt_long_outlined,
+                                        size: 48, color: Colors.blueGrey.shade300),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'No payments received on ${DateFormat('dd MMM yyyy').format(selectedDate)}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: Color(0xFF0F172A)),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'When payments are recorded via UPI, Cash, or Cheque, they will appear here live with outlet names and amounts.',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.blueGrey.shade600),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: scrollController,
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                              itemCount: dayCollections.length,
+                              itemBuilder: (context, index) {
+                                final coll = dayCollections[index];
+                                final timeStr = DateFormat('hh:mm a').format(coll.collectedAt);
+                                final isUpi = coll.paymentMode == PaymentMode.upi;
+                                final isCash = coll.paymentMode == PaymentMode.cash;
+                                final modeColor = isUpi
+                                    ? const Color(0xFF0284C7)
+                                    : (isCash ? const Color(0xFF16A34A) : Colors.orange);
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: AppTheme.border),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.03),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ListTile(
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                    leading: CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: const Color(0xFFDCFCE7),
+                                      child: const Icon(
+                                        Icons.arrow_downward_rounded,
+                                        color: Color(0xFF16A34A),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    title: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            coll.shopName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '+ ${CurrencyFormatter.format(coll.collectedAmount)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 14.5,
+                                            color: Color(0xFF16A34A),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              timeStr,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.blueGrey.shade700,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: modeColor.withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                coll.paymentMode.name.toUpperCase(),
+                                                style: TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: modeColor,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Bill #${coll.billNumber}',
+                                              style: TextStyle(
+                                                fontSize: 10.5,
+                                                color: Colors.blueGrey.shade500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Collected by ${coll.salesmanName} • ${coll.businessName}',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            color: Colors.blueGrey.shade600,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    },
+  );
 }

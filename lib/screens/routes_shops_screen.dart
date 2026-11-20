@@ -658,6 +658,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                             data: Theme.of(context).copyWith(canvasColor: Colors.transparent),
                             child: ReorderableListView.builder(
                               itemCount: routeShops.length,
+                              // ignore: deprecated_member_use
                               onReorder: (oldIndex, newIndex) {
                                 setDlgState(() {
                                   if (newIndex > oldIndex) newIndex -= 1;

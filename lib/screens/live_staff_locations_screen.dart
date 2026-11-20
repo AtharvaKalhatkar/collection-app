@@ -54,13 +54,63 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   String? _selectedMapRouteId;
   String _shopSearchQuery = '';
 
-  static String cleanLandmark(String raw) {
+  static String cleanLandmark(
+    String raw, {
+    double? lat,
+    double? lng,
+    List<ShopModel> allShops = const [],
+  }) {
     var s = raw.trim();
     if (s.startsWith(RegExp(r'^(At|Near)\s+', caseSensitive: false))) {
       s = s.replaceFirst(RegExp(r'^(At|Near)\s+', caseSensitive: false), '');
     }
-    s = s.replaceAll(RegExp(r'\s*\(\s*~?\s*\d+\s*[a-zA-Z]*\s*\)', caseSensitive: false), '');
-    return s.trim();
+    s = s.replaceAll(RegExp(r'\s*\(\s*~?\s*\d+\s*[a-zA-Z]*\s*\)', caseSensitive: false), '').trim();
+
+    final isGeneric = s.isEmpty ||
+        s == 'Khed, खेड' ||
+        s == 'Khed' ||
+        s == 'खेड' ||
+        s.startsWith('GPS:') ||
+        s == 'Active in Beat' ||
+        s == 'Active on sales route' ||
+        s == 'Transit on delivery beat';
+
+    if (isGeneric && lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+      if (allShops.isNotEmpty) {
+        ShopModel? nearest;
+        double minD = double.infinity;
+        for (final shop in allShops) {
+          if (shop.latitude != null && shop.longitude != null) {
+            final d = LocationTrackingService.haversineDistanceKm(lat, lng, shop.latitude!, shop.longitude!);
+            if (d < minD) {
+              minD = d;
+              nearest = shop;
+            }
+          }
+        }
+        if (nearest != null) {
+          if (minD <= 0.35) {
+            return nearest.name;
+          }
+          if (minD <= 1.5) {
+            final area = nearest.routeName.isNotEmpty ? nearest.routeName : nearest.address;
+            final cleanArea = area.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+            return 'Near ${nearest.name}${cleanArea.isNotEmpty ? " · $cleanArea" : ""}';
+          }
+        }
+      }
+
+      final reg = LocationTrackingService.getKnownRegion(lat, lng);
+      if (reg != null && reg.isNotEmpty) {
+        return reg;
+      }
+    }
+
+    if (s == 'Khed, खेड' || s == 'Khed' || s == 'खेड') {
+      return 'Rajgurunagar (राजगुरूनगर)';
+    }
+
+    return s.isNotEmpty ? s : 'Active on Route';
   }
 
   String _getMapUrlTemplate() {
@@ -765,7 +815,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                                 return DropdownMenuItem(
                                   value: u.name,
                                   child: Text(
-                                    '${u.name} (${u.roleDisplayName})',
+                                    u.plainName,
                                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -879,6 +929,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   }
 
   List<Widget> _buildTimelineCards() {
+    final allShops = context.watch<CollectionProvider>().shops;
     return _timelineEntries.map((entry) {
       final isColl = entry.isCollection;
       return Card(
@@ -897,13 +948,18 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
             child: Icon(isColl ? Icons.payments : Icons.location_on, size: 18),
           ),
           title: Text(
-            cleanLandmark(entry.landmark.isNotEmpty ? entry.landmark : (entry.shopName ?? 'Breadcrumb')),
+            cleanLandmark(
+              entry.landmark.isNotEmpty ? entry.landmark : (entry.shopName ?? 'Breadcrumb'),
+              lat: entry.latitude,
+              lng: entry.longitude,
+              allShops: allShops,
+            ),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
           ),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${entry.staffName} · ${entry.timeFormatted}',
+              Text('${UserModel.cleanPlainName(entry.staffName)} · ${entry.timeFormatted}',
                   style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600)),
               if (entry.details.isNotEmpty) ...[
                 const SizedBox(height: 2),
@@ -1043,20 +1099,20 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     final provider = context.watch<CollectionProvider>();
     final allRoutes = provider.allRoutes;
 
-    var baseShops = allShops;
-    if (_selectedMapRouteId != null && _selectedMapRouteId!.isNotEmpty) {
-      baseShops = baseShops.where((s) => s.routeId == _selectedMapRouteId).toList();
+    List<ShopModel> displayShops;
+    if (_shopSearchQuery.trim().isNotEmpty) {
+      final q = _shopSearchQuery.toLowerCase().trim();
+      displayShops = allShops.where((s) {
+        return s.name.toLowerCase().contains(q) ||
+            s.routeName.toLowerCase().contains(q) ||
+            s.address.toLowerCase().contains(q);
+      }).toList();
+    } else if (_selectedMapRouteId != null && _selectedMapRouteId!.isNotEmpty) {
+      displayShops = allShops.where((s) => s.routeId == _selectedMapRouteId).toList();
+    } else {
+      // Blank/clean map with no outlet names when no route is selected (fast, responsive)
+      displayShops = const [];
     }
-
-    // Filter shops if user searches
-    final displayShops = _shopSearchQuery.trim().isEmpty
-        ? baseShops
-        : baseShops.where((s) {
-            final q = _shopSearchQuery.toLowerCase().trim();
-            return s.name.toLowerCase().contains(q) ||
-                s.routeName.toLowerCase().contains(q) ||
-                s.address.toLowerCase().contains(q);
-          }).toList();
 
     return Stack(
       children: [
@@ -1348,11 +1404,11 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                           value: _selectedMapRouteId,
                           isExpanded: true,
                           icon: const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
-                          hint: const Text('All Routes', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          hint: const Text('Select Route', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87)),
                           items: [
                             const DropdownMenuItem<String?>(
                               value: null,
-                              child: Text('All Routes', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                              child: Text('Select Route (None)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                             ),
                             ...allRoutes.map((r) => DropdownMenuItem<String?>(
                                   value: r.id,
@@ -1404,7 +1460,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                             ),
                             ...users.map((u) => DropdownMenuItem<String?>(
                                   value: u.id,
-                                  child: Text('${u.name} (${u.roleDisplayName})',
+                                  child: Text(u.plainName,
                                       style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
                                 )),
                           ],
@@ -1514,7 +1570,11 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            _showOutletsOnMap ? 'Outlets (${allShops.length})' : 'Staff Only',
+                            _showOutletsOnMap
+                                ? (displayShops.isNotEmpty
+                                    ? 'Outlets (${displayShops.length})'
+                                    : 'Select Route for Outlets')
+                                : 'Staff Only',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,

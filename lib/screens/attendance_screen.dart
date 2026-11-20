@@ -349,7 +349,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     items: _employees.map((e) {
                       return DropdownMenuItem(
                         value: e.id,
-                        child: Text(e.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        child: Text(e.plainName, style: const TextStyle(fontWeight: FontWeight.w600)),
                       );
                     }).toList(),
                     onChanged: (val) {
@@ -928,7 +928,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     items: _employees.map((e) {
                       return DropdownMenuItem(
                         value: e.id,
-                        child: Text(e.name,
+                        child: Text(e.plainName,
                             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       );
                     }).toList(),
@@ -1269,7 +1269,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
-                      '${me.name} (${me.roleDisplayName})',
+                      me.plainName,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
@@ -1478,7 +1478,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                         children: [
                           const Icon(Icons.person_outline, size: 18, color: Colors.blueGrey),
                           const SizedBox(width: 8),
-                          Text(emp.name,
+                          Text(emp.plainName,
                               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
                         ],
                       ),
@@ -1553,7 +1553,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        emp.name,
+                        emp.plainName,
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                       ),
                       Text(
@@ -2082,7 +2082,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(emp.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            Text(emp.plainName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                             Text(
                               '${emp.role} · ${emp.phone.isNotEmpty ? emp.phone : 'No phone'}',
                               style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),

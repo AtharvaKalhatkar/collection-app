@@ -151,7 +151,7 @@ class LocationTrackingService {
 
   /// Asynchronously resolves the most accurate human-readable location
   static Future<String> resolveLandmark(double lat, double lng, List<ShopModel> shops) async {
-    // 1. Check if physically close (< 250m) to a REAL shop (ignore test shops)
+    // 1. Check if physically close (< 300m) to a REAL shop (ignore test shops)
     final realShops = shops.where((s) {
       final name = s.name.toLowerCase();
       final route = s.routeName.toLowerCase();
@@ -171,13 +171,23 @@ class LocationTrackingService {
       }
     }
 
-    if (nearestShop != null && minDistanceKm <= 0.25) {
+    if (nearestShop != null && minDistanceKm <= 0.30) {
       return nearestShop.name;
     }
 
-    // 2. Beyond 250m, get real locality / suburb / town name via reverse geocoding
+    if (nearestShop != null && minDistanceKm <= 1.2) {
+      final area = nearestShop.routeName.isNotEmpty ? nearestShop.routeName : nearestShop.address;
+      final cleanArea = area.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+      return 'Near ${nearestShop.name}${cleanArea.isNotEmpty ? " · $cleanArea" : ""}';
+    }
+
+    // 2. Beyond 1.2km, get real locality / suburb / town name via reverse geocoding (street/village level)
     final onlineArea = await reverseGeocodeArea(lat, lng);
-    if (onlineArea != null && onlineArea.isNotEmpty) {
+    if (onlineArea != null &&
+        onlineArea.isNotEmpty &&
+        onlineArea != 'Khed, खेड' &&
+        onlineArea != 'Khed' &&
+        onlineArea != 'खेड') {
       return onlineArea;
     }
 
@@ -187,15 +197,20 @@ class LocationTrackingService {
       return region;
     }
 
-    // 4. Fallback to clean coordinate string
-    return 'GPS: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}';
+    if (nearestShop != null && minDistanceKm <= 3.5) {
+      final area = nearestShop.routeName.isNotEmpty ? nearestShop.routeName : nearestShop.address;
+      final cleanArea = area.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+      if (cleanArea.isNotEmpty) return cleanArea;
+    }
+
+    return 'Rajgurunagar';
   }
 
-  /// Reverse geocodes coordinates to a clean area name (suburb/town, district)
+  /// Reverse geocodes coordinates to a clean area name (suburb/town, street level)
   static Future<String?> reverseGeocodeArea(double lat, double lng) async {
     try {
       final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=14&addressdetails=1',
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1',
       );
       final response = await http.get(
         uri,
@@ -206,20 +221,26 @@ class LocationTrackingService {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final address = data['address'] as Map<String, dynamic>?;
         if (address != null) {
-          final place = address['suburb'] ??
-              address['town'] ??
-              address['village'] ??
+          final road = address['road'];
+          final suburb = address['suburb'] ??
               address['neighbourhood'] ??
               address['residential'] ??
-              address['city_district'] ??
-              address['city'];
-          final district = address['county'] ?? address['state_district'] ?? address['state'];
+              address['industrial'] ??
+              address['commercial'];
+          final village = address['village'] ?? address['hamlet'] ?? address['town'];
+          final city = address['city'] ?? address['city_district'];
+
+          final place = suburb ?? village ?? road ?? city;
           if (place != null && place.toString().trim().isNotEmpty) {
-            final pStr = place.toString().trim();
-            final dStr = (district != null) ? district.toString().trim() : '';
-            if (dStr.isNotEmpty && dStr.toLowerCase() != pStr.toLowerCase()) {
-              return '$pStr, $dStr';
+            var pStr = place.toString().trim();
+            // If it's generic "Khed" or "खेड", translate to actual local town "Rajgurunagar"
+            if (pStr.toLowerCase() == 'khed' || pStr == 'खेड') {
+              if (road != null && road.toString().trim().isNotEmpty) {
+                return '${road.toString().trim()}, Rajgurunagar';
+              }
+              return 'Rajgurunagar';
             }
+            pStr = pStr.replaceAll(RegExp(r',\s*(Khed|खेड)', caseSensitive: false), '').trim();
             return pStr;
           }
         }
@@ -231,14 +252,14 @@ class LocationTrackingService {
   /// Known regional bounds fallback for instant offline precision
   static String? getKnownRegion(double lat, double lng) {
     if (lat >= 18.54 && lat <= 18.63 && lng >= 73.94 && lng <= 74.05) return 'Wagholi, Pune';
-    if (lat >= 18.72 && lat <= 18.79 && lng >= 73.82 && lng <= 73.89) return 'Chakan, Khed';
-    if (lat >= 18.83 && lat <= 18.89 && lng >= 73.85 && lng <= 73.93) return 'Rajgurunagar / Khed';
+    if (lat >= 18.72 && lat <= 18.79 && lng >= 73.82 && lng <= 73.89) return 'Chakan';
+    if (lat >= 18.83 && lat <= 18.89 && lng >= 73.85 && lng <= 73.93) return 'Rajgurunagar';
     if (lat >= 18.59 && lat <= 18.67 && lng >= 73.78 && lng <= 73.87) return 'Bhosari / PCMC';
-    if (lat >= 18.65 && lat <= 18.71 && lng >= 73.86 && lng <= 73.93) return 'Alandi, Pune';
+    if (lat >= 18.65 && lat <= 18.71 && lng >= 73.86 && lng <= 73.93) return 'Alandi';
     if (lat >= 18.70 && lat <= 18.77 && lng >= 73.65 && lng <= 73.74) return 'Talegaon Dabhade';
     if (lat >= 18.72 && lat <= 18.79 && lng >= 73.76 && lng <= 73.83) return 'Mahalunge / Chakan MIDC';
-    if (lat >= 18.70 && lat <= 18.82 && lng >= 74.06 && lng <= 74.20) return 'Shikrapur, Pune';
-    if (lat >= 18.95 && lat <= 19.06 && lng >= 73.89 && lng <= 73.98) return 'Manchar, Pune';
+    if (lat >= 18.70 && lat <= 18.82 && lng >= 74.06 && lng <= 74.20) return 'Shikrapur';
+    if (lat >= 18.95 && lat <= 19.06 && lng >= 73.89 && lng <= 73.98) return 'Manchar';
     if (lat >= 18.46 && lat <= 18.56 && lng >= 73.80 && lng <= 73.93) return 'Pune City';
     return null;
   }

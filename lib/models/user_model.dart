@@ -54,6 +54,14 @@ class UserModel {
   bool get isSalesman => role == UserRole.salesman;
   bool get isDriver => role == UserRole.driver;
 
+  static String cleanPlainName(String name) {
+    var s = name.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+    s = s.replaceAll(RegExp(r'\s*-\s*(Office Staff|Sales & Collection|Sales|Collection|Driver|Helper|Super Admin|Office)$', caseSensitive: false), '').trim();
+    return s.isEmpty ? name : s;
+  }
+
+  String get plainName => cleanPlainName(name);
+
   bool get hasLocation => latitude != null && longitude != null;
 
   String get mapsUrl => hasLocation ? 'https://maps.google.com/?q=$latitude,$longitude' : '';
@@ -227,7 +235,7 @@ class UserModel {
     return UserModel(
       id: json['id'] as String? ?? 'user_${DateTime.now().millisecondsSinceEpoch}',
       phone: normalizePhone(json['phone'] as String? ?? ''),
-      name: json['name'] as String? ?? 'Staff Member',
+      name: cleanPlainName(json['name'] as String? ?? 'Staff Member'),
       role: parsedRole,
       password: parsedPassword,
       assignedRouteIds: assignedRoutes,

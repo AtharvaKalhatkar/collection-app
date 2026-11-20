@@ -189,10 +189,12 @@ class AttendanceEmployee {
         'joinedAt': joinedAt?.toIso8601String(),
       };
 
+  String get plainName => UserModel.cleanPlainName(name);
+
   factory AttendanceEmployee.fromJson(Map<String, dynamic> json) =>
       AttendanceEmployee(
         id: json['id'] as String? ?? '',
-        name: json['name'] as String? ?? '',
+        name: UserModel.cleanPlainName(json['name'] as String? ?? ''),
         role: json['role'] as String? ?? 'Sales & Collection',
         phone: json['phone'] as String? ?? '',
         monthlySalary: _dbl(json['monthlySalary'], 18000.0),
