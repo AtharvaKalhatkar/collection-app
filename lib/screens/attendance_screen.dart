@@ -31,136 +31,201 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   List<AttendanceEmployee> _employees = [];
   List<AttendanceRecord> _records = [];
   List<SalaryMonthlyAdjustment> _adjustments = [];
-  String? _selectedEmployeeId;
+  String? _selectedEmployeeId; // null = "All Staff Overview" (admin only)
   bool _isLoading = false;
 
   Timer? _ticker;
   Timer? _syncTimer;
-  DateTime _now = DateTime.now();
+  final ValueNotifier<DateTime> _clock = ValueNotifier(DateTime.now());
   AttendanceRecord? _myTodayRecord;
+  AttendanceEmployee? _myEmployee; // roster entry linked to logged-in user
+  bool _busy = false;
+  int _loadSeq = 0;
+  int _pending = 0;
+  bool _openedFromRoster = false;
 
   @override
   void initState() {
     super.initState();
-    // Exactly 2 tabs: Daily Attendance, Staff Roster
     _tabController = TabController(length: 2, vsync: this);
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
-    });
-    // Seamless Cross-Device Auto-Sync: Poll every 10 seconds in background
-    _syncTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    _tabController.addListener(_onTabChanged);
+    // Only the clock widget rebuilds each second (not the whole screen)
+    _ticker = Timer.periodic(
+        const Duration(seconds: 1), (_) => _clock.value = DateTime.now());
+    // Cross-device auto-sync (fallback every 3 minutes; immediate sync occurs on user actions & refresh)
+    _syncTimer = Timer.periodic(const Duration(minutes: 3), (_) {
       if (mounted) _loadAll(silent: true);
     });
     _loadAll();
   }
 
+  void _onTabChanged() {
+    if (mounted) {
+      if (_tabController.index == 1) {
+        _openedFromRoster = false;
+      }
+      setState(() {});
+    }
+  }
+
+  bool get _canPopDirectly {
+    final me = context.read<AuthProvider>().currentUser;
+    final bool isAdmin = me != null && (me.isSuperAdmin || me.isOffice);
+    if (_tabController.index != 0) return false;
+    if (isAdmin && _selectedEmployeeId != null) return false;
+    return true;
+  }
+
+  void _handleBack() {
+    final me = context.read<AuthProvider>().currentUser;
+    final bool isAdmin = me != null && (me.isSuperAdmin || me.isOffice);
+
+    if (_tabController.index == 0 && isAdmin && _selectedEmployeeId != null) {
+      if (_openedFromRoster) {
+        setState(() {
+          _selectedEmployeeId = null;
+          _openedFromRoster = false;
+        });
+        _tabController.animateTo(1);
+      } else {
+        setState(() {
+          _selectedEmployeeId = null;
+        });
+      }
+      return;
+    }
+
+    if (_tabController.index != 0) {
+      _tabController.animateTo(0);
+      return;
+    }
+
+    Navigator.of(context).pop();
+  }
+
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _ticker?.cancel();
     _syncTimer?.cancel();
+    _clock.dispose();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadAll({bool silent = false}) async {
+  void _toast(String msg, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+  }
+
+  AttendanceEmployee? _matchMyEmployee(
+      List<AttendanceEmployee> emps, UserModel? me) {
+    if (me == null) return null;
+    final name = me.name.toLowerCase().trim();
+    final phone = me.phone.trim();
+    for (final e in emps) {
+      if (e.id == me.id) return e;
+      if (phone.isNotEmpty && e.phone.trim() == phone) return e;
+      if (name.isNotEmpty && e.name.toLowerCase().trim() == name) return e;
+    }
+    if (name.contains('akash')) {
+      for (final e in emps) {
+        if (e.name.toLowerCase().contains('akash')) return e;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _loadAll({bool silent = false, bool sync = true}) async {
+    final seq = ++_loadSeq; // newer load wins; stale results are dropped
     if (!silent) setState(() => _isLoading = true);
-    final auth = context.read<AuthProvider>();
-    final me = auth.currentUser;
+    final me = context.read<AuthProvider>().currentUser;
+    final isAdmin = me != null && (me.isSuperAdmin || me.isOffice);
+    final y = _selectedMonth.year, m = _selectedMonth.month;
 
-    // Load user-managed roster with cloud sync
-    final emps = await AttendanceService.loadEmployees();
+    try {
+      final emps =
+          await AttendanceService.loadEmployees(activeOnly: true, sync: sync);
+      final records = await AttendanceService.loadForMonth(y, m, sync: sync);
+      final adjs = await AttendanceService.loadAdjustments(y, m, sync: sync);
+      final mine =
+          (me == null || me.isSuperAdmin) ? null : _matchMyEmployee(emps, me);
+      final today = mine == null
+          ? null
+          : await AttendanceService.loadForUserAndDate(mine.id, DateTime.now());
+      final pending = await AttendanceService.pendingSyncCount();
 
-    final bool isAdmin = me != null && (me.isSuperAdmin || me.isOffice);
-    List<AttendanceEmployee> visibleEmployees;
-    if (isAdmin) {
-      visibleEmployees = emps.where((e) => e.isActive).toList();
-    } else {
-      final matched = emps
-          .where((e) =>
-              e.id == me?.id ||
-              (me?.phone.isNotEmpty == true && e.phone == me?.phone) ||
-              (me?.name.isNotEmpty == true && e.name.toLowerCase() == me?.name.toLowerCase()) ||
-              e.name.toLowerCase().contains('akash'))
-          .toList();
-      visibleEmployees = matched.isNotEmpty ? matched : emps.where((e) => e.isActive).toList();
-    }
-
-    final records = await AttendanceService.loadForMonth(
-      _selectedMonth.year,
-      _selectedMonth.month,
-    );
-
-    final adjs = await AttendanceService.loadAdjustments(
-      _selectedMonth.year,
-      _selectedMonth.month,
-    );
-
-    if (me != null && !me.isSuperAdmin) {
-      _myTodayRecord =
-          await AttendanceService.loadForUserAndDate(me.id, DateTime.now());
-    }
-
-    if (mounted) {
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
-        _employees = visibleEmployees;
+        // Non-admins only ever see their own row (never the whole roster)
+        _employees = isAdmin ? emps : (mine == null ? [] : [mine]);
         _records = records;
         _adjustments = adjs;
-        if (_selectedEmployeeId == null && _employees.isNotEmpty) {
-          _selectedEmployeeId = _employees.first.id;
-        } else if (_selectedEmployeeId != null &&
+        _myEmployee = mine;
+        _myTodayRecord = today;
+        _pending = pending;
+
+        if (_selectedEmployeeId != null &&
             !_employees.any((e) => e.id == _selectedEmployeeId)) {
-          _selectedEmployeeId =
-              _employees.isNotEmpty ? _employees.first.id : null;
+          _selectedEmployeeId = null;
+        }
+        if (!isAdmin && _selectedEmployeeId == null && _employees.isNotEmpty) {
+          _selectedEmployeeId = _employees.first.id;
         }
         _isLoading = false;
       });
+    } catch (e) {
+      debugPrint('Attendance load error: $e');
+      if (mounted && seq == _loadSeq) setState(() => _isLoading = false);
     }
   }
 
-  // Self check-in action (for staff like Akash, NOT for Super Admin)
+  // Self check-in (staff, NOT Super Admin)
   Future<void> _doCheckIn() async {
-    final me = context.read<AuthProvider>().currentUser;
-    if (me == null || me.isSuperAdmin) return;
-    await AttendanceService.checkIn(me.id, me.name, me.roleDisplayName);
-    await _loadAll();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Checked in successfully! Have a productive day.'),
-          backgroundColor: Color(0xFF10B981),
-        ),
-      );
+    final emp = _myEmployee;
+    if (emp == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      await AttendanceService.checkIn(emp.id, emp.name, emp.role);
+      await _loadAll(silent: true, sync: false);
+      _toast('✅ Checked in successfully! Have a productive day.',
+          color: const Color(0xFF10B981));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  // Self check-out action
   Future<void> _doCheckOut() async {
-    final me = context.read<AuthProvider>().currentUser;
-    if (me == null || me.isSuperAdmin) return;
-    await AttendanceService.checkOut(me.id);
-    await _loadAll();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('👋 Checked out successfully. Good work!'),
-          backgroundColor: Color(0xFF0F172A),
-        ),
-      );
+    final emp = _myEmployee;
+    if (emp == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final r = await AttendanceService.checkOut(emp.id);
+      await _loadAll(silent: true, sync: false);
+      if (r == null) {
+        _toast('No check-in found for today.');
+      } else if (r.status == AttendanceStatus.halfDay) {
+        _toast('👋 Checked out. Marked Half Day (worked under 4 hrs).',
+            color: Colors.orange);
+      } else {
+        _toast('👋 Checked out successfully. Good work!',
+            color: const Color(0xFF0F172A));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // MARK ATTENDANCE DIALOG (Only 3 options: Present, Absent, Half Day + Times)
+  // MARK ATTENDANCE DIALOG
   // ───────────────────────────────────────────────────────────────────────────
   void _openMarkAttendanceDialog({AttendanceEmployee? targetEmp, DateTime? targetDate}) {
-    final auth = context.read<AuthProvider>();
-    final me = auth.currentUser;
+    final me = context.read<AuthProvider>().currentUser;
     final bool isAdmin = me != null && (me.isSuperAdmin || me.isOffice);
     if (!isAdmin) return;
     if (_employees.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add an employee first in Staff Roster.')),
-      );
+      _toast('Please add an employee first in Staff Roster.');
       return;
     }
 
@@ -172,16 +237,18 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
     DateTime chosenDate = targetDate ?? DateTime.now();
 
-    final dateKey =
-        '${chosenDate.year}-${chosenDate.month.toString().padLeft(2, '0')}-${chosenDate.day.toString().padLeft(2, '0')}';
-    final existing = _records.cast<AttendanceRecord?>().firstWhere(
-          (r) => r?.userId == currentEmp.id && r?.dateKey == dateKey,
-          orElse: () => null,
-        );
+    AttendanceRecord? findRecord(String empId, DateTime date) {
+      final dKey =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      for (final r in _records) {
+        if (r.userId == empId && r.dateKey == dKey) return r;
+      }
+      return null;
+    }
 
+    final existing = findRecord(currentEmp.id, chosenDate);
     AttendanceStatus chosenStatus = existing?.status ?? AttendanceStatus.present;
 
-    // Time defaults
     TimeOfDay checkInTime = existing?.checkInTime != null
         ? TimeOfDay.fromDateTime(existing!.checkInTime!)
         : TimeOfDay.fromDateTime(DateTime.now());
@@ -199,24 +266,51 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           final isCheckOutSet = checkOutTime != null;
 
           void syncFieldsFor(String empId, DateTime date) {
-            final dKey =
-                '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-            final rec = _records.cast<AttendanceRecord?>().firstWhere(
-                  (r) => r?.userId == empId && r?.dateKey == dKey,
-                  orElse: () => null,
-                );
+            final rec = findRecord(empId, date);
             chosenStatus = rec?.status ?? AttendanceStatus.present;
-            if (rec?.checkInTime != null) {
-              checkInTime = TimeOfDay.fromDateTime(rec!.checkInTime!);
-            } else {
-              checkInTime = TimeOfDay.fromDateTime(DateTime.now());
-            }
-            if (rec?.checkOutTime != null) {
-              checkOutTime = TimeOfDay.fromDateTime(rec!.checkOutTime!);
-            } else {
-              checkOutTime = null;
-            }
+            checkInTime = rec?.checkInTime != null
+                ? TimeOfDay.fromDateTime(rec!.checkInTime!)
+                : TimeOfDay.fromDateTime(DateTime.now());
+            checkOutTime = rec?.checkOutTime != null
+                ? TimeOfDay.fromDateTime(rec!.checkOutTime!)
+                : null;
             noteCtrl.text = rec?.note ?? '';
+          }
+
+          Widget statusTile(AttendanceStatus s, String label, IconData icon,
+              Color bg, Color border, Color fg) {
+            final sel = chosenStatus == s;
+            return Expanded(
+              child: InkWell(
+                onTap: () => setLocal(() => chosenStatus = s),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: sel ? bg : Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: sel ? border : Colors.grey.shade300,
+                      width: sel ? 2 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(icon, color: sel ? fg : Colors.grey, size: 20),
+                      const SizedBox(height: 4),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: sel ? fg : Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
           }
 
           return AlertDialog(
@@ -269,7 +363,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                   const SizedBox(height: 12),
 
-                  // 2. Date Selector
+                  // 2. Date Selector (no future dates)
                   const Text('Date',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                   const SizedBox(height: 6),
@@ -277,9 +371,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: chosenDate,
+                        initialDate: chosenDate.isAfter(DateTime.now()) ? DateTime.now() : chosenDate,
                         firstDate: DateTime(2024),
-                        lastDate: DateTime(2030),
+                        lastDate: DateTime.now(),
                       );
                       if (picked != null) {
                         setLocal(() {
@@ -316,151 +410,28 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                   const SizedBox(height: 14),
 
-                  // 3. Exactly 3 Status Options: Present, Half Day, Absent
+                  // 3. Status: Present, Half Day, Absent
                   const Text('Attendance Status',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      // Present
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => setLocal(() => chosenStatus = AttendanceStatus.present),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: chosenStatus == AttendanceStatus.present
-                                  ? const Color(0xFFDCFCE7)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: chosenStatus == AttendanceStatus.present
-                                    ? const Color(0xFF16A34A)
-                                    : Colors.grey.shade300,
-                                width: chosenStatus == AttendanceStatus.present ? 2 : 1,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(Icons.check_circle,
-                                    color: chosenStatus == AttendanceStatus.present
-                                        ? const Color(0xFF15803D)
-                                        : Colors.grey,
-                                    size: 20),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Present',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: chosenStatus == AttendanceStatus.present
-                                        ? const Color(0xFF15803D)
-                                        : Colors.black87,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      statusTile(AttendanceStatus.present, 'Present', Icons.check_circle,
+                          const Color(0xFFDCFCE7), const Color(0xFF16A34A), const Color(0xFF15803D)),
                       const SizedBox(width: 8),
-
-                      // Half Day
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => setLocal(() => chosenStatus = AttendanceStatus.halfDay),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: chosenStatus == AttendanceStatus.halfDay
-                                  ? const Color(0xFFFEF3C7)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: chosenStatus == AttendanceStatus.halfDay
-                                    ? const Color(0xFFD97706)
-                                    : Colors.grey.shade300,
-                                width: chosenStatus == AttendanceStatus.halfDay ? 2 : 1,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(Icons.timelapse,
-                                    color: chosenStatus == AttendanceStatus.halfDay
-                                        ? const Color(0xFFB45309)
-                                        : Colors.grey,
-                                    size: 20),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Half Day',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: chosenStatus == AttendanceStatus.halfDay
-                                        ? const Color(0xFFB45309)
-                                        : Colors.black87,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      statusTile(AttendanceStatus.halfDay, 'Half Day', Icons.timelapse,
+                          const Color(0xFFFEF3C7), const Color(0xFFD97706), const Color(0xFFB45309)),
                       const SizedBox(width: 8),
-
-                      // Absent
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => setLocal(() => chosenStatus = AttendanceStatus.absent),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: chosenStatus == AttendanceStatus.absent
-                                  ? const Color(0xFFFEE2E2)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: chosenStatus == AttendanceStatus.absent
-                                    ? const Color(0xFFDC2626)
-                                    : Colors.grey.shade300,
-                                width: chosenStatus == AttendanceStatus.absent ? 2 : 1,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(Icons.cancel,
-                                    color: chosenStatus == AttendanceStatus.absent
-                                        ? const Color(0xFFB91C1C)
-                                        : Colors.grey,
-                                    size: 20),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Absent',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: chosenStatus == AttendanceStatus.absent
-                                        ? const Color(0xFFB91C1C)
-                                        : Colors.black87,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      statusTile(AttendanceStatus.absent, 'Absent', Icons.cancel,
+                          const Color(0xFFFEE2E2), const Color(0xFFDC2626), const Color(0xFFB91C1C)),
                     ],
                   ),
                   const SizedBox(height: 14),
 
-                  // 4. Check-in & Check-out Time Pickers (Visible for Present & Half Day)
+                  // 4. Check-in & Check-out times (Present & Half Day)
                   if (chosenStatus != AttendanceStatus.absent) ...[
                     Row(
                       children: [
-                        // Check In Time
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -483,9 +454,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                     context: context,
                                     initialTime: checkInTime,
                                   );
-                                  if (picked != null) {
-                                    setLocal(() => checkInTime = picked);
-                                  }
+                                  if (picked != null) setLocal(() => checkInTime = picked);
                                 },
                                 borderRadius: BorderRadius.circular(8),
                                 child: Container(
@@ -510,8 +479,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                           ),
                         ),
                         const SizedBox(width: 10),
-
-                        // Check Out / Leaving Time
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -545,9 +512,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                     context: context,
                                     initialTime: checkOutTime ?? TimeOfDay.fromDateTime(DateTime.now()),
                                   );
-                                  if (picked != null) {
-                                    setLocal(() => checkOutTime = picked);
-                                  }
+                                  if (picked != null) setLocal(() => checkOutTime = picked);
                                 },
                                 borderRadius: BorderRadius.circular(8),
                                 child: Container(
@@ -563,9 +528,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Text(
-                                        isCheckOutSet
-                                            ? checkOutTime!.format(context)
-                                            : 'Set Checkout',
+                                        isCheckOutSet ? checkOutTime!.format(context) : 'Set Checkout',
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 13,
@@ -614,6 +577,14 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 ),
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
+                  if (chosenStatus != AttendanceStatus.absent &&
+                      checkOutTime != null &&
+                      checkOutTime!.hour * 60 + checkOutTime!.minute <=
+                          checkInTime.hour * 60 + checkInTime.minute) {
+                    messenger.showSnackBar(const SnackBar(
+                        content: Text('Leaving time must be after check-in time.')));
+                    return;
+                  }
                   Navigator.pop(ctx);
 
                   DateTime? inDateTime;
@@ -648,7 +619,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     checkOutTime: outDateTime,
                     note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
                   );
-                  await _loadAll();
+                  await _loadAll(silent: true, sync: false);
                   if (mounted) {
                     messenger.showSnackBar(
                       SnackBar(
@@ -668,7 +639,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // ADD / EDIT EMPLOYEE (Big Role Selection Cards, Exactly 4 Allowed Roles)
+  // ADD / EDIT EMPLOYEE
   // ───────────────────────────────────────────────────────────────────────────
   void _openAddEmployeeDialog({AttendanceEmployee? toEdit}) {
     final isEditing = toEdit != null;
@@ -678,7 +649,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       text: toEdit != null ? toEdit.monthlySalary.toStringAsFixed(0) : '',
     );
 
-    // Exactly 4 allowed roles
     final allowedRoles = AttendanceEmployee.allowedRoles;
     String selectedRole = toEdit != null && allowedRoles.contains(toEdit.role)
         ? toEdit.role
@@ -700,6 +670,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               children: [
                 TextField(
                   controller: nameCtrl,
+                  textCapitalization: TextCapitalization.words,
                   decoration: InputDecoration(
                     labelText: 'Full Name *',
                     hintText: 'Employee Name',
@@ -707,8 +678,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                 ),
                 const SizedBox(height: 14),
-
-                // Big Role Selection Grid (Driver, Sales & Collection, Helper, Office Staff)
                 const Text(
                   'Select Role *',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey),
@@ -745,9 +714,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                         decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppTheme.primary.withValues(alpha: 0.12)
-                              : Colors.white,
+                          color: isSelected ? AppTheme.primary.withValues(alpha: 0.12) : Colors.white,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: isSelected ? AppTheme.primary : Colors.grey.shade300,
@@ -756,17 +723,14 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                         ),
                         child: Row(
                           children: [
-                            Icon(icon,
-                                size: 18,
-                                color: isSelected ? AppTheme.primary : Colors.blueGrey),
+                            Icon(icon, size: 18, color: isSelected ? AppTheme.primary : Colors.blueGrey),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 role,
                                 style: TextStyle(
                                   fontSize: 11.5,
-                                  fontWeight:
-                                      isSelected ? FontWeight.w800 : FontWeight.w600,
+                                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                                   color: isSelected ? AppTheme.primary : Colors.black87,
                                 ),
                               ),
@@ -778,7 +742,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   }).toList(),
                 ),
                 const SizedBox(height: 14),
-
                 TextField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
@@ -794,7 +757,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: 'Monthly Base Salary (₹)',
-                    hintText: 'Optional',
+                    hintText: 'e.g. 18000',
                     prefixText: '₹ ',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
@@ -815,9 +778,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               onPressed: () async {
                 final name = nameCtrl.text.trim();
                 final salary = double.tryParse(salaryCtrl.text.trim()) ?? 0.0;
-                if (name.isEmpty) return;
+                if (name.isEmpty) {
+                  _toast('Please enter the employee name.');
+                  return;
+                }
 
-                final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(ctx);
                 final emp = AttendanceEmployee(
                   id: toEdit?.id ?? 'emp_${DateTime.now().millisecondsSinceEpoch}',
@@ -826,22 +791,16 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   phone: phoneCtrl.text.trim(),
                   monthlySalary: salary,
                   isActive: true,
-                  isCustom: true,
+                  isCustom: toEdit?.isCustom ?? true,
                   joinedAt: toEdit?.joinedAt ?? DateTime.now(),
                 );
 
                 await AttendanceService.saveEmployee(emp);
-                await _loadAll();
-                if (mounted) {
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(isEditing
-                          ? 'Updated ${emp.name}\'s profile'
-                          : 'Added ${emp.name} to roster'),
-                      backgroundColor: const Color(0xFF10B981),
-                    ),
-                  );
-                }
+                await _loadAll(silent: true, sync: false);
+                _toast(
+                  isEditing ? 'Updated ${emp.name}\'s profile' : 'Added ${emp.name} to roster',
+                  color: const Color(0xFF10B981),
+                );
               },
               child: Text(isEditing ? 'Save Changes' : 'Add Employee'),
             ),
@@ -851,7 +810,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     );
   }
 
-  // Remove employee (Fixed: Never reappears at bottom)
+  // Remove employee (soft delete: history is preserved, never reappears)
   Future<void> _confirmRemoveEmployee(AttendanceEmployee emp) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -876,26 +835,19 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
     if (confirm == true) {
       await AttendanceService.deleteEmployee(emp.id);
-      await _loadAll();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Removed ${emp.name} from roster'),
-            backgroundColor: const Color(0xFFDC2626),
-          ),
-        );
-      }
+      await _loadAll(silent: true, sync: false);
+      _toast('Removed ${emp.name} from roster', color: const Color(0xFFDC2626));
     }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // ADVANCE SALARY DIALOG (Record advance given to employee for selected month)
+  // ADVANCE SALARY DIALOG
   // ───────────────────────────────────────────────────────────────────────────
   void _openAdvanceSalaryDialog({AttendanceEmployee? targetEmp}) {
+    final me = context.read<AuthProvider>().currentUser;
+    if (me == null || !(me.isSuperAdmin || me.isOffice)) return;
     if (_employees.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add an employee first in Staff Roster.')),
-      );
+      _toast('Please add an employee first in Staff Roster.');
       return;
     }
 
@@ -907,17 +859,23 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
     final advCtrl = TextEditingController();
     final noteCtrl = TextEditingController();
-    DateTime advanceDate = DateTime.now();
+
+    // Advance is stored under the selected month, so its date must fall in it
+    final monthStart = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+    final monthEnd = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
+    final nowD = DateTime.now();
+    DateTime advanceDate =
+        nowD.isBefore(monthStart) ? monthStart : (nowD.isAfter(monthEnd) ? monthEnd : nowD);
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setLocal) {
-          final curAdj = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
-                (a) => a?.employeeId == currentEmp.id,
-                orElse: () => null,
-              );
-          final totalAdv = curAdj?.totalAdvanceDeduction ?? curAdj?.advanceDeduction ?? 0.0;
+          SalaryMonthlyAdjustment? curAdj;
+          for (final a in _adjustments) {
+            if (a.employeeId == currentEmp.id) curAdj = a;
+          }
+          final totalAdv = curAdj?.totalAdvanceDeduction ?? 0.0;
 
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -958,7 +916,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                   const SizedBox(height: 12),
 
-                  // 1. Employee Selector
                   const Text('Select Employee *',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                   const SizedBox(height: 6),
@@ -985,7 +942,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                   const SizedBox(height: 14),
 
-                  // 2. Advance Date Picker
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
@@ -1011,12 +967,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                             final picked = await showDatePicker(
                               context: context,
                               initialDate: advanceDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2030),
+                              firstDate: monthStart,
+                              lastDate: monthEnd,
                             );
-                            if (picked != null) {
-                              setLocal(() => advanceDate = picked);
-                            }
+                            if (picked != null) setLocal(() => advanceDate = picked);
                           },
                           child: const Text('Change', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF2563EB))),
                         ),
@@ -1048,7 +1002,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       ),
                     ),
 
-                  // 3. Advance Amount (starts empty)
                   TextField(
                     controller: advCtrl,
                     keyboardType: TextInputType.number,
@@ -1063,7 +1016,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   ),
                   const SizedBox(height: 14),
 
-                  // 4. Reason / Notes
                   TextField(
                     controller: noteCtrl,
                     decoration: InputDecoration(
@@ -1107,7 +1059,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     date: advanceDate,
                     note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
                   );
-                  await _loadAll();
+                  await _loadAll(silent: true, sync: false);
                   if (mounted) {
                     messenger.showSnackBar(
                       SnackBar(
@@ -1150,12 +1102,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 year: _selectedMonth.year,
                 month: _selectedMonth.month,
               );
-              await _loadAll();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Advance removed')),
-                );
-              }
+              await _loadAll(silent: true, sync: false);
+              _toast('Advance removed');
             },
             child: const Text('Delete'),
           ),
@@ -1170,102 +1118,128 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     final me = auth.currentUser;
     final bool isAdmin = me != null && (me.isSuperAdmin || me.isOffice);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Daily Attendance',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        backgroundColor: const Color(0xFF0F172A),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          if (isAdmin) ...[
-            IconButton(
-              icon: const Icon(Icons.price_change_outlined),
-              tooltip: 'Give Advance',
-              onPressed: () => _openAdvanceSalaryDialog(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.person_add_alt_1),
-              tooltip: 'Add Employee',
-              onPressed: () => _openAddEmployeeDialog(),
-            ),
-          ],
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: _loadAll,
+    return PopScope(
+      canPop: _canPopDirectly,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back',
+            onPressed: _handleBack,
           ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: const Color(0xFF38BDF8),
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-          tabs: [
-            const Tab(icon: Icon(Icons.calendar_month, size: 20), text: 'Attendance'),
-            if (isAdmin)
-              const Tab(icon: Icon(Icons.groups, size: 20), text: 'Staff Roster')
-            else
-              const Tab(icon: Icon(Icons.person, size: 20), text: 'My Attendance'),
-          ],
-        ),
-      ),
-      floatingActionButton: (isAdmin && _employees.isNotEmpty)
-          ? FloatingActionButton.extended(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text('Mark Attendance', style: TextStyle(fontWeight: FontWeight.bold)),
-              onPressed: () => _openMarkAttendanceDialog(),
-            )
-          : null,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Top Self Check-In Card (Only for staff, REMOVED for Super Admin)
-                _buildSelfCheckInCard(me),
-
-                // Month Selector Header
-                _buildMonthSelectorHeader(),
-
-                // Tab Views
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      // Tab 1: Attendance Register, Calendar & Monthly Salary
-                      _buildAttendanceTab(isAdmin),
-
-                      // Tab 2: Staff Roster or My Profile
-                      if (isAdmin)
-                        _buildStaffRosterTab()
-                      else
-                        _buildMyProfileTab(me),
-                    ],
-                  ),
+          title: const Text(
+            'Daily Attendance',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          backgroundColor: const Color(0xFF0F172A),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          actions: [
+            if (isAdmin) ...[
+              IconButton(
+                icon: const Icon(Icons.price_change_outlined),
+                tooltip: 'Give Advance',
+                onPressed: () => _openAdvanceSalaryDialog(),
+              ),
+              IconButton(
+                icon: const Icon(Icons.person_add_alt_1),
+                tooltip: 'Add Employee',
+                onPressed: () => _openAddEmployeeDialog(),
+              ),
+            ],
+            if (_pending > 0)
+              Tooltip(
+                message: '$_pending change(s) waiting to sync',
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(Icons.cloud_off, size: 20, color: Colors.amber),
                 ),
-              ],
+              ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Refresh',
+              onPressed: () => _loadAll(),
             ),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: const Color(0xFF38BDF8),
+            indicatorWeight: 3,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white60,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+            tabs: [
+              const Tab(icon: Icon(Icons.calendar_month, size: 20), text: 'Attendance'),
+              if (isAdmin)
+                const Tab(icon: Icon(Icons.groups, size: 20), text: 'Staff Roster')
+              else
+                const Tab(icon: Icon(Icons.person, size: 20), text: 'My Attendance'),
+            ],
+          ),
+        ),
+        floatingActionButton: (isAdmin && _employees.isNotEmpty)
+            ? FloatingActionButton.extended(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: const Text('Mark Attendance', style: TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: () => _openMarkAttendanceDialog(),
+              )
+            : null,
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  _buildSelfCheckInCard(me),
+                  _buildMonthSelectorHeader(),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildAttendanceTab(isAdmin),
+                        if (isAdmin) _buildStaffRosterTab() else _buildMyProfileTab(me),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 
-  // ── Top Self Check-In Card (REMOVED for Super Admin) ────────────────────────
+  // ── Self Check-In Card (hidden for Super Admin) ─────────────────────────────
   Widget _buildSelfCheckInCard(UserModel? me) {
-    if (me == null || me.isSuperAdmin) {
-      // Super Admin is the owner, no self check-in needed!
-      return const SizedBox.shrink();
+    if (me == null || me.isSuperAdmin) return const SizedBox.shrink();
+
+    if (_myEmployee == null) {
+      return Container(
+        width: double.infinity,
+        color: const Color(0xFF7C2D12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: const Text(
+          'You are not linked to the staff roster. Ask the admin to add you '
+          '(same name or mobile number) to enable check-in.',
+          style: TextStyle(color: Colors.white, fontSize: 12),
+        ),
+      );
     }
 
-    final timeStr = DateFormat('hh:mm:ss a').format(_now);
-    final todayDateStr = DateFormat('EEE, dd MMM yyyy').format(_now);
-    final checkedIn = _myTodayRecord?.checkInTime != null;
-    final checkedOut = _myTodayRecord?.checkOutTime != null;
+    final rec = _myTodayRecord;
+    final checkedIn = rec?.checkInTime != null;
+    final checkedOut = rec?.checkOutTime != null;
+
+    ButtonStyle style(Color c) => ElevatedButton.styleFrom(
+          backgroundColor: c,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          visualDensity: VisualDensity.compact,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        );
 
     return Container(
       width: double.infinity,
@@ -1277,11 +1251,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
                   Container(
                     width: 8,
                     height: 8,
@@ -1293,51 +1267,48 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    '${me.name} (${me.roleDisplayName})',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12.5,
+                  Flexible(
+                    child: Text(
+                      '${me.name} (${me.roleDisplayName})',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '$todayDateStr · $timeStr',
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-              ),
-            ],
+                ]),
+                const SizedBox(height: 2),
+                ValueListenableBuilder<DateTime>(
+                  valueListenable: _clock,
+                  builder: (context, now, child) {
+                    var txt =
+                        '${DateFormat('EEE, dd MMM yyyy').format(now)} · ${DateFormat('hh:mm:ss a').format(now)}';
+                    if (checkedIn && !checkedOut) {
+                      final d = now.difference(rec!.checkInTime!);
+                      if (!d.isNegative) txt += ' · ${d.inHours}h ${d.inMinutes % 60}m on duty';
+                    }
+                    return Text(txt,
+                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11));
+                  },
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 8),
           if (!checkedIn)
             ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                visualDensity: VisualDensity.compact,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
+              style: style(const Color(0xFF10B981)),
               icon: const Icon(Icons.login, size: 14),
-              label: const Text('Check In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5)),
-              onPressed: _doCheckIn,
+              label: const Text('Check In',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5)),
+              onPressed: _busy ? null : _doCheckIn,
             )
           else if (!checkedOut)
             ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFEF4444),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                visualDensity: VisualDensity.compact,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
+              style: style(const Color(0xFFEF4444)),
               icon: const Icon(Icons.logout, size: 14),
-              label: Text(
-                'Check Out (${_myTodayRecord?.workDurationFormatted ?? ''})',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5),
-              ),
-              onPressed: _doCheckOut,
+              label: const Text('Check Out',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5)),
+              onPressed: _busy ? null : _doCheckOut,
             )
           else
             Container(
@@ -1346,16 +1317,13 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 13),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Done: ${_myTodayRecord?.workDurationFormatted ?? ''}',
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
+              child: Row(children: [
+                const Icon(Icons.check_circle, color: Color(0xFF10B981), size: 13),
+                const SizedBox(width: 4),
+                Text('Done: ${rec?.workDurationFormatted ?? ''}',
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              ]),
             ),
         ],
       ),
@@ -1392,9 +1360,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 lastDate: DateTime(2030),
               );
               if (picked != null) {
-                setState(() {
-                  _selectedMonth = DateTime(picked.year, picked.month);
-                });
+                setState(() => _selectedMonth = DateTime(picked.year, picked.month));
                 _loadAll();
               }
             },
@@ -1435,7 +1401,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   // =========================================================================
-  // TAB 1: ATTENDANCE & INTEGRATED MONTHLY SALARY CALCULATION
+  // TAB 1: ATTENDANCE & MONTHLY SALARY
   // =========================================================================
   Widget _buildAttendanceTab(bool isAdmin) {
     if (_employees.isEmpty) {
@@ -1447,15 +1413,17 @@ class _AttendanceScreenState extends State<AttendanceScreen>
             children: [
               const Icon(Icons.group_off_outlined, size: 48, color: Colors.grey),
               const SizedBox(height: 12),
-              const Text(
-                'No employees in roster yet.',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              Text(
+                isAdmin ? 'No employees in roster yet.' : 'You are not linked to the staff roster.',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Add employees to track daily attendance and calculate monthly salary.',
+              Text(
+                isAdmin
+                    ? 'Add employees to track daily attendance and calculate monthly salary.'
+                    : 'Ask the admin to add you with the same name or mobile number.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+                style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
               ),
               const SizedBox(height: 16),
               if (isAdmin)
@@ -1478,7 +1446,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
       children: [
-        // Employee Selector Dropdown (Clean, replaces scrolling chips)
+        // Employee selector
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
           decoration: BoxDecoration(
@@ -1516,34 +1484,36 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       ),
                     )),
               ],
-              onChanged: (val) {
-                setState(() => _selectedEmployeeId = val);
-              },
+              onChanged: (val) => setState(() {
+                _selectedEmployeeId = val;
+                _openedFromRoster = false;
+              }),
             ),
           ),
         ),
         const SizedBox(height: 14),
 
-        // If specific employee selected -> Show calendar & calculated salary at bottom
-        if (_selectedEmployeeId != null) ...[
+        if (_selectedEmployeeId != null)
           _buildSingleEmployeeSection(
             _employees.firstWhere((e) => e.id == _selectedEmployeeId,
                 orElse: () => _employees.first),
             isAdmin,
-          ),
-        ] else ...[
-          // All staff overview list
+          )
+        else
           ..._employees.map((emp) => _buildEmployeeOverviewCard(emp, isAdmin)),
-        ],
       ],
     );
   }
 
+  SalaryMonthlyAdjustment? _adjFor(String empId) {
+    for (final a in _adjustments) {
+      if (a.employeeId == empId) return a;
+    }
+    return null;
+  }
+
   Widget _buildSingleEmployeeSection(AttendanceEmployee emp, bool isAdmin) {
-    final adj = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
-          (a) => a?.employeeId == emp.id,
-          orElse: () => null,
-        );
+    final adj = _adjFor(emp.id);
     final calc = MonthlySalaryCalculation.compute(
       employee: emp,
       year: _selectedMonth.year,
@@ -1553,7 +1523,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     );
 
     final daysInMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day;
-    final firstWeekday = DateTime(_selectedMonth.year, _selectedMonth.month, 1).weekday; // 1=Mon, 7=Sun
+    final firstWeekday = DateTime(_selectedMonth.year, _selectedMonth.month, 1).weekday; // 1=Mon
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1599,19 +1569,31 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: const Color(0xFF10B981)),
                     ),
-                    child: Text(
-                      '${calc.payableDays.toStringAsFixed(1)} / $daysInMonth Days',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF15803D),
-                        fontSize: 12,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Total Salary: ${CurrencyFormatter.format(calc.netSalary)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF15803D),
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          '${calc.payableDays.toStringAsFixed(1)} / $daysInMonth Days',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blueGrey.shade700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
               const Divider(height: 18),
-              // Counters Row: Present, Half Day, Absent, Total Payable
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -1621,6 +1603,14 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   _buildStatBadge('Payable Days', calc.payableDays.toStringAsFixed(1), const Color(0xFF1E293B), const Color(0xFFF1F5F9)),
                 ],
               ),
+              if (calc.unmarkedDays > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '⚠️ ${calc.unmarkedDays} day(s) not marked yet. Unmarked days are unpaid.',
+                  style: const TextStyle(
+                      fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFB45309)),
+                ),
+              ],
               if (isAdmin) ...[
                 const SizedBox(height: 10),
                 const Divider(height: 1),
@@ -1656,20 +1646,13 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(color: const Color(0xFFFCA5A5)),
                         ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add, size: 14, color: Color(0xFFDC2626)),
-                            SizedBox(width: 4),
-                            Text(
-                              '+ Advance',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFFDC2626),
-                              ),
-                            ),
-                          ],
+                        child: const Text(
+                          '+ Advance',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFDC2626),
+                          ),
                         ),
                       ),
                     ),
@@ -1678,56 +1661,62 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 if (adj != null && adj.advances.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   ...adj.advances.map((adv) => Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFECACA)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.calendar_today, size: 13, color: Color(0xFFDC2626)),
-                            const SizedBox(width: 6),
-                            Text(
-                              DateFormat('d MMM yyyy').format(adv.date),
-                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF991B1B)),
-                            ),
-                            if (adv.note != null && adv.note!.isNotEmpty) ...[
-                              const SizedBox(width: 6),
-                              Text('(${adv.note})', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                            ],
-                          ],
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFECACA)),
                         ),
-                        Row(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              '₹${adv.amount.toStringAsFixed(0)}',
-                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFFDC2626)),
-                            ),
-                            const SizedBox(width: 6),
-                            InkWell(
-                              onTap: () => _confirmDeleteAdvance(emp, adv),
-                              child: const Padding(
-                                padding: EdgeInsets.all(2.0),
-                                child: Icon(Icons.close, size: 15, color: Colors.red),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.calendar_today, size: 13, color: Color(0xFFDC2626)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    DateFormat('d MMM yyyy').format(adv.date),
+                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF991B1B)),
+                                  ),
+                                  if (adv.note != null && adv.note!.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text('(${adv.note})',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
+                            Row(
+                              children: [
+                                Text(
+                                  '₹${adv.amount.toStringAsFixed(0)}',
+                                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFFDC2626)),
+                                ),
+                                const SizedBox(width: 6),
+                                InkWell(
+                                  onTap: () => _confirmDeleteAdvance(emp, adv),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(2.0),
+                                    child: Icon(Icons.close, size: 15, color: Colors.red),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
-                      ],
-                    ),
-                  )),
+                      )),
                 ],
               ],
             ],
           ),
         ),
 
-        // ── 2. Highlight Absent Dates (as explicitly requested) ─────────────
+        // ── 2. Absent dates ─────────────────────────────────────────────────
         if (calc.absentDates.isNotEmpty) ...[
           const SizedBox(height: 10),
           Container(
@@ -1772,7 +1761,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
         const SizedBox(height: 14),
 
-        // ── 3. Monthly Calendar Grid (No Sunday off - normal working days) ───
+        // ── 3. Calendar ─────────────────────────────────────────────────────
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -1798,8 +1787,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 ],
               ),
               const SizedBox(height: 10),
-
-              // Weekday Headers (Mon - Sun, all regular working days)
               Row(
                 children: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) {
                   return Expanded(
@@ -1817,12 +1804,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 }).toList(),
               ),
               const SizedBox(height: 8),
-
-              // Calendar Days Grid
               _buildCalendarDaysGrid(emp, daysInMonth, firstWeekday, isAdmin),
-
               const SizedBox(height: 12),
-              // Clean minimal Legend (Only Present, Half Day, Absent)
               Wrap(
                 spacing: 14,
                 runSpacing: 6,
@@ -1837,69 +1820,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           ),
         ),
 
-        const SizedBox(height: 14),
-
-        // ── 4. Calculated Monthly Salary Card at the Bottom ─────────────────
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Calculated Monthly Salary',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-              ),
-              const Divider(height: 18),
-
-              // Formula breakdown
-              _buildSalaryLine('Base Monthly Salary', '₹${calc.baseMonthlySalary.toStringAsFixed(0)}'),
-              _buildSalaryLine('Total Days in Month', '${calc.totalDaysInMonth} Days'),
-              _buildSalaryLine('Daily Salary Rate', '₹${calc.dailyRate.toStringAsFixed(2)} / day'),
-              _buildSalaryLine(
-                'Payable Days',
-                '${calc.payableDays.toStringAsFixed(1)} days (${calc.presentCount}P + ${calc.halfDayCount}½)',
-                isBold: true,
-              ),
-              _buildSalaryLine('Earned Salary', '₹${calc.earnedSalary.toStringAsFixed(0)}', isBold: true),
-              if (calc.bonus > 0)
-                _buildSalaryLine('Incentive / Bonus', '+₹${calc.bonus.toStringAsFixed(0)}', color: const Color(0xFF15803D)),
-              if (calc.advanceDeduction > 0)
-                _buildSalaryLine('Advance Deduction', '-₹${calc.advanceDeduction.toStringAsFixed(0)}', color: const Color(0xFFDC2626)),
-
-              const Divider(height: 16),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Calculated Net Salary:',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
-                  ),
-                  Text(
-                    CurrencyFormatter.format(calc.netSalary),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 18,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        const SizedBox(height: 80),
       ],
     );
   }
@@ -1907,9 +1828,14 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   Widget _buildCalendarDaysGrid(
       AttendanceEmployee emp, int daysInMonth, int firstWeekday, bool isAdmin) {
     final now = DateTime.now();
+    final todayD = DateTime(now.year, now.month, now.day);
     final isCurrentMonth = _selectedMonth.year == now.year && _selectedMonth.month == now.month;
     final int emptySlots = firstWeekday - 1; // 1=Mon
     final totalCells = emptySlots + daysInMonth;
+    final byKey = {
+      for (final r in _records)
+        if (r.userId == emp.id) r.dateKey: r
+    };
 
     return GridView.builder(
       shrinkWrap: true,
@@ -1922,25 +1848,18 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         crossAxisSpacing: 6,
       ),
       itemBuilder: (ctx, index) {
-        if (index < emptySlots) {
-          return const SizedBox.shrink();
-        }
+        if (index < emptySlots) return const SizedBox.shrink();
 
         final day = index - emptySlots + 1;
         final date = DateTime(_selectedMonth.year, _selectedMonth.month, day);
         final dateKey =
             '${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
         final isToday = isCurrentMonth && day == now.day;
-        final isFuture = isCurrentMonth && day > now.day;
-
-        final record = _records.cast<AttendanceRecord?>().firstWhere(
-              (r) => r?.userId == emp.id && r?.dateKey == dateKey,
-              orElse: () => null,
-            );
+        final isFuture = date.isAfter(todayD); // also correct for future months
+        final record = byKey[dateKey];
 
         Color bgColor;
         Color textColor;
-        String label = '$day';
         String badge = '';
 
         if (isFuture) {
@@ -1965,7 +1884,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               break;
           }
         } else {
-          // Regular day, unmarked
           bgColor = Colors.white;
           textColor = Colors.blueGrey.shade700;
           badge = '-';
@@ -1989,7 +1907,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  label,
+                  '$day',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: isToday ? FontWeight.w900 : FontWeight.bold,
@@ -2014,16 +1932,12 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Widget _buildEmployeeOverviewCard(AttendanceEmployee emp, bool isAdmin) {
-    final adj = _adjustments.cast<SalaryMonthlyAdjustment?>().firstWhere(
-          (a) => a?.employeeId == emp.id,
-          orElse: () => null,
-        );
     final calc = MonthlySalaryCalculation.compute(
       employee: emp,
       year: _selectedMonth.year,
       month: _selectedMonth.month,
       monthRecords: _records,
-      adjustment: adj,
+      adjustment: _adjFor(emp.id),
     );
 
     return Card(
@@ -2035,7 +1949,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        onTap: () => setState(() => _selectedEmployeeId = emp.id),
+        onTap: () => setState(() {
+          _selectedEmployeeId = emp.id;
+          _openedFromRoster = false;
+        }),
         leading: CircleAvatar(
           backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
           foregroundColor: AppTheme.primary,
@@ -2044,7 +1961,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(emp.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            Flexible(
+              child: Text(emp.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
@@ -2087,7 +2008,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   // =========================================================================
-  // TAB 2: STAFF ROSTER (ADD / REMOVE EMPLOYEES)
+  // TAB 2: STAFF ROSTER
   // =========================================================================
   Widget _buildStaffRosterTab() {
     return ListView(
@@ -2123,7 +2044,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           ],
         ),
         const SizedBox(height: 12),
-
         if (_employees.isEmpty)
           Container(
             padding: const EdgeInsets.all(24),
@@ -2143,6 +2063,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 onTap: () {
                   setState(() {
                     _selectedEmployeeId = emp.id;
+                    _openedFromRoster = true;
                   });
                   _tabController.animateTo(0);
                 },
@@ -2194,7 +2115,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     );
   }
 
-  // Fallback Tab 2 for non-admins (e.g. Akash)
+  // Tab 2 for non-admins (e.g. Akash)
   Widget _buildMyProfileTab(UserModel? me) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -2270,16 +2191,4 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     );
   }
 
-  Widget _buildSalaryLine(String label, String value, {Color? color, bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.5),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade700, fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
-          Text(value, style: TextStyle(fontSize: 12, color: color ?? const Color(0xFF0F172A), fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
-        ],
-      ),
-    );
-  }
 }

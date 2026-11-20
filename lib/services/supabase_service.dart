@@ -184,8 +184,11 @@ class SupabaseService {
     if (!_isInitialized) return [];
 
     try {
-      final List<dynamic> data =
-          await client.from('pending_bills').select().order('createdAt', ascending: false);
+      final List<dynamic> data = await client
+          .from('pending_bills')
+          .select()
+          .order('createdAt', ascending: false)
+          .limit(500);
       return data
           .map((row) => PendingBillModel.fromJson(Map<String, dynamic>.from(row as Map)))
           .toList();
@@ -247,8 +250,11 @@ class SupabaseService {
     if (!_isInitialized) return [];
 
     try {
-      final List<dynamic> data =
-          await client.from('collections').select().order('collectedAt', ascending: false);
+      final List<dynamic> data = await client
+          .from('collections')
+          .select()
+          .order('collectedAt', ascending: false)
+          .limit(500);
       return data
           .map((row) => CollectionModel.fromJson(Map<String, dynamic>.from(row as Map)))
           .toList();

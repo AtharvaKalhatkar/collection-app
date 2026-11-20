@@ -342,7 +342,7 @@ class CollectionProvider extends ChangeNotifier {
     notifyListeners();
 
     // 2. Initialize Supabase in background, perform 2-way sync, and start real-time sync timer
-    syncAllWithCloud(notify: false);
+    syncAllWithCloud(notify: false, syncShopsAndRoutes: true);
     _startAutoSyncTimer();
   }
 
@@ -398,9 +398,9 @@ class CollectionProvider extends ChangeNotifier {
 
   void _startAutoSyncTimer() {
     _autoSyncTimer?.cancel();
-    // Rapid 20-second background sync interval to keep all devices tightly synchronized
-    _autoSyncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
-      syncAllWithCloud(notify: false);
+    // Optimized 3-minute background fallback poll; Realtime WebSockets deliver immediate updates with zero polling bandwidth
+    _autoSyncTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      syncAllWithCloud(notify: false, syncShopsAndRoutes: false);
     });
   }
 
@@ -581,10 +581,12 @@ class CollectionProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> syncAllWithCloud({bool notify = true}) async {
+  Future<bool> syncAllWithCloud({bool notify = true, bool? syncShopsAndRoutes}) async {
     if (_isSyncing) return true;
     _isSyncing = true;
     if (notify) notifyListeners();
+
+    final shouldSyncShops = syncShopsAndRoutes ?? (notify || _shops.isEmpty || _routes.isEmpty);
 
     try {
       if (!_supabase.isInitialized) {
@@ -655,99 +657,101 @@ class CollectionProvider extends ChangeNotifier {
         await _supabase.savePendingBillsBulk(unsyncedBills);
       }
 
-      // 3. Synchronize Shops & Routes
-      final cloudShops = await _supabase.fetchShops();
-      if (cloudShops.isNotEmpty) {
-        final cleanCloudShops = <ShopModel>[];
-        for (final s in cloudShops) {
-          if (_isDummyShop(s)) {
-            _supabase.deleteShop(s.id);
-          } else if (!_locallyDeletedShopIds.contains(s.id)) {
-            cleanCloudShops.add(s);
+      // 3. Synchronize Shops & Routes (only when requested, on initial load, or if cache empty)
+      if (shouldSyncShops) {
+        final cloudShops = await _supabase.fetchShops();
+        if (cloudShops.isNotEmpty) {
+          final cleanCloudShops = <ShopModel>[];
+          for (final s in cloudShops) {
+            if (_isDummyShop(s)) {
+              _supabase.deleteShop(s.id);
+            } else if (!_locallyDeletedShopIds.contains(s.id)) {
+              cleanCloudShops.add(s);
+            }
           }
-        }
 
-        final shopMap = <String, ShopModel>{};
-        for (final s in cleanCloudShops) {
-          shopMap[s.id] = s;
-        }
-        final unsavedLocalShops = <ShopModel>[];
-        for (final s in _shops) {
-          if (!_locallyDeletedShopIds.contains(s.id) && !shopMap.containsKey(s.id)) {
+          final shopMap = <String, ShopModel>{};
+          for (final s in cleanCloudShops) {
             shopMap[s.id] = s;
-            unsavedLocalShops.add(s);
           }
-        }
-
-        final dedup = _deduplicateShops(shopMap.values.toList());
-        bool shopsChanged = dedup.length != _shops.length;
-        if (!shopsChanged) {
-          final localMap = {for (final s in _shops) s.id: s};
-          for (final s in dedup) {
-            final loc = localMap[s.id];
-            if (loc == null ||
-                loc.name != s.name ||
-                loc.routeId != s.routeId ||
-                loc.routeName != s.routeName ||
-                loc.mobileNumber != s.mobileNumber ||
-                loc.address != s.address ||
-                loc.ownerName != s.ownerName ||
-                loc.locationUrl != s.locationUrl ||
-                loc.latitude != s.latitude ||
-                loc.longitude != s.longitude) {
-              shopsChanged = true;
-              break;
-            }
-          }
-        }
-
-        if (shopsChanged) {
-          _shops = dedup;
+          final unsavedLocalShops = <ShopModel>[];
           for (final s in _shops) {
-            for (int i = 0; i < _collections.length; i++) {
-              if (_collections[i].shopId == s.id && _collections[i].shopName != s.name) {
-                _collections[i] = _collections[i].copyWith(shopName: s.name, routeName: s.routeName);
-              }
+            if (!_locallyDeletedShopIds.contains(s.id) && !shopMap.containsKey(s.id)) {
+              shopMap[s.id] = s;
+              unsavedLocalShops.add(s);
             }
-            for (int i = 0; i < _pendingBills.length; i++) {
-              if (_pendingBills[i].shopId == s.id && _pendingBills[i].shopName != s.name) {
-                _pendingBills[i] = _pendingBills[i].copyWith(shopName: s.name, routeName: s.routeName);
+          }
+
+          final dedup = _deduplicateShops(shopMap.values.toList());
+          bool shopsChanged = dedup.length != _shops.length;
+          if (!shopsChanged) {
+            final localMap = {for (final s in _shops) s.id: s};
+            for (final s in dedup) {
+              final loc = localMap[s.id];
+              if (loc == null ||
+                  loc.name != s.name ||
+                  loc.routeId != s.routeId ||
+                  loc.routeName != s.routeName ||
+                  loc.mobileNumber != s.mobileNumber ||
+                  loc.address != s.address ||
+                  loc.ownerName != s.ownerName ||
+                  loc.locationUrl != s.locationUrl ||
+                  loc.latitude != s.latitude ||
+                  loc.longitude != s.longitude) {
+                shopsChanged = true;
+                break;
               }
             }
           }
-          await _storage.saveShops(_shops);
-          hasDataChanged = true;
-        }
 
-        for (final uls in unsavedLocalShops) {
-          await _supabase.saveShop(uls);
-        }
-      }
-
-      final cloudRoutes = await _supabase.fetchRoutes();
-      if (cloudRoutes.isNotEmpty) {
-        final cleanRoutes = cloudRoutes
-            .where((r) => !_locallyDeletedRouteIds.contains(r.id))
-            .toList()
-          ..sort((a, b) => a.priority.compareTo(b.priority));
-
-        bool routesChanged = cleanRoutes.length != _routes.length;
-        if (!routesChanged) {
-          for (int i = 0; i < cleanRoutes.length; i++) {
-            if (cleanRoutes[i].id != _routes[i].id ||
-                cleanRoutes[i].name != _routes[i].name ||
-                cleanRoutes[i].priority != _routes[i].priority ||
-                cleanRoutes[i].description != _routes[i].description) {
-              routesChanged = true;
-              break;
+          if (shopsChanged) {
+            _shops = dedup;
+            for (final s in _shops) {
+              for (int i = 0; i < _collections.length; i++) {
+                if (_collections[i].shopId == s.id && _collections[i].shopName != s.name) {
+                  _collections[i] = _collections[i].copyWith(shopName: s.name, routeName: s.routeName);
+                }
+              }
+              for (int i = 0; i < _pendingBills.length; i++) {
+                if (_pendingBills[i].shopId == s.id && _pendingBills[i].shopName != s.name) {
+                  _pendingBills[i] = _pendingBills[i].copyWith(shopName: s.name, routeName: s.routeName);
+                }
+              }
             }
+            await _storage.saveShops(_shops);
+            hasDataChanged = true;
+          }
+
+          for (final uls in unsavedLocalShops) {
+            await _supabase.saveShop(uls);
           }
         }
 
-        if (routesChanged) {
-          _routes = cleanRoutes;
-          await _storage.saveRoutes(_routes);
-          hasDataChanged = true;
+        final cloudRoutes = await _supabase.fetchRoutes();
+        if (cloudRoutes.isNotEmpty) {
+          final cleanRoutes = cloudRoutes
+              .where((r) => !_locallyDeletedRouteIds.contains(r.id))
+              .toList()
+            ..sort((a, b) => a.priority.compareTo(b.priority));
+
+          bool routesChanged = cleanRoutes.length != _routes.length;
+          if (!routesChanged) {
+            for (int i = 0; i < cleanRoutes.length; i++) {
+              if (cleanRoutes[i].id != _routes[i].id ||
+                  cleanRoutes[i].name != _routes[i].name ||
+                  cleanRoutes[i].priority != _routes[i].priority ||
+                  cleanRoutes[i].description != _routes[i].description) {
+                routesChanged = true;
+                break;
+              }
+            }
+          }
+
+          if (routesChanged) {
+            _routes = cleanRoutes;
+            await _storage.saveRoutes(_routes);
+            hasDataChanged = true;
+          }
         }
       }
 
