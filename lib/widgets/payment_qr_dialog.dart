@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../utils/theme.dart';
 import '../utils/firm_details.dart';
 import '../utils/qr_data.dart';
@@ -22,7 +21,7 @@ class PaymentQrDialog extends StatefulWidget {
 
 class _PaymentQrDialogState extends State<PaymentQrDialog> {
   late bool _isPurva;
-  int _manasQrIndex = 1; // 1 = Primary (New Manas QR), 2 = Secondary (Alternative)
+  int _manasQrIndex = 1; // 1 = QR 1, 2 = QR 2
 
   @override
   void initState() {
@@ -30,30 +29,10 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
     _isPurva = widget.initialFirm == null || widget.initialFirm == 'Purva Enterprises' || widget.initialFirm == 'Purva';
   }
 
-  void _copyUpiId(String upiId) {
-    Clipboard.setData(ClipboardData(text: upiId));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Expanded(child: Text('Copied UPI ID: $upiId')),
-          ],
-        ),
-        backgroundColor: const Color(0xFF10B981),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final firmInfo = _isPurva ? FirmDetailsHelper.purva : FirmDetailsHelper.manas;
     final firmName = firmInfo.firmName;
-    final firmPhone = firmInfo.mobileNumber;
-    final upiId = firmInfo.upiId;
     final assetPath = _isPurva
         ? 'assets/images/qr_purva.png'
         : (_manasQrIndex == 1
@@ -170,45 +149,35 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                       const SizedBox(height: 14),
                     ],
 
-                    // Firm Info Badge
+                    // Firm Info Badge (Clean without phone number)
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: firmLightColor,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: firmPrimaryColor.withValues(alpha: 0.3)),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            firmName,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                              color: firmPrimaryColor,
-                            ),
+                      child: Center(
+                        child: Text(
+                          firmName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: firmPrimaryColor,
                           ),
-                          Text(
-                            firmPhone,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.blueGrey.shade700,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
 
-                    // High-Resolution QR Code Image
+                    // QR Switcher: Clean QR 1 and QR 2
                     if (!_isPurva) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           ChoiceChip(
-                            label: const Text('QR 1 (Primary)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            label: const Text('QR 1', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                             selected: _manasQrIndex == 1,
                             selectedColor: AppTheme.manasPrimary.withValues(alpha: 0.15),
                             checkmarkColor: AppTheme.manasPrimary,
@@ -216,7 +185,7 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                           ),
                           const SizedBox(width: 8),
                           ChoiceChip(
-                            label: const Text('QR 2 (Alternative)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            label: const Text('QR 2', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                             selected: _manasQrIndex == 2,
                             selectedColor: AppTheme.manasPrimary.withValues(alpha: 0.15),
                             checkmarkColor: AppTheme.manasPrimary,
@@ -265,37 +234,8 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                               ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
 
-                    // UPI ID Box with Tap-to-Copy
-                    InkWell(
-                      onTap: () => _copyUpiId(upiId),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.border),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'UPI ID: $upiId',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.copy_rounded, size: 15, color: AppTheme.primary),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     const Text(
                       'Scan using Google Pay, PhonePe, Paytm or any UPI App',
                       style: TextStyle(fontSize: 11.5, color: Colors.blueGrey, fontWeight: FontWeight.w500),
@@ -303,40 +243,25 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Quick Action Buttons: Copy UPI & WhatsApp
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.copy_rounded, size: 15),
-                            label: const Text('Copy UPI ID', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            onPressed: () => _copyUpiId(upiId),
-                          ),
+                    // Quick Action Button: WhatsApp
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF25D366),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF25D366),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.chat_bubble_outline, size: 15),
-                            label: const Text('WhatsApp', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            onPressed: () => FirmDetailsHelper.shareViaWhatsApp(
-                              context: context,
-                              firm: firmInfo,
-                            ),
-                          ),
+                        icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                        label: const Text('Share via WhatsApp', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                        onPressed: () => FirmDetailsHelper.shareViaWhatsApp(
+                          context: context,
+                          firm: firmInfo,
                         ),
-                      ],
+                      ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
 
                     // Close button
                     SizedBox(
