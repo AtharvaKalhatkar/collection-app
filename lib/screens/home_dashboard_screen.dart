@@ -445,6 +445,21 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.shopping_bag_outlined, size: 21),
+            tooltip: 'Book Store Orders (Bizom)',
+            visualDensity: VisualDensity.compact,
+            onPressed: () {
+              if (onNavigateToOrders != null) {
+                onNavigateToOrders!();
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                );
+              }
+            },
+          ),
           // Live Payment Alert Bell with Red Notification Badge (Super Admin & Office Staff Only)
           if (context.watch<AuthProvider>().currentUser?.isSuperAdmin == true ||
               context.watch<AuthProvider>().currentUser?.isOffice == true)
@@ -468,7 +483,16 @@ class HomeDashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.more_vert, size: 20),
             tooltip: 'More Options',
             onSelected: (val) async {
-              if (val == 'live_map') {
+              if (val == 'book_orders') {
+                if (onNavigateToOrders != null) {
+                  onNavigateToOrders!();
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                  );
+                }
+              } else if (val == 'live_map') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
@@ -518,6 +542,16 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'book_orders',
+                child: Row(
+                  children: [
+                    Icon(Icons.store_mall_directory_rounded, size: 18, color: Color(0xFF1E40AF)),
+                    SizedBox(width: 10),
+                    Text('Book Store Orders (Bizom)'),
+                  ],
+                ),
+              ),
               if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true) ...[
                 const PopupMenuItem(
                   value: 'live_map',
@@ -1328,6 +1362,90 @@ class HomeDashboardScreen extends StatelessWidget {
               ),
 
 
+
+              // High-Visibility Order Booking Card (Bizom Style)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1E40AF), Color(0xFF1D4ED8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF1E40AF).withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      if (onNavigateToOrders != null) {
+                        onNavigateToOrders!();
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.store_mall_directory_rounded, color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      'BOOK STORE ORDERS',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                    SizedBox(width: 6),
+                                    Icon(Icons.stars_rounded, color: Color(0xFFFDE047), size: 16),
+                                  ],
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Route outlets, Pending/Completed, CS/UT items',
+                                  style: TextStyle(
+                                    color: Color(0xFFBFDBFE),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
 
               // Sleek, Minimal Payment Modes Overview Container
               Container(

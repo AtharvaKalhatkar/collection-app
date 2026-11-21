@@ -85,14 +85,15 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
     final screens = <Widget>[
       HomeDashboardScreen(
-        onNavigateToRoutes: () => _navigateToTab(2),
-        onNavigateToCollections: () => _navigateToTab(1),
-        onNavigateToOrders: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
-        ),
-        onNavigateToProfile: () => _navigateToTab(isSuperAdmin ? 4 : 3),
-        onNavigateToTracking: isSuperAdmin ? () => _navigateToTab(3) : null,
+        onNavigateToRoutes: () => _navigateToTab(3),
+        onNavigateToCollections: () => _navigateToTab(2),
+        onNavigateToOrders: () => _navigateToTab(1),
+        onNavigateToProfile: () => _navigateToTab(isSuperAdmin ? 5 : 4),
+        onNavigateToTracking: isSuperAdmin ? () => _navigateToTab(4) : null,
+      ),
+      OrderDashboardScreen(
+        isEmbedded: true,
+        onBackToOverview: () => _navigateToTab(0),
       ),
       CollectionsListScreen(
         onBackToOverview: () => _navigateToTab(0),
@@ -112,6 +113,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         icon: Icon(Icons.analytics_outlined),
         selectedIcon: Icon(Icons.analytics, color: AppTheme.primary),
         label: 'Overview',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.shopping_bag_outlined),
+        selectedIcon: Icon(Icons.shopping_bag, color: Color(0xFF1E40AF)),
+        label: 'Orders',
       ),
       const NavigationDestination(
         icon: Icon(Icons.receipt_long_outlined),

@@ -18,10 +18,14 @@ import 'outlet_order_booking_screen.dart';
 
 class OrderDashboardScreen extends StatefulWidget {
   final String? initialRouteId;
+  final bool isEmbedded;
+  final VoidCallback? onBackToOverview;
 
   const OrderDashboardScreen({
     super.key,
     this.initialRouteId,
+    this.isEmbedded = false,
+    this.onBackToOverview,
   });
 
   @override
@@ -143,12 +147,27 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
     final completedShops = allRouteShops.where((s) => bookedShopIds.contains(s.id)).toList();
     final pendingShops = allRouteShops.where((s) => !bookedShopIds.contains(s.id)).toList();
 
+    final bool canGoBack = widget.onBackToOverview != null || Navigator.canPop(context);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E40AF), // Bizom royal blue
         foregroundColor: Colors.white,
         elevation: 0,
+        leading: canGoBack
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back',
+                onPressed: () {
+                  if (widget.onBackToOverview != null) {
+                    widget.onBackToOverview!();
+                  } else if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+                },
+              )
+            : null,
         title: Row(
           children: [
             const Icon(Icons.store_mall_directory_rounded, size: 22, color: Colors.white),
@@ -184,12 +203,46 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             tooltip: 'Add Product to Catalog',
             onPressed: _openAddProduct,
           ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Sign Out',
-            onPressed: () => auth.logout(),
-          ),
+          if (!widget.isEmbedded)
+            IconButton(
+              icon: const Icon(Icons.logout_rounded),
+              tooltip: 'Sign Out',
+              onPressed: () => auth.logout(),
+            ),
         ],
+        bottom: widget.isEmbedded
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(48),
+                child: Container(
+                  color: const Color(0xFF1E3A8A),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: Row(
+                    children: [
+                      _buildHeaderTabChip(
+                        title: 'Retailers (${pendingShops.length})',
+                        icon: Icons.storefront,
+                        isSelected: _currentBottomNavIndex == 0,
+                        onTap: () => setState(() => _currentBottomNavIndex = 0),
+                      ),
+                      const SizedBox(width: 6),
+                      _buildHeaderTabChip(
+                        title: 'Route Map',
+                        icon: Icons.map,
+                        isSelected: _currentBottomNavIndex == 1,
+                        onTap: () => setState(() => _currentBottomNavIndex = 1),
+                      ),
+                      const SizedBox(width: 6),
+                      _buildHeaderTabChip(
+                        title: 'Orders (${dateOrders.length})',
+                        icon: Icons.receipt_long,
+                        isSelected: _currentBottomNavIndex == 2,
+                        onTap: () => setState(() => _currentBottomNavIndex = 2),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : null,
       ),
       body: IndexedStack(
         index: _currentBottomNavIndex,
@@ -210,26 +263,72 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
           _buildTransactionsTab(dateOrders),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentBottomNavIndex,
-        onDestinationSelected: (idx) => setState(() => _currentBottomNavIndex = idx),
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.storefront_outlined),
-            selectedIcon: const Icon(Icons.storefront, color: Color(0xFF1E40AF)),
-            label: 'Retailers (${pendingShops.length})',
+      bottomNavigationBar: widget.isEmbedded
+          ? null
+          : NavigationBar(
+              selectedIndex: _currentBottomNavIndex,
+              onDestinationSelected: (idx) => setState(() => _currentBottomNavIndex = idx),
+              destinations: [
+                NavigationDestination(
+                  icon: const Icon(Icons.storefront_outlined),
+                  selectedIcon: const Icon(Icons.storefront, color: Color(0xFF1E40AF)),
+                  label: 'Retailers (${pendingShops.length})',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map, color: Color(0xFF1E40AF)),
+                  label: 'Route Map',
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  selectedIcon: const Icon(Icons.receipt_long, color: Color(0xFF1E40AF)),
+                  label: 'Orders (${dateOrders.length})',
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildHeaderTabChip({
+    required String title,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(8),
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map, color: Color(0xFF1E40AF)),
-            label: 'Route Map',
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected ? const Color(0xFF1E40AF) : Colors.white70,
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? const Color(0xFF1E40AF) : Colors.white,
+                  ),
+                ),
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.receipt_long_outlined),
-            selectedIcon: const Icon(Icons.receipt_long, color: Color(0xFF1E40AF)),
-            label: 'Orders (${dateOrders.length})',
-          ),
-        ],
+        ),
       ),
     );
   }

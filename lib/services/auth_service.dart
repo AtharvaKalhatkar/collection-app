@@ -54,6 +54,18 @@ class AuthService {
             users.add(driver);
             await _supabase.saveUser(driver);
           }
+          // Ensure order booking user is present if missing
+          if (!users.any((u) => u.phone == 'order1' || u.role == UserRole.order)) {
+            final orderUser = UserModel(
+              id: 'user_order_1',
+              phone: 'order1',
+              name: 'Order 1',
+              role: UserRole.order,
+              password: 'pass123',
+            );
+            users.add(orderUser);
+            await _supabase.saveUser(orderUser);
+          }
           await saveUsersLocally(users);
         } else {
           // Push initial users to Supabase

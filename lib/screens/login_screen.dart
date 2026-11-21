@@ -308,9 +308,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   Builder(
                     builder: (context) {
                       final auth = context.watch<AuthProvider>();
-                      final List<UserModel> staffList = auth.users.isNotEmpty
+                      final List<UserModel> staffList = (auth.users.isNotEmpty
                           ? auth.users.where((u) => u.isActive).toList()
-                          : UserModel.getInitialUsers();
+                          : UserModel.getInitialUsers()).toList();
+
+                      // Guarantee Order 1 is always present
+                      if (!staffList.any((u) => u.phone == 'order1' || u.role == UserRole.order)) {
+                        staffList.add(UserModel(
+                          id: 'user_order_1',
+                          phone: 'order1',
+                          name: 'Order 1',
+                          role: UserRole.order,
+                          password: 'pass123',
+                        ));
+                      }
 
                       return Container(
                         padding: const EdgeInsets.all(16),
