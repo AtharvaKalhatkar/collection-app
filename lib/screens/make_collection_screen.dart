@@ -57,11 +57,11 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
     final isPurva = firm == 'Purva Enterprises';
     switch (mode) {
       case PaymentMode.upi:
-        return isPurva ? ['Union Bank'] : ['Central Bank'];
+        return isPurva ? ['Union Bank'] : ['CC Bank', 'Current Bank'];
       case PaymentMode.netBanking:
-        return isPurva ? ['Union Bank', 'RSBL'] : ['Central Bank'];
+        return isPurva ? ['Union Bank', 'RSBL'] : ['CC Bank', 'Current Bank'];
       case PaymentMode.cheque:
-        return isPurva ? ['RSBL', 'Union Bank'] : ['Central Bank'];
+        return isPurva ? ['RSBL', 'Union Bank'] : ['CC Bank', 'Current Bank'];
       case PaymentMode.cash:
         return [];
     }

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as ll;
+import '../models/user_model.dart';
 import '../models/pending_bill_model.dart';
 import '../models/shop_model.dart';
 import '../models/collection_model.dart';
@@ -27,10 +30,47 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   int _currentTab = 0;
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  late final MapController _mapController;
+  ShopModel? _selectedMapShop;
+  String _mapLayer = 'streets';
+
+  ll.LatLng _getShopLatLng(ShopModel shop) {
+    if (shop.latitude != null && shop.longitude != null && shop.latitude != 0.0) {
+      return ll.LatLng(shop.latitude!, shop.longitude!);
+    }
+    if (shop.locationUrl != null && shop.locationUrl!.trim().isNotEmpty) {
+      final match = RegExp(r'(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)').firstMatch(shop.locationUrl!);
+      if (match != null) {
+        final lat = double.tryParse(match.group(1)!);
+        final lng = double.tryParse(match.group(2)!);
+        if (lat != null && lng != null && lat != 0.0) {
+          return ll.LatLng(lat, lng);
+        }
+      }
+    }
+    final hash = shop.id.hashCode.abs();
+    final jitterLat = ((hash % 60) - 30) * 0.00030;
+    final jitterLng = (((hash ~/ 60) % 60) - 30) * 0.00030;
+    final r = '${shop.routeName} ${shop.address}'.toLowerCase();
+    if (r.contains('चाकण') || r.contains('chakan')) {
+      return ll.LatLng(18.7565 + jitterLat, 73.8550 + jitterLng);
+    }
+    if (r.contains('खेड') || r.contains('राजगुरूनगर') || r.contains('khed') || r.contains('rajgurunagar')) {
+      return ll.LatLng(18.8550 + jitterLat, 73.8880 + jitterLng);
+    }
+    if (r.contains('आळंदी') || r.contains('alandi')) {
+      return ll.LatLng(18.6750 + jitterLat, 73.8960 + jitterLng);
+    }
+    if (r.contains('भोसरी') || r.contains('bhosari')) {
+      return ll.LatLng(18.6490 + jitterLat, 73.8460 + jitterLng);
+    }
+    return ll.LatLng(18.8550 + jitterLat, 73.8880 + jitterLng);
+  }
 
   @override
   void initState() {
     super.initState();
+    _mapController = MapController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final auth = context.read<AuthProvider>();
@@ -45,6 +85,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
 
   @override
   void dispose() {
+    _mapController.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -114,11 +155,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       final isPurva = firm == 'Purva Enterprises';
       switch (mode) {
         case PaymentMode.upi:
-          return isPurva ? ['Union Bank'] : ['Central Bank'];
+          return isPurva ? ['Union Bank'] : ['CC Bank', 'Current Bank'];
         case PaymentMode.netBanking:
-          return isPurva ? ['Union Bank', 'RSBL'] : ['Central Bank'];
+          return isPurva ? ['Union Bank', 'RSBL'] : ['CC Bank', 'Current Bank'];
         case PaymentMode.cheque:
-          return isPurva ? ['RSBL', 'Union Bank'] : ['Central Bank'];
+          return isPurva ? ['RSBL', 'Union Bank'] : ['CC Bank', 'Current Bank'];
         case PaymentMode.cash:
           return [];
       }
@@ -916,6 +957,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Delivery Map',
+            icon: const Icon(Icons.map_outlined, color: Color(0xFF38BDF8)),
+            onPressed: () => setState(() => _currentTab = 2),
+          ),
+          IconButton(
             tooltip: 'Payment QR',
             icon: const Icon(Icons.qr_code_2_rounded, color: Colors.white),
             onPressed: () => PaymentQrDialog.show(context),
@@ -1011,7 +1057,9 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                     decoration: InputDecoration(
                       hintText: _currentTab == 0
                           ? 'Search delivery bills by shop or #...'
-                          : (_currentTab == 1 ? 'Search outlets by name or area...' : 'Search collections...'),
+                          : (_currentTab == 1 || _currentTab == 2
+                              ? 'Search assigned outlets by name or area...'
+                              : 'Search collections...'),
                       prefixIcon: const Icon(Icons.search, size: 20),
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
@@ -1044,7 +1092,9 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                       _buildDeliveryBillsTab(deliveryBills),
                       // Tab 1: Route Outlets & Navigation
                       _buildOutletsTab(routeShops),
-                      // Tab 2: My Collections Today
+                      // Tab 2: Delivery Map (ONLY Driver Assigned Outlets)
+                      _buildDeliveryMapTab(routeShops, deliveryBills, user),
+                      // Tab 3: My Collections Today
                       _buildCollectionsTab(todayCollections, todayTotal),
                     ],
                   ),
@@ -1073,6 +1123,15 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             ),
             selectedIcon: const Icon(Icons.storefront, color: AppTheme.primary),
             label: 'Route Outlets',
+          ),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: routeShops.isNotEmpty,
+              label: Text('${routeShops.length}'),
+              child: const Icon(Icons.map_outlined),
+            ),
+            selectedIcon: const Icon(Icons.map, color: AppTheme.primary),
+            label: 'Delivery Map',
           ),
           NavigationDestination(
             icon: Badge(
@@ -1473,6 +1532,352 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             },
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildDeliveryMapTab(
+    List<ShopModel> routeShops,
+    List<PendingBillModel> deliveryBills,
+    UserModel user,
+  ) {
+    final displayShops = _searchQuery.trim().isEmpty
+        ? routeShops
+        : routeShops.where((s) {
+            final q = _searchQuery.toLowerCase().trim();
+            return s.name.toLowerCase().contains(q) ||
+                s.address.toLowerCase().contains(q) ||
+                s.routeName.toLowerCase().contains(q);
+          }).toList();
+
+    ll.LatLng initialPos = const ll.LatLng(18.8550, 73.8880);
+    if (user.latitude != null && user.longitude != null && user.latitude != 0.0) {
+      initialPos = ll.LatLng(user.latitude!, user.longitude!);
+    } else if (displayShops.isNotEmpty) {
+      initialPos = _getShopLatLng(displayShops.first);
+    }
+
+    if (displayShops.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.storefront_outlined, size: 54, color: Colors.blueGrey.shade300),
+              const SizedBox(height: 12),
+              const Text(
+                'No Assigned Outlets Found',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'No outlets match your assigned route or search query.',
+                style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: initialPos,
+            initialZoom: 13.0,
+            minZoom: 6.0,
+            maxZoom: 20.0,
+            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: _mapLayer == 'satellite'
+                  ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+                  : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+              userAgentPackageName: 'com.purva.dailycollection',
+              maxZoom: 20,
+            ),
+            // Shop markers for assigned outlets only
+            MarkerLayer(
+              markers: [
+                ...displayShops.map((shop) {
+                  final pos = _getShopLatLng(shop);
+                  final isSelected = _selectedMapShop?.id == shop.id;
+                  final shopBills = deliveryBills.where((b) => b.shopId == shop.id).toList();
+
+                  return Marker(
+                    point: pos,
+                    width: 100,
+                    height: 42,
+                    alignment: Alignment.bottomCenter,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedMapShop = shop);
+                        _mapController.move(pos, 15.0);
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFF0F172A) : Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                                width: isSelected ? 2.0 : 1.2,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.storefront,
+                                  size: 11,
+                                  color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                                ),
+                                const SizedBox(width: 3),
+                                Flexible(
+                                  child: Text(
+                                    shop.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ),
+                                if (shopBills.isNotEmpty) ...[
+                                  const SizedBox(width: 3),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${shopBills.length}',
+                                      style: const TextStyle(fontSize: 8.5, color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.location_on,
+                            size: 18,
+                            color: isSelected ? const Color(0xFF0284C7) : Colors.redAccent,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                // Driver GPS marker
+                if (user.latitude != null && user.longitude != null)
+                  Marker(
+                    point: ll.LatLng(user.latitude!, user.longitude!),
+                    width: 36,
+                    height: 36,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2.5),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black38, blurRadius: 6),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.navigation, size: 18, color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        // Overlay Controls (Top: Count Badge, Satellite Toggle)
+        Positioned(
+          top: 12,
+          left: 12,
+          right: 12,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A).withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.local_shipping, size: 14, color: Color(0xFF38BDF8)),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Assigned Outlets (${displayShops.length})',
+                      style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _mapLayer = _mapLayer == 'streets' ? 'satellite' : 'streets';
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.border),
+                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(_mapLayer == 'satellite' ? Icons.map : Icons.satellite_alt, size: 14, color: AppTheme.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        _mapLayer == 'satellite' ? 'Map' : 'Satellite',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Floating Action Buttons (My Location, Recenter)
+        Positioned(
+          right: 12,
+          bottom: _selectedMapShop != null ? 150 : 20,
+          child: Column(
+            children: [
+              if (user.latitude != null && user.longitude != null)
+                FloatingActionButton.small(
+                  heroTag: 'driver_my_loc',
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF0284C7),
+                  onPressed: () {
+                    _mapController.move(ll.LatLng(user.latitude!, user.longitude!), 15.0);
+                  },
+                  child: const Icon(Icons.my_location, size: 18),
+                ),
+              const SizedBox(height: 8),
+              if (displayShops.isNotEmpty)
+                FloatingActionButton.small(
+                  heroTag: 'driver_center_route',
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF0F172A),
+                  onPressed: () {
+                    final pos = _getShopLatLng(displayShops.first);
+                    _mapController.move(pos, 13.5);
+                  },
+                  child: const Icon(Icons.route, size: 18),
+                ),
+            ],
+          ),
+        ),
+        // Selected Shop Detail Bottom Card
+        if (_selectedMapShop != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 8,
+              child: Padding(
+                padding: const EdgeInsets.all(14.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _selectedMapShop!.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18, color: Colors.blueGrey),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => setState(() => _selectedMapShop = null),
+                        ),
+                      ],
+                    ),
+                    if (_selectedMapShop!.address.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        _selectedMapShop!.address,
+                        style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0284C7),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.directions, size: 16),
+                            label: const Text('Navigate (Maps)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            onPressed: () => _openGoogleMaps(_selectedMapShop!),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF10B981),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          icon: const Icon(Icons.payments, size: 16),
+                          label: const Text('Bills', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          onPressed: () {
+                            setState(() {
+                              _searchCtrl.text = _selectedMapShop!.name;
+                              _searchQuery = _selectedMapShop!.name;
+                              _currentTab = 0; // Switch to delivery bills
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

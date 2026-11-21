@@ -19,7 +19,6 @@ import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import 'live_staff_locations_screen.dart';
-import 'attendance_screen.dart';
 import '../utils/firm_details.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -154,7 +153,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               subtitle: Padding(
                                 padding: const EdgeInsets.only(top: 2.0),
                                 child: Text(
-                                  'Bill No: ${item.billNumber} • ${item.routeName} • $timeStr',
+                                  'Bill No: ${item.billNumber}${item.bankName != null && item.bankName!.trim().isNotEmpty ? " • ${item.bankName!.trim()}" : ""} • ${item.routeName} • $timeStr',
                                   style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                                 ),
                               ),
@@ -475,11 +474,6 @@ class HomeDashboardScreen extends StatelessWidget {
                 );
               } else if (val == 'assign_driver_routes') {
                 _showAssignRouteDialog(context);
-              } else if (val == 'attendance') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-                );
               } else if (val == 'bank_info') {
                 FirmDetailsHelper.showQuickShareModal(
                   context,
@@ -545,17 +539,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ),
               ],
-              if (canViewAttendance(context.read<AuthProvider>().currentUser))
-                const PopupMenuItem(
-                  value: 'attendance',
-                  child: Row(
-                    children: [
-                      Icon(Icons.badge_outlined, size: 18, color: Color(0xFF6366F1)),
-                      SizedBox(width: 10),
-                      Text('Daily Attendance'),
-                    ],
-                  ),
-                ),
+
               const PopupMenuItem(
                 value: 'bank_info',
                 child: Row(
@@ -1568,33 +1552,13 @@ class HomeDashboardScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildOverviewGridButton(
-                      title: 'Daily Attendance',
-                      icon: Icons.badge_outlined,
-                      color: const Color(0xFF0284C7),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildOverviewGridButton(
-                      title: 'Assign Route',
-                      icon: Icons.alt_route_rounded,
-                      color: const Color(0xFF0D9488),
-                      onTap: () {
-                        _showAssignRouteDialog(context);
-                      },
-                    ),
-                  ),
-                ],
+              _buildOverviewGridButton(
+                title: 'Assign Driver Route',
+                icon: Icons.alt_route_rounded,
+                color: const Color(0xFF0D9488),
+                onTap: () {
+                  _showAssignRouteDialog(context);
+                },
               ),
               const SizedBox(height: 20),
             ],
@@ -2551,6 +2515,25 @@ void _showPaymentAlertsSheet(BuildContext context, CollectionProvider provider) 
                                                 ),
                                               ),
                                             ),
+                                            if (coll.bankName != null && coll.bankName!.trim().isNotEmpty) ...[
+                                              const SizedBox(width: 5),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                    horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blueGrey.shade100,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  coll.bankName!.trim(),
+                                                  style: TextStyle(
+                                                    fontSize: 9.5,
+                                                    fontWeight: FontWeight.w800,
+                                                    color: Colors.blueGrey.shade800,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                             const SizedBox(width: 6),
                                             Text(
                                               'Bill #${coll.billNumber}',

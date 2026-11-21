@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/collection_provider.dart';
 import '../utils/theme.dart';
@@ -64,9 +65,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _fillQuickCredentials(String phone, String name) {
+  void _fillQuickCredentials(String phone, String name, [String? password]) {
     _phoneController.text = phone;
-    _passwordController.text = 'pass123';
+    _passwordController.text = (password != null && password.isNotEmpty) ? password : 'pass123';
     setState(() {
       _errorMessage = null;
     });
@@ -120,21 +121,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // Title & Subtitle
                   const Text(
-                    'Purva & Manas',
+                    'Purva Enterprises',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 24,
+                      fontSize: 26,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                      letterSpacing: 0.6,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Daily Collection & Billing Portal',
+                    'Distribution & Daily Collection Portal',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
+                      color: Colors.white.withValues(alpha: 0.75),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       letterSpacing: 0.3,
@@ -303,86 +304,92 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Quick Account Selector for Seamless Switching
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  // Quick Account Selector (Dynamically loaded from all registered staff)
+                  Builder(
+                    builder: (context) {
+                      final auth = context.watch<AuthProvider>();
+                      final List<UserModel> staffList = auth.users.isNotEmpty
+                          ? auth.users.where((u) => u.isActive).toList()
+                          : UserModel.getInitialUsers();
+
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.touch_app_outlined, color: Colors.amber.shade400, size: 16),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Quick Staff Accounts (Tap to fill):',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
+                            Row(
+                              children: [
+                                Icon(Icons.touch_app_outlined, color: Colors.amber.shade400, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Quick Staff Accounts (Tap to fill):',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.9),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ),
+                                if (auth.isLoading)
+                                  const SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white54),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: staffList.map((u) {
+                                String iconPrefix;
+                                Color chipColor;
+                                if (u.isSuperAdmin) {
+                                  iconPrefix = '👑';
+                                  chipColor = const Color(0xFF3B82F6);
+                                } else if (u.isOffice) {
+                                  iconPrefix = '🏢';
+                                  chipColor = const Color(0xFF10B981);
+                                } else if (u.isDriver) {
+                                  iconPrefix = '🚚';
+                                  chipColor = const Color(0xFF06B6D4);
+                                } else if (u.isSalesman) {
+                                  iconPrefix = '🛵';
+                                  chipColor = const Color(0xFFF59E0B);
+                                } else {
+                                  iconPrefix = '📦';
+                                  chipColor = const Color(0xFF8B5CF6);
+                                }
+
+                                final label = '$iconPrefix ${u.plainName}';
+                                return _buildQuickChip(
+                                  label: label,
+                                  phone: u.phone,
+                                  name: u.name,
+                                  password: u.actualPassword,
+                                  color: chipColor,
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Default password for all staff: pass123 (Changeable anytime)',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 11,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _buildQuickChip(
-                              label: '👑 Super Admin',
-                              phone: '9921977636',
-                              name: 'Super Admin',
-                              color: const Color(0xFF3B82F6),
-                            ),
-                            _buildQuickChip(
-                              label: '🏢 Office 1',
-                              phone: '7620995547',
-                              name: 'Office Staff 1',
-                              color: const Color(0xFF10B981),
-                            ),
-                            _buildQuickChip(
-                              label: '🏢 Office 2',
-                              phone: '8605131764',
-                              name: 'Office Staff 2',
-                              color: const Color(0xFF14B8A6),
-                            ),
-                            _buildQuickChip(
-                              label: '🛵 Akash (Sales)',
-                              phone: '9309862465',
-                              name: 'Akash',
-                              color: const Color(0xFFF59E0B),
-                            ),
-                            _buildQuickChip(
-                              label: '🛵 Atharva (Sales)',
-                              phone: '8390768833',
-                              name: 'Atharva',
-                              color: const Color(0xFFEC4899),
-                            ),
-                            _buildQuickChip(
-                              label: '🚚 user1 (Driver)',
-                              phone: 'user1',
-                              name: 'Driver (user1)',
-                              color: const Color(0xFF06B6D4),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Default password for all staff: pass123 (Changeable anytime)',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.6),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -398,23 +405,24 @@ class _LoginScreenState extends State<LoginScreen> {
     required String phone,
     required String name,
     required Color color,
+    String? password,
   }) {
     return InkWell(
-      onTap: () => _fillQuickCredentials(phone, name),
+      onTap: () => _fillQuickCredentials(phone, name, password),
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.2),
+          color: color.withValues(alpha: 0.22),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.4)),
+          border: Border.all(color: color.withValues(alpha: 0.45)),
         ),
         child: Text(
           label,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 11.5,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),

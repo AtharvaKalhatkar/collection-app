@@ -12,7 +12,6 @@ import 'cash_handover_screen.dart';
 import 'user_management_screen.dart';
 import 'live_staff_locations_screen.dart';
 import '../services/bill_ocr_service.dart';
-import 'attendance_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   final VoidCallback? onBackToOverview;
@@ -938,33 +937,7 @@ class ProfileScreen extends StatelessWidget {
             const Divider(height: 1),
           ],
 
-          // Daily Attendance & Salary (SuperAdmin, Office, Akash only)
-          if (currentUser != null && canViewAttendance(currentUser)) ...[
-            Material(
-              color: Colors.transparent,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.badge_outlined, color: Color(0xFF6366F1), size: 20),
-                ),
-                title: const Text('Daily Attendance', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                subtitle: const Text('Check-in, attendance calendar & salary', style: TextStyle(fontSize: 11.5)),
-                trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-                  );
-                },
-              ),
-            ),
-            const Divider(height: 1),
-          ],
+
 
           // 2. Collection Statement & Ledger
           Material(

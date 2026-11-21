@@ -53,7 +53,7 @@ class DailyCollectionApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CollectionProvider()),
       ],
       child: MaterialApp(
-        title: 'Daily Collection',
+        title: 'Purva Enterprises',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         builder: (context, child) {
