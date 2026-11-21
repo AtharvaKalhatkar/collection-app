@@ -1,13 +1,13 @@
 {
     "id": "/collection-app/",
-    "name": "Daily Collection App",
-    "short_name": "Collection",
+    "name": "Purva Enterprises",
+    "short_name": "Purva",
     "start_url": "/collection-app/",
     "scope": "/collection-app/",
     "display": "standalone",
-    "background_color": "#1E3A8A",
-    "theme_color": "#1E3A8A",
-    "description": "Daily Collection & Invoicing - Purva Enterprises & Manas Sales",
+    "background_color": "#0F172A",
+    "theme_color": "#0F172A",
+    "description": "Purva Enterprises - Sales Distribution & Daily Collection Portal",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "categories": [
