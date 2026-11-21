@@ -18,7 +18,24 @@ void main() {
       expect(manasCompanies.length, equals(5));
     });
 
-    test('Wipro under Purva contains Soap category and Handwash products', () {
+    test('Wipro under Purva contains Soap category and Handwash products when added', () {
+      OrderCatalogService.addCustomProduct(const CatalogProduct(
+        id: 'test-wip-1',
+        name: 'Handwash (Santoor Pump)',
+        category: 'Soap',
+        company: 'Wipro',
+        firm: 'Purva Enterprises',
+        rate: 75.0,
+      ));
+      OrderCatalogService.addCustomProduct(const CatalogProduct(
+        id: 'test-wip-2',
+        name: 'Handwash (Santoor Refill)',
+        category: 'Soap',
+        company: 'Wipro',
+        firm: 'Purva Enterprises',
+        rate: 45.0,
+      ));
+
       final categories = OrderCatalogService.getCategories('Purva Enterprises', 'Wipro');
       expect(categories, contains('Soap'));
 
@@ -33,7 +50,16 @@ void main() {
       expect(soapProducts.length, greaterThanOrEqualTo(2));
     });
 
-    test('Racket under Manas contains Soap & Cleaners and Handwash products', () {
+    test('Racket under Manas contains Soap & Cleaners and Handwash products when added', () {
+      OrderCatalogService.addCustomProduct(const CatalogProduct(
+        id: 'test-rkt-1',
+        name: 'Dettol Handwash Liquid',
+        category: 'Soap & Cleaners',
+        company: 'Racket',
+        firm: 'Manas Sales',
+        rate: 85.0,
+      ));
+
       final racketProducts = OrderCatalogService.getProducts(
         firm: 'Manas Sales',
         company: 'Racket',

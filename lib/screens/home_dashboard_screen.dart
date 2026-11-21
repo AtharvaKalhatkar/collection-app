@@ -19,6 +19,7 @@ import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import 'live_staff_locations_screen.dart';
+import 'order_dashboard_screen.dart';
 import '../utils/firm_details.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1552,13 +1553,37 @@ class HomeDashboardScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              _buildOverviewGridButton(
-                title: 'Assign Driver Route',
-                icon: Icons.alt_route_rounded,
-                color: const Color(0xFF0D9488),
-                onTap: () {
-                  _showAssignRouteDialog(context);
-                },
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildOverviewGridButton(
+                      title: 'Book Orders',
+                      icon: Icons.store_mall_directory_rounded,
+                      color: const Color(0xFF1E40AF),
+                      onTap: () {
+                        if (onNavigateToOrders != null) {
+                          onNavigateToOrders!();
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildOverviewGridButton(
+                      title: 'Assign Driver Route',
+                      icon: Icons.alt_route_rounded,
+                      color: const Color(0xFF0D9488),
+                      onTap: () {
+                        _showAssignRouteDialog(context);
+                      },
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
             ],

@@ -3,6 +3,7 @@ enum UserRole {
   office,
   salesman,
   driver,
+  order,
 }
 
 class UserModel {
@@ -46,6 +47,8 @@ class UserModel {
         return 'Sales & Collection';
       case UserRole.driver:
         return 'Delivery Driver';
+      case UserRole.order:
+        return 'Order Booking';
     }
   }
 
@@ -53,10 +56,11 @@ class UserModel {
   bool get isOffice => role == UserRole.office;
   bool get isSalesman => role == UserRole.salesman;
   bool get isDriver => role == UserRole.driver;
+  bool get isOrder => role == UserRole.order;
 
   static String cleanPlainName(String name) {
     var s = name.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
-    s = s.replaceAll(RegExp(r'\s*-\s*(Office Staff|Sales & Collection|Sales|Collection|Driver|Helper|Super Admin|Office)$', caseSensitive: false), '').trim();
+    s = s.replaceAll(RegExp(r'\s*-\s*(Office Staff|Sales & Collection|Sales|Collection|Driver|Helper|Super Admin|Office|Order Booking|Order)$', caseSensitive: false), '').trim();
     return s.isEmpty ? name : s;
   }
 
@@ -101,7 +105,7 @@ class UserModel {
   static String normalizePhone(String input) {
     final trimmed = input.trim();
     if (RegExp(r'[a-zA-Z]').hasMatch(trimmed)) {
-      return trimmed.toLowerCase();
+      return trimmed.toLowerCase().replaceAll(' ', '');
     }
     final digits = trimmed.replaceAll(RegExp(r'\D'), '');
     if (digits.length > 10) {
@@ -175,6 +179,8 @@ class UserModel {
       parsedRole = UserRole.office;
     } else if (roleStr == 'driver') {
       parsedRole = UserRole.driver;
+    } else if (roleStr == 'order' || roleStr == 'order_man' || roleStr == 'orderman' || roleStr.contains('order')) {
+      parsedRole = UserRole.order;
     } else {
       parsedRole = UserRole.salesman;
     }
@@ -296,6 +302,14 @@ class UserModel {
         phone: 'user1',
         name: 'Driver (user1)',
         role: UserRole.driver,
+        password: 'pass123',
+        assignedRouteIds: const [],
+      ),
+      UserModel(
+        id: 'user_order_1',
+        phone: 'order1',
+        name: 'Order 1',
+        role: UserRole.order,
         password: 'pass123',
         assignedRouteIds: const [],
       ),

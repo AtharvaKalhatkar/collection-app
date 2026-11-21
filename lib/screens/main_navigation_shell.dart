@@ -11,6 +11,7 @@ import 'routes_shops_screen.dart';
 import 'live_staff_locations_screen.dart';
 import 'profile_screen.dart';
 import 'driver_dashboard_screen.dart';
+import 'order_dashboard_screen.dart';
 
 class MainNavigationShell extends StatefulWidget {
   const MainNavigationShell({super.key});
@@ -78,11 +79,18 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       return const DriverDashboardScreen();
     }
 
+    if (user?.isOrder == true) {
+      return const OrderDashboardScreen();
+    }
+
     final screens = <Widget>[
       HomeDashboardScreen(
         onNavigateToRoutes: () => _navigateToTab(2),
         onNavigateToCollections: () => _navigateToTab(1),
-        onNavigateToOrders: null,
+        onNavigateToOrders: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+        ),
         onNavigateToProfile: () => _navigateToTab(isSuperAdmin ? 4 : 3),
         onNavigateToTracking: isSuperAdmin ? () => _navigateToTab(3) : null,
       ),

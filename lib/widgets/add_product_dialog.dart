@@ -32,8 +32,11 @@ class _AddProductDialogState extends State<AddProductDialog> {
 
   final _newCompanyController = TextEditingController();
   final _newCategoryController = TextEditingController();
+  final _newSubcategoryController = TextEditingController();
   final _productNameController = TextEditingController();
   final _packingController = TextEditingController();
+  final _unitsPerCaseController = TextEditingController(text: '24');
+  final _weightKgController = TextEditingController(text: '0.0');
   final _rateController = TextEditingController();
   final _mrpController = TextEditingController();
 
@@ -79,8 +82,11 @@ class _AddProductDialogState extends State<AddProductDialog> {
   void dispose() {
     _newCompanyController.dispose();
     _newCategoryController.dispose();
+    _newSubcategoryController.dispose();
     _productNameController.dispose();
     _packingController.dispose();
+    _unitsPerCaseController.dispose();
+    _weightKgController.dispose();
     _rateController.dispose();
     _mrpController.dispose();
     super.dispose();
@@ -97,10 +103,16 @@ class _AddProductDialogState extends State<AddProductDialog> {
         ? _newCategoryController.text.trim()
         : (_selectedCategory ?? _newCategoryController.text.trim());
 
+    final subcategory = _newSubcategoryController.text.trim().isNotEmpty
+        ? _newSubcategoryController.text.trim()
+        : 'General';
+
     final name = _productNameController.text.trim();
     final packing = _packingController.text.trim().isEmpty ? '1 Unit' : _packingController.text.trim();
     final rate = double.tryParse(_rateController.text.trim()) ?? 0.0;
     final mrp = double.tryParse(_mrpController.text.trim()) ?? rate;
+    final unitsPerCase = int.tryParse(_unitsPerCaseController.text.trim()) ?? 24;
+    final weightKg = double.tryParse(_weightKgController.text.trim()) ?? 0.0;
 
     final customId = 'cust-${DateTime.now().millisecondsSinceEpoch}';
 
@@ -108,12 +120,15 @@ class _AddProductDialogState extends State<AddProductDialog> {
       id: customId,
       name: name,
       category: category,
+      subcategory: subcategory.isEmpty ? 'General' : subcategory,
       company: company,
       firm: _firm,
       packing: packing,
       rate: rate,
       mrp: mrp,
       defaultUnit: _selectedUnit,
+      unitsPerCase: unitsPerCase,
+      weightKg: weightKg,
     );
 
     final provider = Provider.of<CollectionProvider>(context, listen: false);
@@ -381,6 +396,20 @@ class _AddProductDialogState extends State<AddProductDialog> {
                     ),
                   const SizedBox(height: 14),
 
+                  // Subcategory
+                  const Text('Subcategory', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: _newSubcategoryController,
+                    decoration: InputDecoration(
+                      hintText: 'e.g. NSB, NSP, or General',
+                      prefixIcon: const Icon(Icons.subdirectory_arrow_right_rounded, size: 20),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
                   // 4. Product Name
                   const Text('4. Product Name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary)),
                   const SizedBox(height: 6),
@@ -491,6 +520,50 @@ class _AddProductDialogState extends State<AddProductDialog> {
                               decoration: InputDecoration(
                                 prefixText: '₹ ',
                                 hintText: '0.00',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Units Per Case (CS) & Weight
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Units Per Case (CS)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary)),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _unitsPerCaseController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                hintText: '24',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Weight (Kg/Case)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary)),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _weightKgController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: InputDecoration(
+                                hintText: '11.04',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               ),

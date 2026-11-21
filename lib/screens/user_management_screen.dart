@@ -94,6 +94,10 @@ class UserManagementScreen extends StatelessWidget {
                       value: UserRole.driver,
                       child: Text('🚚 Delivery Driver'),
                     ),
+                    DropdownMenuItem(
+                      value: UserRole.order,
+                      child: Text('🛒 Order Booking (Order Man)'),
+                    ),
                   ],
                   onChanged: (newRole) {
                     if (newRole != null) {
@@ -103,7 +107,7 @@ class UserManagementScreen extends StatelessWidget {
                     }
                   },
                 ),
-                if (selectedRole == UserRole.driver) ...[
+                if (selectedRole == UserRole.driver || selectedRole == UserRole.order) ...[
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -115,20 +119,22 @@ class UserManagementScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Icon(Icons.alt_route_rounded, color: Color(0xFF15803D), size: 18),
-                            SizedBox(width: 6),
+                            const Icon(Icons.alt_route_rounded, color: Color(0xFF15803D), size: 18),
+                            const SizedBox(width: 6),
                             Text(
-                              'Assigned Delivery Route(s):',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                              'Assigned ${selectedRole == UserRole.driver ? "Delivery" : "Order"} Route(s):',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
                             ),
                           ],
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          'Driver will ONLY see pending bills and shops for selected routes.',
-                          style: TextStyle(fontSize: 11, color: Color(0xFF166534)),
+                        Text(
+                          selectedRole == UserRole.driver
+                              ? 'Driver will ONLY see pending delivery bills and shops for selected routes.'
+                              : 'Order man will ONLY see assigned route outlets and book orders on map.',
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF166534)),
                         ),
                         const SizedBox(height: 8),
                         if (allRoutes.isEmpty)
@@ -184,7 +190,7 @@ class UserManagementScreen extends StatelessWidget {
                   name: cleanName,
                   role: selectedRole,
                   password: cleanPass,
-                  assignedRouteIds: selectedRole == UserRole.driver ? assignedRouteIds : const [],
+                  assignedRouteIds: (selectedRole == UserRole.driver || selectedRole == UserRole.order) ? assignedRouteIds : const [],
                   isActive: userToEdit?.isActive ?? true,
                   createdAt: userToEdit?.createdAt ?? DateTime.now(),
                 );
@@ -279,10 +285,14 @@ class UserManagementScreen extends StatelessWidget {
                     badgeColor = const Color(0xFF0284C7);
                     roleIcon = Icons.local_shipping_rounded;
                     break;
+                  case UserRole.order:
+                    badgeColor = const Color(0xFF7C3AED);
+                    roleIcon = Icons.shopping_bag_rounded;
+                    break;
                 }
 
                 String? driverRoutesStr;
-                if (user.isDriver) {
+                if (user.isDriver || user.isOrder) {
                   final assignedNames = collectionProvider.allRoutes
                       .where((r) => user.assignedRouteIds.contains(r.id))
                       .map((r) => r.name)

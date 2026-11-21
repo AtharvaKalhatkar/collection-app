@@ -360,6 +360,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 } else if (u.isDriver) {
                                   iconPrefix = '🚚';
                                   chipColor = const Color(0xFF06B6D4);
+                                } else if (u.isOrder) {
+                                  iconPrefix = '🛒';
+                                  chipColor = const Color(0xFF8B5CF6);
                                 } else if (u.isSalesman) {
                                   iconPrefix = '🛵';
                                   chipColor = const Color(0xFFF59E0B);
