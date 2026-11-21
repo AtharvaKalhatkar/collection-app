@@ -1,0 +1,9 @@
+.dart_tool/
+.flutter-plugins*
+.last_build_id
+build/
+android/
+ios/
+linux/
+macos/
+windows/
