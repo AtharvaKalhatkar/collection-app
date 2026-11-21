@@ -27,6 +27,7 @@ class AllOrdersScreen extends StatefulWidget {
 class _AllOrdersScreenState extends State<AllOrdersScreen> {
   late DateTime _selectedDate;
   String _selectedStaff = 'ALL';
+  String _selectedRouteId = 'ALL';
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
@@ -142,12 +143,26 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     final sortedStaffList = staffSet.toList()..sort();
 
     // Filter by staff
-    final staffFilteredOrders = _selectedStaff == 'ALL'
-        ? dateOrders
-        : dateOrders.where((o) => o.salesmanName.toLowerCase().trim() == _selectedStaff.toLowerCase().trim()).toList();
+    final validStaffSelection = (_selectedStaff == 'ALL' || sortedStaffList.contains(_selectedStaff))
+        ? _selectedStaff
+        : 'ALL';
+
+    var filteredOrders = dateOrders;
+
+    if (validStaffSelection != 'ALL') {
+      filteredOrders = filteredOrders
+          .where((o) => o.salesmanName.toLowerCase().trim() == validStaffSelection.toLowerCase().trim())
+          .toList();
+    }
+
+    if (_selectedRouteId != 'ALL') {
+      filteredOrders = filteredOrders
+          .where((o) => o.routeId == _selectedRouteId)
+          .toList();
+    }
 
     // Filter by search query (shop name, order number, route name)
-    final filteredOrders = staffFilteredOrders.where((o) {
+    filteredOrders = filteredOrders.where((o) {
       if (_searchQuery.trim().isEmpty) return true;
       final q = _searchQuery.toLowerCase().trim();
       return MarathiSearchHelper.matches(o.shopName, q) ||
@@ -254,35 +269,138 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
             ),
           ),
 
-          // 2. Staff Filter Chips (Separated: All Staff, Akash, Atharva, Order 1, etc.)
+          // 2. Filter Dropdowns Bar (Staff & Route Filter)
           Container(
             color: Colors.white,
-            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 10),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildStaffFilterChip(
-                    label: 'All Staff',
-                    staffName: 'ALL',
-                    count: dateOrders.length,
-                    isSelected: _selectedStaff == 'ALL',
-                    color: const Color(0xFF1E3A8A),
-                    icon: Icons.groups_rounded,
-                  ),
-                  for (final staff in sortedStaffList) ...[
-                    const SizedBox(width: 8),
-                    _buildStaffFilterChip(
-                      label: staff,
-                      staffName: staff,
-                      count: dateOrders.where((o) => o.salesmanName.toLowerCase().trim() == staff.toLowerCase().trim()).length,
-                      isSelected: _selectedStaff.toLowerCase().trim() == staff.toLowerCase().trim(),
-                      color: _getStaffColor(staff),
-                      icon: _getStaffIcon(staff),
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: Row(
+              children: [
+                // Staff Selector Dropdown
+                Expanded(
+                  flex: 6,
+                  child: Container(
+                    height: 42,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
                     ),
-                  ],
-                ],
-              ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: validStaffSelection,
+                        isExpanded: true,
+                        icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF1E3A8A)),
+                        items: [
+                          DropdownMenuItem<String>(
+                            value: 'ALL',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.groups_rounded, size: 16, color: Color(0xFF1E3A8A)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'All Staff (${dateOrders.length})',
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ...sortedStaffList.map((staff) {
+                            final count = dateOrders.where((o) => o.salesmanName.toLowerCase().trim() == staff.toLowerCase().trim()).length;
+                            final color = _getStaffColor(staff);
+                            return DropdownMenuItem<String>(
+                              value: staff,
+                              child: Row(
+                                children: [
+                                  Icon(_getStaffIcon(staff), size: 16, color: color),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '$staff ($count)',
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _selectedStaff = val);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Route Selector Dropdown
+                Expanded(
+                  flex: 5,
+                  child: Container(
+                    height: 42,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: provider.allRoutes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : 'ALL',
+                        isExpanded: true,
+                        icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF0F766E)),
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: 'ALL',
+                            child: Row(
+                              children: [
+                                Icon(Icons.alt_route_rounded, size: 16, color: Color(0xFF0F766E)),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'All Routes',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ...provider.allRoutes.map((r) {
+                            return DropdownMenuItem<String>(
+                              value: r.id,
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.place_outlined, size: 15, color: Color(0xFF475569)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      r.name,
+                                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _selectedRouteId = val);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -393,67 +511,6 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                   ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildStaffFilterChip({
-    required String label,
-    required String staffName,
-    required int count,
-    required bool isSelected,
-    required Color color,
-    required IconData icon,
-  }) {
-    return InkWell(
-      onTap: () => setState(() => _selectedStaff = staffName),
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? color : color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? color : color.withValues(alpha: 0.3),
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 14,
-              color: isSelected ? Colors.white : color,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                color: isSelected ? Colors.white : color,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withValues(alpha: 0.25) : color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : color,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
