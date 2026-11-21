@@ -66,6 +66,16 @@ class UserModel {
 
   String get plainName => cleanPlainName(name);
 
+  /// Only Super Admin and Akash have permission to assign routes to other staff
+  bool get canAssignRoutes {
+    if (isSuperAdmin) return true;
+    final clean = normalizePhone(phone);
+    if (clean == '9921977636' || clean == '9309862465') return true;
+    final lower = plainName.toLowerCase().trim();
+    if (lower == 'akash' || lower.startsWith('akash ')) return true;
+    return false;
+  }
+
   bool get hasLocation => latitude != null && longitude != null;
 
   String get mapsUrl => hasLocation ? 'https://maps.google.com/?q=$latitude,$longitude' : '';

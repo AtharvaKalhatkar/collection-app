@@ -15,6 +15,7 @@ import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
 import '../widgets/add_product_dialog.dart';
 import 'outlet_order_booking_screen.dart';
+import 'all_orders_screen.dart';
 
 class OrderDashboardScreen extends StatefulWidget {
   final String? initialRouteId;
@@ -932,6 +933,39 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             ],
           ),
         ),
+        if (context.watch<AuthProvider>().currentUser?.isOrder != true)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
+                );
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.filter_list_rounded, size: 16, color: Color(0xFF1E40AF)),
+                    SizedBox(width: 6),
+                    Text(
+                      'Filter Orders by Staff (Akash, Atharva, Order 1) →',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         const Divider(height: 1),
 
         Expanded(
@@ -971,9 +1005,28 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      'Order ID: ${order.orderNumber} • ${DateFormat('hh:mm a').format(order.orderDate)}',
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            order.salesmanName,
+                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Order: ${order.orderNumber} • ${DateFormat('hh:mm a').format(order.orderDate)}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 10),
                     const Divider(height: 1),

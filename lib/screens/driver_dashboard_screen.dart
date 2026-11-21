@@ -957,11 +957,6 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Delivery Map',
-            icon: const Icon(Icons.map_outlined, color: Color(0xFF38BDF8)),
-            onPressed: () => setState(() => _currentTab = 2),
-          ),
-          IconButton(
             tooltip: 'Payment QR',
             icon: const Icon(Icons.qr_code_2_rounded, color: Colors.white),
             onPressed: () => PaymentQrDialog.show(context),

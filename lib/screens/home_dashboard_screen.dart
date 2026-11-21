@@ -20,6 +20,7 @@ import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import 'live_staff_locations_screen.dart';
 import 'order_dashboard_screen.dart';
+import 'all_orders_screen.dart';
 import '../utils/firm_details.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -492,6 +493,11 @@ class HomeDashboardScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
                   );
                 }
+              } else if (val == 'all_orders') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AllOrdersScreen()),
+                );
               } else if (val == 'live_map') {
                 Navigator.push(
                   context,
@@ -548,7 +554,17 @@ class HomeDashboardScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.store_mall_directory_rounded, size: 18, color: Color(0xFF1E40AF)),
                     SizedBox(width: 10),
-                    Text('Book Store Orders (Bizom)'),
+                    Text('Book Store Orders'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'all_orders',
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long_rounded, size: 18, color: Color(0xFF1E3A8A)),
+                    SizedBox(width: 10),
+                    Text('All Booked Orders (By Staff)'),
                   ],
                 ),
               ),
@@ -563,13 +579,15 @@ class HomeDashboardScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+              ],
+              if (context.read<AuthProvider>().currentUser?.canAssignRoutes == true) ...[
                 const PopupMenuItem(
                   value: 'assign_driver_routes',
                   child: Row(
                     children: [
                       Icon(Icons.alt_route_rounded, size: 18, color: Color(0xFF0D9488)),
                       SizedBox(width: 10),
-                      Text('Assign Route'),
+                      Text('Assign Routes'),
                     ],
                   ),
                 ),
@@ -1693,16 +1711,37 @@ class HomeDashboardScreen extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: _buildOverviewGridButton(
-                      title: 'Assign Driver Route',
-                      icon: Icons.alt_route_rounded,
-                      color: const Color(0xFF0D9488),
+                      title: 'All Orders',
+                      badge: '${provider.salesOrders.length}',
+                      icon: Icons.receipt_long_rounded,
+                      color: const Color(0xFF1E3A8A),
                       onTap: () {
-                        _showAssignRouteDialog(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const AllOrdersScreen()),
+                        );
                       },
                     ),
                   ),
                 ],
               ),
+              if (context.watch<AuthProvider>().currentUser?.canAssignRoutes == true) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildOverviewGridButton(
+                        title: 'Assign Routes',
+                        icon: Icons.alt_route_rounded,
+                        color: const Color(0xFF0D9488),
+                        onTap: () {
+                          _showAssignRouteDialog(context);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 20),
             ],
           ),
@@ -1803,17 +1842,21 @@ class HomeDashboardScreen extends StatelessWidget {
 
   void _showAssignRouteDialog(BuildContext context) {
     final auth = context.read<AuthProvider>();
+    final currentUser = auth.currentUser;
+    if (currentUser == null || !currentUser.canAssignRoutes) return;
+
     final provider = context.read<CollectionProvider>();
     final allRoutes = provider.allRoutes;
 
     final drivers = auth.users.where((u) => u.isDriver).toList();
+    final orderStaff = auth.users.where((u) => u.isOrder).toList();
     final salesmen = auth.users.where((u) => u.isSalesman).toList();
     final collectionStaff = auth.users.where((u) => u.role == UserRole.salesman || u.role == UserRole.office).toList();
     final vehicles = provider.vehicles.isNotEmpty ? provider.vehicles : ['MH 14 EM 4724', 'MH 14 GH 1122'];
 
-    String roleOption = 'driver'; // 'driver', 'sales', 'collection'
+    String roleOption = 'driver'; // 'driver', 'order', 'sales', 'collection'
     String selectedVehicle = vehicles.first;
-    UserModel? selectedUser = drivers.isNotEmpty ? drivers.first : (salesmen.isNotEmpty ? salesmen.first : null);
+    UserModel? selectedUser = drivers.isNotEmpty ? drivers.first : (orderStaff.isNotEmpty ? orderStaff.first : (salesmen.isNotEmpty ? salesmen.first : null));
     List<String> selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
 
     showDialog(
@@ -1852,6 +1895,7 @@ class HomeDashboardScreen extends StatelessWidget {
                     ),
                     items: const [
                       DropdownMenuItem(value: 'driver', child: Text('Driver')),
+                      DropdownMenuItem(value: 'order', child: Text('Order Man')),
                       DropdownMenuItem(value: 'sales', child: Text('Sales')),
                       DropdownMenuItem(value: 'collection', child: Text('Collection')),
                     ],
@@ -1861,6 +1905,8 @@ class HomeDashboardScreen extends StatelessWidget {
                           roleOption = val;
                           if (roleOption == 'driver') {
                             selectedUser = drivers.isNotEmpty ? drivers.first : null;
+                          } else if (roleOption == 'order') {
+                            selectedUser = orderStaff.isNotEmpty ? orderStaff.first : null;
                           } else if (roleOption == 'sales') {
                             selectedUser = salesmen.isNotEmpty ? salesmen.first : null;
                           } else {
@@ -1902,6 +1948,26 @@ class HomeDashboardScreen extends StatelessWidget {
                         if (val != null) {
                           setDlgState(() {
                             selectedUser = drivers.firstWhere((d) => d.id == val);
+                            selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ] else if (roleOption == 'order') ...[
+                    // Order Man Selector
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedUser?.id,
+                      decoration: InputDecoration(
+                        labelText: 'Order Man Name',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: orderStaff.map((o) => DropdownMenuItem(value: o.id, child: Text(o.name))).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDlgState(() {
+                            selectedUser = orderStaff.firstWhere((o) => o.id == val);
                             selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
                           });
                         }
