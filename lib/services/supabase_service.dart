@@ -148,6 +148,20 @@ class SupabaseService {
     }
   }
 
+  Future<bool> saveShopsBulk(List<ShopModel> shops) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized || shops.isEmpty) return false;
+
+    try {
+      await client.from('shops').upsert(shops.map((s) => s.toJson()).toList());
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error bulk saving shops to Supabase: $e');
+      return false;
+    }
+  }
+
   Future<bool> deleteShop(String id) async {
     if (!_isInitialized) await init();
     if (!_isInitialized) return false;
@@ -371,13 +385,18 @@ class SupabaseService {
       return data
           .where((row) {
             final id = row['id'] as String? ?? '';
+            final role = (row['role'] as String? ?? '').toLowerCase();
             return id != 'config_gemini_api' &&
                 !id.startsWith('tl_') &&
                 !id.startsWith('timeline_') &&
                 !id.startsWith('att_') &&
                 !id.startsWith('route_order_') &&
                 !id.startsWith('so_') &&
-                !id.startsWith('cp_');
+                !id.startsWith('cp_') &&
+                role != 'sales_order' &&
+                role != 'custom_product' &&
+                role != 'route_order' &&
+                role != 'advance';
           })
           .map((row) => UserModel.fromJson(Map<String, dynamic>.from(row as Map)))
           .toList();

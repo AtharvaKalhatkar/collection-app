@@ -309,7 +309,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     builder: (context) {
                       final auth = context.watch<AuthProvider>();
                       final List<UserModel> staffList = (auth.users.isNotEmpty
-                          ? auth.users.where((u) => u.isActive).toList()
+                          ? auth.users.where((u) =>
+                              u.isActive &&
+                              !u.id.startsWith('so_') &&
+                              !u.id.startsWith('cp_') &&
+                              !u.id.startsWith('att_') &&
+                              !u.id.startsWith('tl_') &&
+                              !u.id.startsWith('timeline_') &&
+                              !u.id.startsWith('route_order_') &&
+                              u.id != 'config_gemini_api' &&
+                              !u.name.toLowerCase().contains('mart') &&
+                              !u.name.toLowerCase().contains('store')).toList()
                           : UserModel.getInitialUsers()).toList();
 
                       // Guarantee Order 1 is always present

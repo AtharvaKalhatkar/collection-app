@@ -11,6 +11,7 @@ import '../services/godown_billing_pdf_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
 import 'outlet_order_booking_screen.dart';
+import '../widgets/tally_sync_dialog.dart';
 
 class AllOrdersScreen extends StatefulWidget {
   final DateTime? initialDate;
@@ -252,7 +253,15 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
           ],
         ),
         actions: [
-          if (filteredOrders.isNotEmpty)
+          if (filteredOrders.isNotEmpty) ...[
+            IconButton(
+              icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
+              tooltip: 'Export Orders to Tally XML',
+              onPressed: () => TallySyncDialog.show(
+                context,
+                initialTabIndex: 0,
+              ),
+            ),
             IconButton(
               icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white),
               tooltip: 'Export Godown Slip PDF',
@@ -264,6 +273,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                 );
               },
             ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white),
             tooltip: 'Refresh',

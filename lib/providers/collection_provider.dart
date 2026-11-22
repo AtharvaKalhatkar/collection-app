@@ -1501,6 +1501,36 @@ class CollectionProvider extends ChangeNotifier {
     return newShop;
   }
 
+  Future<int> addShopsBulk(List<ShopModel> newShops) async {
+    if (newShops.isEmpty) return 0;
+    final toAdd = <ShopModel>[];
+    for (final s in newShops) {
+      final exists = _shops.any((existing) =>
+          existing.name.trim().toLowerCase() == s.name.trim().toLowerCase() &&
+          existing.routeId == s.routeId);
+      if (!exists) {
+        toAdd.add(s);
+      }
+    }
+    if (toAdd.isEmpty) return 0;
+
+    _shops.addAll(toAdd);
+    notifyListeners();
+
+    try {
+      await _storage.saveShops(_shops);
+    } catch (e) {
+      debugPrint('Storage saveShops bulk error: $e');
+    }
+
+    _supabase.saveShopsBulk(toAdd).catchError((e) {
+      debugPrint('Supabase saveShopsBulk error: $e');
+      return false;
+    });
+
+    return toAdd.length;
+  }
+
   Future<ShopModel?> updateShopLocation(
     String shopId, {
     String? locationUrl,
@@ -2011,6 +2041,40 @@ class CollectionProvider extends ChangeNotifier {
     });
 
     return bill;
+  }
+
+  Future<int> addPendingBillsBulk(List<PendingBillModel> newBills) async {
+    if (newBills.isEmpty) return 0;
+
+    // Filter duplicates by billNumber + shopName + businessName
+    final toAdd = <PendingBillModel>[];
+    for (final bill in newBills) {
+      final exists = _pendingBills.any((b) =>
+          b.billNumber.trim().toLowerCase() == bill.billNumber.trim().toLowerCase() &&
+          b.shopName.trim().toLowerCase() == bill.shopName.trim().toLowerCase() &&
+          b.businessName.trim().toLowerCase() == bill.businessName.trim().toLowerCase());
+      if (!exists) {
+        toAdd.add(bill);
+      }
+    }
+
+    if (toAdd.isEmpty) return 0;
+
+    _pendingBills.insertAll(0, toAdd);
+    notifyListeners();
+
+    try {
+      await _storage.savePendingBills(_pendingBills);
+    } catch (e) {
+      debugPrint('Storage savePendingBills bulk error: $e');
+    }
+
+    _supabase.savePendingBillsBulk(toAdd).catchError((e) {
+      debugPrint('Supabase savePendingBillsBulk error: $e');
+      return false;
+    });
+
+    return toAdd.length;
   }
 
   Future<void> updatePendingBill(PendingBillModel updatedBill) async {

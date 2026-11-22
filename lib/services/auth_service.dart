@@ -9,6 +9,23 @@ class AuthService {
   static const String _keyCurrentUserId = 'current_logged_in_user_id_v1';
   final SupabaseService _supabase = SupabaseService();
 
+  static bool _isValidStaff(UserModel u) {
+    if (u.id == 'config_gemini_api') return false;
+    if (u.id.startsWith('so_') ||
+        u.id.startsWith('cp_') ||
+        u.id.startsWith('att_') ||
+        u.id.startsWith('tl_') ||
+        u.id.startsWith('timeline_') ||
+        u.id.startsWith('route_order_')) {
+      return false;
+    }
+    final lowerName = u.name.toLowerCase();
+    if (lowerName.contains('mart') || lowerName.contains('store')) {
+      return false;
+    }
+    return true;
+  }
+
   Future<List<UserModel>> loadUsers() async {
     final prefs = await SharedPreferences.getInstance();
     List<UserModel> users = [];
@@ -20,7 +37,7 @@ class AuthService {
         final List<dynamic> list = jsonDecode(jsonStr);
         users = list
             .map((item) => UserModel.fromJson(item as Map<String, dynamic>))
-            .where((u) => u.id != 'config_gemini_api')
+            .where(_isValidStaff)
             .toList();
       } catch (e) {
         debugPrint('Error decoding users cache: $e');
@@ -41,7 +58,7 @@ class AuthService {
       if (_supabase.isInitialized) {
         final cloudUsers = await _supabase.fetchUsers();
         if (cloudUsers.isNotEmpty) {
-          users = cloudUsers.where((u) => u.id != 'config_gemini_api').toList();
+          users = cloudUsers.where(_isValidStaff).toList();
           // Ensure driver user is present if missing
           if (!users.any((u) => u.phone == 'user1' || u.role == UserRole.driver)) {
             final driver = UserModel(

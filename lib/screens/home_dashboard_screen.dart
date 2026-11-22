@@ -21,6 +21,7 @@ import 'profile_screen.dart';
 import 'live_staff_locations_screen.dart';
 import 'order_dashboard_screen.dart';
 import 'all_orders_screen.dart';
+import '../widgets/tally_sync_dialog.dart';
 import '../utils/firm_details.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1725,10 +1726,10 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              if (context.watch<AuthProvider>().currentUser?.canAssignRoutes == true) ...[
-                const SizedBox(height: 10),
-                Row(
-                  children: [
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  if (context.watch<AuthProvider>().currentUser?.canAssignRoutes == true) ...[
                     Expanded(
                       child: _buildOverviewGridButton(
                         title: 'Assign Routes',
@@ -1739,9 +1740,20 @@ class HomeDashboardScreen extends StatelessWidget {
                         },
                       ),
                     ),
+                    const SizedBox(width: 10),
                   ],
-                ),
-              ],
+                  Expanded(
+                    child: _buildOverviewGridButton(
+                      title: 'Tally Hub',
+                      icon: Icons.swap_horiz_rounded,
+                      color: const Color(0xFF0284C7),
+                      onTap: () {
+                        TallySyncDialog.show(context);
+                      },
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 20),
             ],
           ),
