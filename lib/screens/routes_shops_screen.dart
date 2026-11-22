@@ -17,6 +17,7 @@ import '../utils/firm_details.dart';
 import '../services/location_service.dart';
 import '../utils/marathi_search_helper.dart';
 import '../widgets/tally_sync_dialog.dart';
+import '../providers/auth_provider.dart';
 
 class RoutesShopsScreen extends StatefulWidget {
   final VoidCallback? onBackToOverview;
@@ -810,14 +811,15 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
               }
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded, size: 20),
-            tooltip: 'Tally Hub (Masters Sync)',
-            onPressed: () => TallySyncDialog.show(
-              context,
-              initialTabIndex: 0,
+          if (context.watch<AuthProvider>().currentUser?.canAccessTally == true)
+            IconButton(
+              icon: const Icon(Icons.swap_horiz_rounded, size: 20),
+              tooltip: 'Tally Hub (Masters Sync)',
+              onPressed: () => TallySyncDialog.show(
+                context,
+                initialTabIndex: 0,
+              ),
             ),
-          ),
           IconButton(
             icon: const Icon(Icons.table_view_outlined, size: 20),
             tooltip: 'Export Outlets to Excel',

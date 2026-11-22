@@ -14,6 +14,7 @@ import '../utils/file_download/file_download.dart';
 import 'collection_details_dialog.dart';
 import '../utils/marathi_search_helper.dart';
 import '../widgets/tally_sync_dialog.dart';
+import '../providers/auth_provider.dart';
 
 class StatementScreen extends StatefulWidget {
   final String? initialBusiness;
@@ -775,15 +776,16 @@ class _StatementScreenState extends State<StatementScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded),
-            tooltip: 'Tally Hub (Export Receipts)',
-            onPressed: () => TallySyncDialog.show(
-              context,
-              initialTabIndex: 0,
-              initialFirm: _selectedBusiness,
+          if (context.watch<AuthProvider>().currentUser?.canAccessTally == true)
+            IconButton(
+              icon: const Icon(Icons.swap_horiz_rounded),
+              tooltip: 'Tally Hub (Export Receipts)',
+              onPressed: () => TallySyncDialog.show(
+                context,
+                initialTabIndex: 0,
+                initialFirm: _selectedBusiness,
+              ),
             ),
-          ),
           IconButton(
             icon: const Icon(Icons.calendar_month_outlined, size: 20),
             tooltip: 'Select Date',

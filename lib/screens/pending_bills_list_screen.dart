@@ -12,6 +12,7 @@ import 'make_collection_screen.dart';
 import '../utils/marathi_search_helper.dart';
 import '../utils/quick_alert.dart';
 import '../widgets/tally_sync_dialog.dart';
+import '../providers/auth_provider.dart';
 
 class PendingBillsListScreen extends StatefulWidget {
   final DateTime? initialInvoiceDate;
@@ -169,15 +170,16 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded),
-            tooltip: 'Tally Hub (Import / Export)',
-            onPressed: () => TallySyncDialog.show(
-              context,
-              initialTabIndex: 1,
-              initialFirm: _selectedFirm,
+          if (context.watch<AuthProvider>().currentUser?.canAccessTally == true)
+            IconButton(
+              icon: const Icon(Icons.swap_horiz_rounded),
+              tooltip: 'Tally Hub (Import / Export)',
+              onPressed: () => TallySyncDialog.show(
+                context,
+                initialTabIndex: 1,
+                initialFirm: _selectedFirm,
+              ),
             ),
-          ),
           IconButton(
             icon: const Icon(Icons.sync_rounded),
             tooltip: 'Sync Bills across Devices',

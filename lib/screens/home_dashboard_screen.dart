@@ -323,6 +323,10 @@ class HomeDashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CollectionProvider>();
+    final auth = context.watch<AuthProvider>();
+    final currentUser = auth.currentUser;
+    final canAssign = currentUser?.canAssignRoutes == true;
+    final canTally = currentUser?.canAccessTally == true;
 
     if (provider.isLoading) {
       return const Scaffold(
@@ -1726,34 +1730,36 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  if (context.watch<AuthProvider>().currentUser?.canAssignRoutes == true) ...[
-                    Expanded(
-                      child: _buildOverviewGridButton(
-                        title: 'Assign Routes',
-                        icon: Icons.alt_route_rounded,
-                        color: const Color(0xFF0D9488),
-                        onTap: () {
-                          _showAssignRouteDialog(context);
-                        },
+              if (canAssign || canTally) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    if (canAssign)
+                      Expanded(
+                        child: _buildOverviewGridButton(
+                          title: 'Assign Routes',
+                          icon: Icons.alt_route_rounded,
+                          color: const Color(0xFF0D9488),
+                          onTap: () {
+                            _showAssignRouteDialog(context);
+                          },
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
+                    if (canAssign && canTally) const SizedBox(width: 10),
+                    if (canTally)
+                      Expanded(
+                        child: _buildOverviewGridButton(
+                          title: 'Tally Hub',
+                          icon: Icons.swap_horiz_rounded,
+                          color: const Color(0xFF0284C7),
+                          onTap: () {
+                            TallySyncDialog.show(context);
+                          },
+                        ),
+                      ),
                   ],
-                  Expanded(
-                    child: _buildOverviewGridButton(
-                      title: 'Tally Hub',
-                      icon: Icons.swap_horiz_rounded,
-                      color: const Color(0xFF0284C7),
-                      onTap: () {
-                        TallySyncDialog.show(context);
-                      },
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
               const SizedBox(height: 20),
             ],
           ),

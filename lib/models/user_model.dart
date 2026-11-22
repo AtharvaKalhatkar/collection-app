@@ -76,6 +76,9 @@ class UserModel {
     return false;
   }
 
+  /// Only Super Admin and Office Staff have permission to access Tally integration Hub
+  bool get canAccessTally => isSuperAdmin || isOffice;
+
   bool get hasLocation => latitude != null && longitude != null;
 
   String get mapsUrl => hasLocation ? 'https://maps.google.com/?q=$latitude,$longitude' : '';

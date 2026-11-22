@@ -254,14 +254,15 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
         ),
         actions: [
           if (filteredOrders.isNotEmpty) ...[
-            IconButton(
-              icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
-              tooltip: 'Export Orders to Tally XML',
-              onPressed: () => TallySyncDialog.show(
-                context,
-                initialTabIndex: 0,
+            if (auth.currentUser?.canAccessTally == true)
+              IconButton(
+                icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
+                tooltip: 'Export Orders to Tally XML',
+                onPressed: () => TallySyncDialog.show(
+                  context,
+                  initialTabIndex: 0,
+                ),
               ),
-            ),
             IconButton(
               icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white),
               tooltip: 'Export Godown Slip PDF',
