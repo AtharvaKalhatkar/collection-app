@@ -430,11 +430,17 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
   Widget build(BuildContext context) {
     final provider = context.watch<CollectionProvider>();
     final routes = provider.routes;
+    final screenHeight = MediaQuery.of(context).size.height;
 
-    return Center(
+    return Align(
+      alignment: Alignment.bottomCenter,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 580),
+        constraints: BoxConstraints(
+          maxWidth: 600,
+          maxHeight: screenHeight * 0.90,
+        ),
         child: Container(
+          height: screenHeight * 0.88,
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -442,186 +448,190 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
               BoxShadow(color: Colors.black26, blurRadius: 24, spreadRadius: 4),
             ],
           ),
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 14,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Grab Handle
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+          child: SafeArea(
+            top: false,
+            bottom: true,
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 14,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 12,
               ),
-
-              // Title Bar
-              Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E3A8A).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.swap_horiz_rounded, color: Color(0xFF1E3A8A), size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Tally Prime & ERP 9 Hub',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        Text(
-                          'Seamless two-way XML & Excel integration',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Filter Controls (Firm & Date Range)
-              Row(
-                children: [
-                  // Firm Selector
-                  Expanded(
+                  // Grab Handle
+                  Center(
                     child: Container(
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      width: 44,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedFirm,
-                          isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF1E3A8A)),
-                          items: const [
-                            DropdownMenuItem(value: 'Purva Enterprises', child: Text('Purva Enterprises', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                            DropdownMenuItem(value: 'Manas Sales', child: Text('Manas Sales', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                            DropdownMenuItem(value: 'All', child: Text('All Companies', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                    ),
+                  ),
+
+                  // Title Bar
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E3A8A).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.swap_horiz_rounded, color: Color(0xFF1E3A8A), size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Tally Prime & ERP 9 Hub',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            Text(
+                              'Seamless two-way XML & Excel integration',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                            ),
                           ],
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedFirm = val);
-                          },
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // Date Range
-                  Container(
-                    height: 40,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _dateRange,
-                        icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF1E3A8A)),
-                        items: const [
-                          DropdownMenuItem(value: 'today', child: Text('Today Only', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                          DropdownMenuItem(value: 'week', child: Text('Last 7 Days', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                          DropdownMenuItem(value: 'all', child: Text('All Records', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) setState(() => _dateRange = val);
-                        },
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                        onPressed: () => Navigator.pop(context),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Tab Selector (Export / Import)
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: const Color(0xFF475569),
-                  indicator: BoxDecoration(
-                    color: const Color(0xFF1E3A8A),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  tabs: const [
-                    Tab(
-                      icon: Icon(Icons.file_upload_outlined, size: 18),
-                      text: 'Export to Tally',
-                    ),
-                    Tab(
-                      icon: Icon(Icons.file_download_outlined, size: 18),
-                      text: 'Import from Tally',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Tab Views
-              if (_isProcessing)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        CircularProgressIndicator(color: Color(0xFF1E3A8A)),
-                        SizedBox(height: 12),
-                        Text('Processing Tally Data...', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                SizedBox(
-                  height: 340,
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      // TAB 1: EXPORT
-                      _buildExportTab(provider),
-                      // TAB 2: IMPORT
-                      _buildImportTab(provider, routes),
                     ],
                   ),
-                ),
-            ],
+                  const SizedBox(height: 14),
+
+                  // Filter Controls (Firm & Date Range)
+                  Row(
+                    children: [
+                      // Firm Selector
+                      Expanded(
+                        child: Container(
+                          height: 40,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedFirm,
+                              isExpanded: true,
+                              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF1E3A8A)),
+                              items: const [
+                                DropdownMenuItem(value: 'Purva Enterprises', child: Text('Purva Enterprises', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                                DropdownMenuItem(value: 'Manas Sales', child: Text('Manas Sales', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                                DropdownMenuItem(value: 'All', child: Text('All Companies', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) setState(() => _selectedFirm = val);
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Date Range
+                      Container(
+                        height: 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _dateRange,
+                            icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF1E3A8A)),
+                            items: const [
+                              DropdownMenuItem(value: 'today', child: Text('Today Only', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                              DropdownMenuItem(value: 'week', child: Text('Last 7 Days', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                              DropdownMenuItem(value: 'all', child: Text('All Records', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setState(() => _dateRange = val);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Tab Selector (Export / Import)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: const Color(0xFF475569),
+                      indicator: BoxDecoration(
+                        color: const Color(0xFF1E3A8A),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      dividerColor: Colors.transparent,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      tabs: const [
+                        Tab(
+                          icon: Icon(Icons.file_upload_outlined, size: 18),
+                          text: 'Export to Tally',
+                        ),
+                        Tab(
+                          icon: Icon(Icons.file_download_outlined, size: 18),
+                          text: 'Import from Tally',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Tab Views
+                  if (_isProcessing)
+                    const Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(color: Color(0xFF1E3A8A)),
+                            SizedBox(height: 12),
+                            Text('Processing Tally Data...', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          // TAB 1: EXPORT
+                          _buildExportTab(provider),
+                          // TAB 2: IMPORT
+                          _buildImportTab(provider, routes),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
