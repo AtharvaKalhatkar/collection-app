@@ -39,6 +39,7 @@ class _AddProductDialogState extends State<AddProductDialog> {
   final _weightKgController = TextEditingController(text: '0.0');
   final _rateController = TextEditingController();
   final _mrpController = TextEditingController();
+  final _photoUrlController = TextEditingController();
 
   bool _isNewCompany = false;
   bool _isNewCategory = false;
@@ -89,6 +90,7 @@ class _AddProductDialogState extends State<AddProductDialog> {
     _weightKgController.dispose();
     _rateController.dispose();
     _mrpController.dispose();
+    _photoUrlController.dispose();
     super.dispose();
   }
 
@@ -113,6 +115,7 @@ class _AddProductDialogState extends State<AddProductDialog> {
     final mrp = double.tryParse(_mrpController.text.trim()) ?? rate;
     final unitsPerCase = int.tryParse(_unitsPerCaseController.text.trim()) ?? 24;
     final weightKg = double.tryParse(_weightKgController.text.trim()) ?? 0.0;
+    final photoUrl = _photoUrlController.text.trim().isNotEmpty ? _photoUrlController.text.trim() : null;
 
     final customId = 'cust-${DateTime.now().millisecondsSinceEpoch}';
 
@@ -129,6 +132,7 @@ class _AddProductDialogState extends State<AddProductDialog> {
       defaultUnit: _selectedUnit,
       unitsPerCase: unitsPerCase,
       weightKg: weightKg,
+      photoUrl: photoUrl,
     );
 
     final provider = Provider.of<CollectionProvider>(context, listen: false);
@@ -573,6 +577,49 @@ class _AddProductDialogState extends State<AddProductDialog> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+
+                  // Photo URL
+                  const Text('Product Photo URL (Optional)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 6),
+                  TextFormField(
+                    controller: _photoUrlController,
+                    decoration: InputDecoration(
+                      hintText: 'https://... image link or direct photo URL',
+                      prefixIcon: const Icon(Icons.photo_camera_outlined, size: 20),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  if (_photoUrlController.text.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 90,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Center(
+                          child: Image.network(
+                            _photoUrlController.text.trim(),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.broken_image_outlined, size: 18, color: Colors.red),
+                                SizedBox(width: 6),
+                                Text('Cannot load image preview', style: TextStyle(color: Colors.red, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 22),
 
                   // Action Buttons

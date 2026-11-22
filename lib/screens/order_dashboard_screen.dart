@@ -90,19 +90,165 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
     setState(() {});
   }
 
-  Future<void> _openOutletOrder(ShopModel shop) async {
+  Future<void> _openOutletOrder(ShopModel shop, {SalesOrderModel? existingOrder}) async {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => OutletOrderBookingScreen(
           shop: shop,
           selectedDate: _selectedDate,
+          existingOrder: existingOrder,
         ),
       ),
     );
     if (result == true) {
       setState(() {});
     }
+  }
+
+  void _confirmDeleteOrder(SalesOrderModel order) {
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        title: const Text('Delete Order?'),
+        content: Text('Are you sure you want to delete order #${order.orderNumber} for ${order.shopName}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            onPressed: () async {
+              Navigator.pop(dlgCtx);
+              final provider = Provider.of<CollectionProvider>(context, listen: false);
+              await provider.deleteSalesOrder(order.id);
+              if (mounted) setState(() {});
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCompletedShopSheet(ShopModel shop, SalesOrderModel order) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    shop.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDCFCE7),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'Order Booked',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Order #${order.orderNumber} • ${DateFormat('dd MMM hh:mm a').format(order.orderDate)}',
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+            ),
+            Text(
+              'Amount: ₹${CurrencyFormatter.format(order.totalAmount)} • ${order.totalCases} CS, ${order.totalLooseUnits} UT (${order.items.length} lines)',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.picture_as_pdf_rounded, size: 16, color: Color(0xFFDC2626)),
+                    label: const Text('Godown Slip'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFDC2626),
+                      side: const BorderSide(color: Color(0xFFDC2626)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      GodownBillingPdfService.previewOrSharePdf(
+                        context,
+                        orders: [order],
+                        salesmanName: order.salesmanName,
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.edit_note_rounded, size: 16, color: Colors.white),
+                    label: const Text('Edit Order', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E40AF),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _openOutletOrder(shop, existingOrder: order);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                    label: const Text('Delete Order', style: TextStyle(color: Colors.red)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.red),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _confirmDeleteOrder(order);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.add_shopping_cart, size: 16, color: Color(0xFF16A34A)),
+                    label: const Text('Book Additional', style: TextStyle(color: Color(0xFF16A34A))),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF16A34A)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _openOutletOrder(shop);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -113,7 +259,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
 
     // Filter available routes for this user
     List<RouteModel> availableRoutes = provider.allRoutes;
-    if (user != null && user.isOrder && user.assignedRouteIds.isNotEmpty) {
+    if (user != null && !user.isSuperAdmin && !user.isOffice && user.assignedRouteIds.isNotEmpty) {
       availableRoutes = provider.allRoutes
           .where((r) => user.assignedRouteIds.contains(r.id))
           .toList();
@@ -137,12 +283,17 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
         .where((s) => s.routeId == _selectedRouteId)
         .toList();
 
-    // Today's orders for this route and date
-    final dateOrders = provider.salesOrders
+    // Today's orders for this date
+    final allDateOrders = provider.salesOrders
         .where((o) => _isSameDay(o.orderDate, _selectedDate))
         .toList();
 
-    final bookedShopIds = dateOrders.map((o) => o.shopId).toSet();
+    // Separate orders by staff: if non-admin/office, show only this user's orders in Orders tab
+    final userDateOrders = (user != null && !user.isSuperAdmin && !user.isOffice)
+        ? allDateOrders.where((o) => o.salesmanName.toLowerCase().trim() == user.plainName.toLowerCase().trim()).toList()
+        : allDateOrders;
+
+    final bookedShopIds = allDateOrders.map((o) => o.shopId).toSet();
 
     // Group shops: Completed vs Pending
     final completedShops = allRouteShops.where((s) => bookedShopIds.contains(s.id)).toList();
@@ -234,7 +385,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                       ),
                       const SizedBox(width: 6),
                       _buildHeaderTabChip(
-                        title: 'Orders (${dateOrders.length})',
+                        title: 'Orders (${userDateOrders.length})',
                         icon: Icons.receipt_long,
                         isSelected: _currentBottomNavIndex == 2,
                         onTap: () => setState(() => _currentBottomNavIndex = 2),
@@ -254,14 +405,14 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             pendingShops,
             completedShops,
             allRouteShops,
-            dateOrders,
+            allDateOrders,
           ),
           _buildOrderMapTab(
             allRouteShops,
             completedShops,
             bookedShopIds,
           ),
-          _buildTransactionsTab(dateOrders),
+          _buildTransactionsTab(userDateOrders),
         ],
       ),
       bottomNavigationBar: widget.isEmbedded
@@ -283,7 +434,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                 NavigationDestination(
                   icon: const Icon(Icons.receipt_long_outlined),
                   selectedIcon: const Icon(Icons.receipt_long, color: Color(0xFF1E40AF)),
-                  label: 'Orders (${dateOrders.length})',
+                  label: 'Orders (${userDateOrders.length})',
                 ),
               ],
             ),
@@ -544,7 +695,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             ),
           ),
           child: InkWell(
-            onTap: () => _openOutletOrder(shop),
+            onTap: () => hasOrder ? _showCompletedShopSheet(shop, orderForShop) : _openOutletOrder(shop),
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -626,10 +777,26 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                             launchUrl(Uri.parse(shop.mapsUrl!), mode: LaunchMode.externalApplication);
                           } else if (val == 'order') {
                             _openOutletOrder(shop);
+                          } else if (val == 'edit_order' && orderForShop != null) {
+                            _openOutletOrder(shop, existingOrder: orderForShop);
+                          } else if (val == 'delete_order' && orderForShop != null) {
+                            _confirmDeleteOrder(orderForShop);
+                          } else if (val == 'pdf' && orderForShop != null) {
+                            GodownBillingPdfService.previewOrSharePdf(
+                              context,
+                              orders: [orderForShop],
+                              salesmanName: orderForShop.salesmanName,
+                            );
                           }
                         },
                         itemBuilder: (_) => [
-                          const PopupMenuItem(value: 'order', child: Text('Book Order')),
+                          if (hasOrder) ...[
+                            const PopupMenuItem(value: 'edit_order', child: Text('Edit Booked Order')),
+                            const PopupMenuItem(value: 'order', child: Text('Book Additional Order')),
+                            const PopupMenuItem(value: 'pdf', child: Text('Godown Slip PDF')),
+                            const PopupMenuItem(value: 'delete_order', child: Text('Delete Order', style: TextStyle(color: Colors.red))),
+                          ] else
+                            const PopupMenuItem(value: 'order', child: Text('Book Order')),
                           if (shop.mobileNumber.isNotEmpty)
                             const PopupMenuItem(value: 'call', child: Text('Call Store')),
                           if (shop.hasLocation)
@@ -815,6 +982,11 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
   }
 
   void _showShopMapBottomSheet(ShopModel shop, bool hasOrder) {
+    final provider = Provider.of<CollectionProvider>(context, listen: false);
+    final orderForShop = provider.salesOrders
+        .where((o) => o.shopId == shop.id && _isSameDay(o.orderDate, _selectedDate))
+        .firstOrNull;
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
@@ -851,6 +1023,13 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             ),
             const SizedBox(height: 6),
             Text(shop.address, style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+            if (orderForShop != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Booked: ₹${CurrencyFormatter.format(orderForShop.totalAmount)} (${orderForShop.totalCases} CS, ${orderForShop.totalLooseUnits} UT)',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Color(0xFF15803D)),
+              ),
+            ],
             const SizedBox(height: 14),
             Row(
               children: [
@@ -878,11 +1057,11 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                   flex: 2,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E40AF)),
-                    icon: const Icon(Icons.add_shopping_cart, size: 16, color: Colors.white),
-                    label: const Text('Book Order', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    icon: Icon(hasOrder ? Icons.edit_note_rounded : Icons.add_shopping_cart, size: 16, color: Colors.white),
+                    label: Text(hasOrder ? 'Edit Order' : 'Book Order', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     onPressed: () {
                       Navigator.pop(ctx);
-                      _openOutletOrder(shop);
+                      _openOutletOrder(shop, existingOrder: orderForShop);
                     },
                   ),
                 ),
@@ -895,6 +1074,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
   }
 
   Widget _buildTransactionsTab(List<SalesOrderModel> dateOrders) {
+    final provider = context.watch<CollectionProvider>();
     if (dateOrders.isEmpty) {
       return Center(
         child: Padding(
@@ -1070,13 +1250,13 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                     ),
                     const SizedBox(height: 10),
 
-                    // Sharing actions
+                    // Sharing & Management actions
                     Row(
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
-                            icon: const Icon(Icons.picture_as_pdf_rounded, size: 16, color: Color(0xFFDC2626)),
-                            label: const Text('Godown Slip'),
+                            icon: const Icon(Icons.picture_as_pdf_rounded, size: 15, color: Color(0xFFDC2626)),
+                            label: const Text('Slip', style: TextStyle(fontSize: 12)),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFFDC2626),
                               side: const BorderSide(color: Color(0xFFDC2626)),
@@ -1089,11 +1269,11 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Expanded(
                           child: ElevatedButton.icon(
-                            icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
-                            label: const Text('WhatsApp'),
+                            icon: const Icon(Icons.send_rounded, size: 15, color: Colors.white),
+                            label: const Text('WhatsApp', style: TextStyle(fontSize: 12)),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF25D366),
                               foregroundColor: Colors.white,
@@ -1107,6 +1287,21 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                               } catch (_) {}
                             },
                           ),
+                        ),
+                        const SizedBox(width: 6),
+                        IconButton(
+                          tooltip: 'Edit Order',
+                          icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF1E40AF), size: 22),
+                          onPressed: () {
+                            final shop = provider.allShops.where((s) => s.id == order.shopId).firstOrNull ??
+                                ShopModel(id: order.shopId, name: order.shopName, address: '', routeId: order.routeId, routeName: order.routeName, mobileNumber: order.shopMobile);
+                            _openOutletOrder(shop, existingOrder: order);
+                          },
+                        ),
+                        IconButton(
+                          tooltip: 'Delete Order',
+                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+                          onPressed: () => _confirmDeleteOrder(order),
                         ),
                       ],
                     ),

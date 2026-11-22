@@ -828,6 +828,53 @@ class CollectionProvider extends ChangeNotifier {
         debugPrint('Auto background sync users/attendance notice: $e');
       }
 
+      // 6. Synchronize Sales Orders & Custom Products across all devices
+      try {
+        if (_supabase.isInitialized) {
+          final cloudOrders = await _supabase.fetchSalesOrders();
+          if (cloudOrders.isNotEmpty) {
+            final localMap = {for (final o in _salesOrders) o.id: o};
+            bool ordersChanged = false;
+            for (final co in cloudOrders) {
+              if (!localMap.containsKey(co.id)) {
+                _salesOrders.add(co);
+                ordersChanged = true;
+              }
+            }
+            if (ordersChanged) {
+              _salesOrders.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+              await _storage.saveSalesOrders(_salesOrders);
+              hasDataChanged = true;
+            }
+          }
+          // Push local orders that might be missing in cloud
+          for (final lo in _salesOrders) {
+            if (!cloudOrders.any((co) => co.id == lo.id)) {
+              await _supabase.saveSalesOrder(lo);
+            }
+          }
+
+          final cloudProducts = await _supabase.fetchCustomProducts();
+          if (cloudProducts.isNotEmpty) {
+            final localProdMap = {for (final p in _customProducts) p.id: p};
+            bool prodChanged = false;
+            for (final cp in cloudProducts) {
+              if (!localProdMap.containsKey(cp.id)) {
+                _customProducts.add(cp);
+                prodChanged = true;
+              }
+            }
+            if (prodChanged) {
+              OrderCatalogService.setCustomProducts(_customProducts);
+              await _storage.saveCustomProducts(_customProducts);
+              hasDataChanged = true;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Auto sync orders/custom products notice: $e');
+      }
+
       if (hasDataChanged) {
         _invalidateCaches();
       }
@@ -2303,14 +2350,29 @@ _Daily Collection Pro Cash Verification_
 
   // --- Sales Order Operations ---
   Future<void> addSalesOrder(SalesOrderModel order) async {
+    _salesOrders.removeWhere((o) => o.id == order.id);
     _salesOrders.insert(0, order);
     await _storage.saveSalesOrders(_salesOrders);
+    if (_supabase.isInitialized) {
+      try {
+        await _supabase.saveSalesOrder(order);
+      } catch (e) {
+        debugPrint('Error saving sales order to cloud: $e');
+      }
+    }
     notifyListeners();
   }
 
   Future<void> deleteSalesOrder(String orderId) async {
     _salesOrders.removeWhere((o) => o.id == orderId);
     await _storage.saveSalesOrders(_salesOrders);
+    if (_supabase.isInitialized) {
+      try {
+        await _supabase.deleteSalesOrder(orderId);
+      } catch (e) {
+        debugPrint('Error deleting sales order from cloud: $e');
+      }
+    }
     notifyListeners();
   }
 
@@ -2333,6 +2395,13 @@ _Daily Collection Pro Cash Verification_
     _customProducts.add(product);
     OrderCatalogService.addCustomProduct(product);
     await _storage.saveCustomProducts(_customProducts);
+    if (_supabase.isInitialized) {
+      try {
+        await _supabase.saveCustomProduct(product);
+      } catch (e) {
+        debugPrint('Error saving custom product to cloud: $e');
+      }
+    }
     notifyListeners();
   }
 

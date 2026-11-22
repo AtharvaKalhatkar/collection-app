@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/order_model.dart';
+import '../models/shop_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/collection_provider.dart';
 import '../services/godown_billing_pdf_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
+import 'outlet_order_booking_screen.dart';
 
 class AllOrdersScreen extends StatefulWidget {
   final DateTime? initialDate;
@@ -114,6 +116,59 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     try {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } catch (_) {}
+  }
+
+  void _confirmDeleteOrder(SalesOrderModel order) {
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        title: const Text('Delete Order?'),
+        content: Text('Are you sure you want to delete order #${order.orderNumber} for ${order.shopName}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            onPressed: () async {
+              Navigator.pop(dlgCtx);
+              final provider = Provider.of<CollectionProvider>(context, listen: false);
+              await provider.deleteSalesOrder(order.id);
+              if (mounted) setState(() {});
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openEditOrder(SalesOrderModel order) async {
+    final provider = Provider.of<CollectionProvider>(context, listen: false);
+    final shop = provider.allShops.where((s) => s.id == order.shopId).firstOrNull ??
+        ShopModel(
+          id: order.shopId,
+          name: order.shopName,
+          address: '',
+          routeId: order.routeId,
+          routeName: order.routeName,
+          mobileNumber: order.shopMobile,
+        );
+
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OutletOrderBookingScreen(
+          shop: shop,
+          selectedDate: order.orderDate,
+          existingOrder: order,
+        ),
+      ),
+    );
+    if (result == true && mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -711,7 +766,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                   },
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.send_rounded, size: 15, color: Colors.white),
@@ -722,6 +777,17 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                   ),
                   onPressed: () => _shareOnWhatsApp(order),
                 ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Edit Order',
+                icon: const Icon(Icons.edit_note_rounded, color: Color(0xFF1E3A8A), size: 22),
+                onPressed: () => _openEditOrder(order),
+              ),
+              IconButton(
+                tooltip: 'Delete Order',
+                icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+                onPressed: () => _confirmDeleteOrder(order),
               ),
             ],
           ),

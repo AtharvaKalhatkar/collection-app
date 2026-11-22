@@ -8,6 +8,7 @@ import '../models/pending_bill_model.dart';
 import '../models/user_model.dart';
 import '../models/location_timeline_entry.dart';
 import '../models/attendance_record.dart';
+import '../models/order_model.dart';
 
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
@@ -727,6 +728,138 @@ class SupabaseService {
       return true;
     } catch (e) {
       debugPrint('Error saving route outlet order to Supabase: $e');
+      return false;
+    }
+  }
+
+  // --- Sales Orders Cloud Sync (Stored in app_users with prefix so_) ---
+  Future<List<SalesOrderModel>> fetchSalesOrders() async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return [];
+
+    try {
+      final List<dynamic> data = await client
+          .from('app_users')
+          .select()
+          .like('id', 'so_%');
+
+      final list = <SalesOrderModel>[];
+      for (final row in data) {
+        try {
+          final pass = row['password'] as String? ?? '';
+          if (pass.startsWith('{') && pass.endsWith('}')) {
+            final json = jsonDecode(pass) as Map<String, dynamic>;
+            list.add(SalesOrderModel.fromJson(json));
+          }
+        } catch (e) {
+          debugPrint('Error parsing sales order row: $e');
+        }
+      }
+      return list;
+    } catch (e) {
+      debugPrint('Error fetching sales orders from Supabase: $e');
+      return [];
+    }
+  }
+
+  Future<bool> saveSalesOrder(SalesOrderModel order) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').upsert({
+        'id': 'so_${order.id}',
+        'name': order.shopName,
+        'role': 'sales_order',
+        'phone': order.salesmanName,
+        'password': jsonEncode(order.toJson()),
+        'isActive': true,
+        'createdAt': order.orderDate.toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error saving sales order to Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteSalesOrder(String orderId) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').delete().eq('id', 'so_$orderId');
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error deleting sales order from Supabase: $e');
+      return false;
+    }
+  }
+
+  // --- Custom Products Master Cloud Sync (Stored in app_users with prefix cp_) ---
+  Future<List<CatalogProduct>> fetchCustomProducts() async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return [];
+
+    try {
+      final List<dynamic> data = await client
+          .from('app_users')
+          .select()
+          .like('id', 'cp_%');
+
+      final list = <CatalogProduct>[];
+      for (final row in data) {
+        try {
+          final pass = row['password'] as String? ?? '';
+          if (pass.startsWith('{') && pass.endsWith('}')) {
+            final json = jsonDecode(pass) as Map<String, dynamic>;
+            list.add(CatalogProduct.fromJson(json));
+          }
+        } catch (e) {
+          debugPrint('Error parsing custom product row: $e');
+        }
+      }
+      return list;
+    } catch (e) {
+      debugPrint('Error fetching custom products from Supabase: $e');
+      return [];
+    }
+  }
+
+  Future<bool> saveCustomProduct(CatalogProduct product) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').upsert({
+        'id': 'cp_${product.id}',
+        'name': product.name,
+        'role': 'custom_product',
+        'phone': product.company,
+        'password': jsonEncode(product.toJson()),
+        'isActive': true,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error saving custom product to Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteCustomProduct(String productId) async {
+    if (!_isInitialized) await init();
+    if (!_isInitialized) return false;
+
+    try {
+      await client.from('app_users').delete().eq('id', 'cp_$productId');
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error deleting custom product from Supabase: $e');
       return false;
     }
   }

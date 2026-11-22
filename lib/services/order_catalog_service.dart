@@ -55,8 +55,8 @@ class OrderCatalogService {
   static List<String> getCategories([String? firm, String? company]) {
     final Set<String> categories = {};
     for (final p in allProducts) {
-      final firmMatch = firm == null || p.firm.toLowerCase() == firm.toLowerCase();
-      final compMatch = company == null || company.isEmpty || p.company.toLowerCase() == company.toLowerCase();
+      final firmMatch = firm == null || firm.isEmpty || firm == 'All' || p.firm.toLowerCase() == firm.toLowerCase();
+      final compMatch = company == null || company.isEmpty || company == 'All' || company == 'All Companies' || p.company.toLowerCase() == company.toLowerCase();
       if (firmMatch && compMatch && p.category.trim().isNotEmpty) {
         categories.add(p.category.trim());
       }
@@ -71,9 +71,9 @@ class OrderCatalogService {
   static List<String> getSubcategories([String? firm, String? company, String? category]) {
     final Set<String> subcategories = {};
     for (final p in allProducts) {
-      final firmMatch = firm == null || p.firm.toLowerCase() == firm.toLowerCase();
-      final compMatch = company == null || company.isEmpty || p.company.toLowerCase() == company.toLowerCase();
-      final catMatch = category == null || category.isEmpty || p.category.toLowerCase() == category.toLowerCase();
+      final firmMatch = firm == null || firm.isEmpty || firm == 'All' || p.firm.toLowerCase() == firm.toLowerCase();
+      final compMatch = company == null || company.isEmpty || company == 'All' || company == 'All Companies' || p.company.toLowerCase() == company.toLowerCase();
+      final catMatch = category == null || category.isEmpty || category == 'All' || category == 'All Category' || p.category.toLowerCase() == category.toLowerCase();
       if (firmMatch && compMatch && catMatch && p.subcategory.trim().isNotEmpty) {
         subcategories.add(p.subcategory.trim());
       }
