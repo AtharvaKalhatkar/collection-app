@@ -106,9 +106,15 @@ class CollectionProvider extends ChangeNotifier {
   String? _filterRouteId; // null means 'All'
   String _searchQuery = '';
 
+  bool get _shouldFilterByAssignedRoutes {
+    if (_currentUser == null) return false;
+    if (_currentUser!.isSuperAdmin) return false;
+    return _currentUser!.assignedRouteIds.isNotEmpty;
+  }
+
   List<RouteModel> get routes {
     final list = List<RouteModel>.from(_routes);
-    if (_currentUser?.isDriver == true) {
+    if (_shouldFilterByAssignedRoutes) {
       final assigned = _currentUser!.assignedRouteIds;
       list.retainWhere((r) => assigned.contains(r.id));
     }
@@ -130,7 +136,7 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   List<ShopModel> get shops {
-    if (_currentUser?.isDriver == true) {
+    if (_shouldFilterByAssignedRoutes) {
       final assigned = _currentUser!.assignedRouteIds;
       return _shops.where((s) => assigned.contains(s.routeId)).toList();
     }
@@ -142,7 +148,7 @@ class CollectionProvider extends ChangeNotifier {
   List<CollectionModel> get collections => _collections;
 
   List<PendingBillModel> get pendingBills {
-    if (_currentUser?.isDriver == true) {
+    if (_shouldFilterByAssignedRoutes) {
       final assigned = _currentUser!.assignedRouteIds;
       return _pendingBills.where((b) => assigned.contains(b.routeId)).toList();
     }
@@ -975,8 +981,8 @@ class CollectionProvider extends ChangeNotifier {
         if (c.routeId != _filterRouteId) return false;
       }
 
-      // If driver, only show collections for assigned routes
-      if (_currentUser?.isDriver == true && _currentUser!.assignedRouteIds.isNotEmpty) {
+      // If user has assigned routes, only show collections for assigned routes
+      if (_shouldFilterByAssignedRoutes) {
         if (!_currentUser!.assignedRouteIds.contains(c.routeId)) return false;
       }
 
