@@ -375,7 +375,9 @@ class SupabaseService {
                 !id.startsWith('tl_') &&
                 !id.startsWith('timeline_') &&
                 !id.startsWith('att_') &&
-                !id.startsWith('route_order_');
+                !id.startsWith('route_order_') &&
+                !id.startsWith('so_') &&
+                !id.startsWith('cp_');
           })
           .map((row) => UserModel.fromJson(Map<String, dynamic>.from(row as Map)))
           .toList();
