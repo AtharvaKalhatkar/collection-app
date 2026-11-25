@@ -91,18 +91,25 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
     final screens = <Widget>[
       HomeDashboardScreen(
-        onNavigateToRoutes: () => _navigateToTab(2),
+        onNavigateToRoutes: () => _navigateToTab(isSuperAdmin ? 2 : 3),
         onNavigateToCollections: () => _navigateToTab(1),
-        onNavigateToOrders: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
-        ),
-        onNavigateToProfile: () => _navigateToTab(isSuperAdmin ? 4 : 3),
+        onNavigateToOrders: isSuperAdmin
+            ? () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                )
+            : () => _navigateToTab(2),
+        onNavigateToProfile: () => _navigateToTab(4),
         onNavigateToTracking: isSuperAdmin ? () => _navigateToTab(3) : null,
       ),
       CollectionsListScreen(
         onBackToOverview: () => _navigateToTab(0),
       ),
+      if (!isSuperAdmin)
+        OrderDashboardScreen(
+          isEmbedded: true,
+          onBackToOverview: () => _navigateToTab(0),
+        ),
       RoutesShopsScreen(
         onBackToOverview: () => _navigateToTab(0),
       ),
@@ -124,6 +131,12 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         selectedIcon: Icon(Icons.receipt_long, color: AppTheme.primary),
         label: 'Ledger',
       ),
+      if (!isSuperAdmin)
+        const NavigationDestination(
+          icon: Icon(Icons.store_mall_directory_outlined),
+          selectedIcon: Icon(Icons.store_mall_directory, color: AppTheme.primary),
+          label: 'Orders',
+        ),
       const NavigationDestination(
         icon: Icon(Icons.storefront_outlined),
         selectedIcon: Icon(Icons.storefront, color: AppTheme.primary),

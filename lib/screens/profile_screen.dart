@@ -11,6 +11,7 @@ import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
 import 'user_management_screen.dart';
 import 'live_staff_locations_screen.dart';
+import 'order_dashboard_screen.dart';
 import '../services/bill_ocr_service.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -931,6 +932,31 @@ class ProfileScreen extends StatelessWidget {
             ),
             const Divider(height: 1),
           ],
+
+          // Book Store Orders
+          Material(
+            color: Colors.transparent,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.purvaLight,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.store_mall_directory_outlined, color: AppTheme.purvaPrimary, size: 20),
+              ),
+              title: const Text('Book Store Orders', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1),
 
           // 2. Collection Statement & Ledger
           Material(

@@ -19,6 +19,7 @@ import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import 'live_staff_locations_screen.dart';
+import 'order_dashboard_screen.dart';
 import 'all_orders_screen.dart';
 import '../widgets/tally_sync_dialog.dart';
 import '../utils/firm_details.dart';
@@ -475,7 +476,16 @@ class HomeDashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.more_vert, size: 20),
             tooltip: 'More Options',
             onSelected: (val) async {
-              if (val == 'all_orders') {
+              if (val == 'book_orders') {
+                if (onNavigateToOrders != null) {
+                  onNavigateToOrders!();
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                  );
+                }
+              } else if (val == 'all_orders') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const AllOrdersScreen()),
@@ -530,6 +540,16 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'book_orders',
+                child: Row(
+                  children: [
+                    Icon(Icons.store_mall_directory_rounded, size: 18, color: Color(0xFF1E3A8A)),
+                    SizedBox(width: 10),
+                    Text('Book Store Orders'),
+                  ],
+                ),
+              ),
               if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true ||
                   context.read<AuthProvider>().currentUser?.isOffice == true)
                 const PopupMenuItem(
