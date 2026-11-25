@@ -951,8 +951,10 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: AppTheme.background,
         appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.primary,
           title: const Text('Orders & Billing'),
           leading: Navigator.canPop(context)
               ? IconButton(
@@ -968,31 +970,40 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
               : null,
         actions: [
           TextButton.icon(
-            icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 18),
-            label: const Text('Add SKU', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+            icon: const Icon(Icons.add_circle_outline, color: AppTheme.purvaPrimary, size: 18),
+            label: const Text('Add SKU', style: TextStyle(color: AppTheme.purvaPrimary, fontWeight: FontWeight.w700, fontSize: 13)),
             onPressed: _openAddProductDialog,
           ),
           const SizedBox(width: 8),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
-          tabs: [
-            const Tab(
-              icon: Icon(Icons.edit_note_outlined, size: 20),
-              text: 'Take Order',
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: AppTheme.border)),
             ),
-            Tab(
-              icon: Badge(
-                label: Text('${provider.salesOrders.length}'),
-                isLabelVisible: provider.salesOrders.isNotEmpty,
-                child: const Icon(Icons.receipt_long_outlined, size: 20),
-              ),
-              text: 'Booked Orders',
+            child: TabBar(
+              controller: _tabController,
+              labelColor: AppTheme.purvaPrimary,
+              unselectedLabelColor: AppTheme.textSecondary,
+              indicatorColor: AppTheme.purvaPrimary,
+              tabs: [
+                const Tab(
+                  icon: Icon(Icons.edit_note_outlined, size: 18),
+                  text: 'Take Order',
+                ),
+                Tab(
+                  icon: Badge(
+                    label: Text('${provider.salesOrders.length}'),
+                    isLabelVisible: provider.salesOrders.isNotEmpty,
+                    child: const Icon(Icons.receipt_long_outlined, size: 18),
+                  ),
+                  text: 'Booked Orders',
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
       body: TabBarView(
@@ -1080,7 +1091,14 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                               if (shopsOnRoute.isNotEmpty)
                                 InkWell(
                                   onTap: () => _openShopPicker(shopsOnRoute),
-                                  child: const Text('🔍 Search Shop', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.search_rounded, size: 14, color: AppTheme.purvaPrimary),
+                                      SizedBox(width: 4),
+                                      Text('Search Shop', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.purvaPrimary)),
+                                    ],
+                                  ),
                                 ),
                             ],
                           ),

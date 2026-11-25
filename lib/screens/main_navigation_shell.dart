@@ -176,11 +176,16 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           index: clampedIndex,
           children: screens,
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: clampedIndex,
-          onDestinationSelected: _navigateToTab,
-          indicatorColor: AppTheme.primary.withValues(alpha: 0.1),
-          destinations: destinations,
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: AppTheme.border, width: 1)),
+          ),
+          child: NavigationBar(
+            selectedIndex: clampedIndex,
+            onDestinationSelected: _navigateToTab,
+            destinations: destinations,
+          ),
         ),
       ),
     );

@@ -648,8 +648,7 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
         _buildActionTile(
           icon: Icons.receipt_long_rounded,
           iconColor: const Color(0xFF059669),
-          title: 'Export Collections as Tally XML',
-          subtitle: '${filteredCollections.length} collections • Receipt Vouchers with bill allocations & cash/bank entries',
+          title: 'Collections XML (${filteredCollections.length})',
           buttonText: 'Export XML',
           onTap: () => _exportReceiptsXml(provider),
         ),
@@ -659,8 +658,7 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
         _buildActionTile(
           icon: Icons.table_chart_rounded,
           iconColor: const Color(0xFF0284C7),
-          title: 'Export Collections as Tally Prime Excel',
-          subtitle: '${filteredCollections.length} collections • Official Tally Prime Release 4+ Excel import template',
+          title: 'Tally Prime Excel (${filteredCollections.length})',
           buttonText: 'Export Excel',
           onTap: () => _exportReceiptsExcel(provider),
         ),
@@ -670,9 +668,8 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
         _buildActionTile(
           icon: Icons.shopping_bag_rounded,
           iconColor: const Color(0xFFD97706),
-          title: 'Export Booked Orders as Tally XML',
-          subtitle: '${filteredOrders.length} orders • Sales Order Vouchers with item quantities (CS & UT) & rates',
-          buttonText: 'Export Orders XML',
+          title: 'Sales Orders XML (${filteredOrders.length})',
+          buttonText: 'Export Orders',
           onTap: () => _exportSalesOrdersXml(provider),
         ),
         const SizedBox(height: 10),
@@ -681,8 +678,7 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
         _buildActionTile(
           icon: Icons.storefront_rounded,
           iconColor: const Color(0xFF7C3AED),
-          title: 'Export Outlets as Tally Ledgers XML',
-          subtitle: '${provider.allShops.length} outlets • Sundry Debtors ledger masters with route & phone details',
+          title: 'Outlets Ledgers XML (${provider.allShops.length})',
           buttonText: 'Export Masters',
           onTap: () => _exportOutletsXml(provider),
         ),
@@ -849,42 +845,33 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
     required IconData icon,
     required Color iconColor,
     required String title,
-    required String subtitle,
     required String buttonText,
     required VoidCallback onTap,
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              color: iconColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(9),
             ),
-            child: Icon(icon, color: iconColor, size: 22),
+            child: Icon(icon, color: iconColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                ),
-              ],
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
             ),
           ),
           const SizedBox(width: 8),
@@ -892,11 +879,12 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF1E3A8A),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: const Size(0, 34),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: onTap,
-            child: Text(buttonText, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+            child: Text(buttonText, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
           ),
         ],
       ),

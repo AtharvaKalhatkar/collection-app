@@ -227,7 +227,7 @@ class _AddShopScreenState extends State<AddShopScreen> {
         actions: [
           if (isEdit)
             IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.white),
+              icon: const Icon(Icons.delete_outline, color: AppTheme.balanceDueColor),
               tooltip: 'Delete Store',
               onPressed: _isSaving ? null : _deleteShop,
             ),

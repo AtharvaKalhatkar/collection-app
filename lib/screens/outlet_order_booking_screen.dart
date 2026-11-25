@@ -468,68 +468,77 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: AppTheme.primary,
         elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               widget.shop.name,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5, color: AppTheme.primary),
             ),
             Text(
               '${widget.shop.routeName} • ${DateFormat('dd MMM').format(widget.selectedDate)}',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+              style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_box_rounded),
+            icon: const Icon(Icons.add_box_outlined, color: AppTheme.purvaPrimary),
             tooltip: 'Add Product to Catalog',
             onPressed: _openAddProduct,
           ),
           IconButton(
-            icon: const Icon(Icons.shopping_cart_rounded),
+            icon: const Icon(Icons.shopping_cart_outlined, color: AppTheme.primary),
             tooltip: 'View Cart',
             onPressed: () => _tabController.animateTo(2),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: const Color(0xFF38BDF8),
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: const Color(0xFF94A3B8),
-          tabs: [
-            const Tab(text: 'Order'),
-            const Tab(text: 'Outlet Info'),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Submit Order'),
-                  if (_cart.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFEF4444),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '${_cart.length}',
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(46),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: AppTheme.border)),
             ),
-          ],
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: AppTheme.purvaPrimary,
+              indicatorWeight: 2.5,
+              labelColor: AppTheme.purvaPrimary,
+              unselectedLabelColor: AppTheme.textSecondary,
+              tabs: [
+                const Tab(text: 'Order'),
+                const Tab(text: 'Outlet Info'),
+                Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Submit Order'),
+                      if (_cart.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: const BoxDecoration(
+                            color: AppTheme.balanceDueColor,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '${_cart.length}',
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
       body: TabBarView(

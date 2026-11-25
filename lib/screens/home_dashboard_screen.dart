@@ -23,6 +23,7 @@ import 'order_dashboard_screen.dart';
 import 'all_orders_screen.dart';
 import '../widgets/tally_sync_dialog.dart';
 import '../utils/firm_details.dart';
+import '../widgets/clean_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeDashboardScreen extends StatelessWidget {
@@ -362,6 +363,8 @@ class HomeDashboardScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: AppTheme.primary,
         title: InkWell(
           onTap: () {
             if (onNavigateToProfile != null) {
@@ -379,15 +382,15 @@ class HomeDashboardScreen extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
+                    color: AppTheme.purvaLight,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                    border: Border.all(color: AppTheme.purvaBorder),
                   ),
                   child: const Center(
-                    child: Icon(Icons.business_rounded, color: Colors.white, size: 20),
+                    child: Icon(Icons.business_rounded, color: AppTheme.purvaPrimary, size: 18),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -404,7 +407,7 @@ class HomeDashboardScreen extends StatelessWidget {
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
-                                color: Colors.white,
+                                color: AppTheme.primary,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -413,8 +416,9 @@ class HomeDashboardScreen extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                              color: AppTheme.manasLight,
                               borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppTheme.manasBorder),
                             ),
                             child: Text(
                               (context.watch<AuthProvider>().currentUser?.isSuperAdmin == true)
@@ -425,20 +429,18 @@ class HomeDashboardScreen extends StatelessWidget {
                               style: const TextStyle(
                                 fontSize: 8.5,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF34D399),
+                                color: AppTheme.manasText,
                                 letterSpacing: 0.4,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.person_outline, size: 13, color: Colors.white70),
                         ],
                       ),
                       const Text(
                         'Purva • Manas',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Colors.white70,
+                          color: AppTheme.textSecondary,
                           fontWeight: FontWeight.w500,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -1017,9 +1019,9 @@ class HomeDashboardScreen extends StatelessWidget {
                               const SizedBox(height: 3),
                               Text(
                                 CurrencyFormatter.format(purvaTotal),
-                                style: const TextStyle(
+                                style: AppTheme.tabularAmount(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w800,
                                   color: AppTheme.purvaPrimary,
                                 ),
                               ),
@@ -1096,9 +1098,9 @@ class HomeDashboardScreen extends StatelessWidget {
                               const SizedBox(height: 3),
                               Text(
                                 CurrencyFormatter.format(manasTotal),
-                                style: const TextStyle(
+                                style: AppTheme.tabularAmount(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w800,
                                   color: AppTheme.manasPrimary,
                                 ),
                               ),
@@ -1258,11 +1260,11 @@ class HomeDashboardScreen extends StatelessWidget {
                           children: [
                             Text(
                               CurrencyFormatter.format(provider.totalCollection),
-                              style: const TextStyle(
+                              style: AppTheme.tabularAmount(
                                 color: Colors.white,
-                                fontSize: 32,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.5,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.6,
                               ),
                             ),
                             Padding(
@@ -1412,84 +1414,66 @@ class HomeDashboardScreen extends StatelessWidget {
 
 
 
-              // High-Visibility Order Booking Card (Bizom Style)
-              Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF1E40AF), Color(0xFF1D4ED8)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+              // Executive Operations CTA: Book Store Orders (single-line, zero subheadings)
+              Material(
+                color: AppTheme.purvaPrimary,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () {
+                    if (onNavigateToOrders != null) {
+                      onNavigateToOrders!();
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                      );
+                    }
+                  },
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF1E40AF).withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      if (onNavigateToOrders != null) {
-                        onNavigateToOrders!();
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
-                        );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.store_mall_directory_rounded, color: Colors.white, size: 24),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      'BOOK STORE ORDERS',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                    SizedBox(width: 6),
-                                    Icon(Icons.stars_rounded, color: Color(0xFFFDE047), size: 16),
-                                  ],
-                                ),
-                                SizedBox(height: 2),
-                                Text(
-                                  'Route outlets, Pending/Completed, CS/UT items',
-                                  style: TextStyle(
-                                    color: Color(0xFFBFDBFE),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
+                          child: const Icon(Icons.store_mall_directory_rounded, color: Colors.white, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Book Store Orders',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.1,
                             ),
                           ),
-                          const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 16),
-                        ],
-                      ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Orders',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 14),
+                      ],
                     ),
                   ),
                 ),
@@ -1613,46 +1597,40 @@ class HomeDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // Primary FMCG Operations Grid
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Quick Actions',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              // Primary Field Operations Section (Zero Subheadings)
+              CleanSectionHeader(
+                title: 'Quick Actions',
+                trailing: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: const Icon(Icons.add_photo_alternate_outlined, size: 15, color: AppTheme.primary),
-                    label: const Text(
-                      '+ Upload Bill',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primary),
-                    ),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AddPendingBillScreen()),
-                      );
-                    },
+                  icon: const Icon(Icons.add_photo_alternate_outlined, size: 15, color: AppTheme.purvaPrimary),
+                  label: const Text(
+                    'Upload Bill',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.purvaPrimary),
                   ),
-                ],
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AddPendingBillScreen()),
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 10),
 
-              // Row 1: Stage 1 (Pending Bills) and Stage 2 (Collection)
+              // Primary Collection & Pending Bills
               Row(
                 children: [
                   Expanded(
-                    child: _buildActionTile(
+                    child: CleanActionTile(
                       title: 'Pending Bills',
                       icon: Icons.receipt_long_outlined,
                       badge: '${provider.pendingBills.where((b) => !b.isPaid).length} Active',
-                      gradientColors: const [Color(0xFF0284C7), Color(0xFF0369A1)],
-                      iconBg: Colors.white.withValues(alpha: 0.22),
+                      color: const Color(0xFF0284C7),
+                      filled: true,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -1663,12 +1641,12 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _buildActionTile(
+                    child: CleanActionTile(
                       title: 'Collection',
                       icon: Icons.payments_outlined,
-                      badge: 'Stage 2',
-                      gradientColors: const [Color(0xFF0D9488), Color(0xFF0F766E)],
-                      iconBg: Colors.white.withValues(alpha: 0.22),
+                      badge: 'Record',
+                      color: AppTheme.manasPrimary,
+                      filled: true,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -1681,14 +1659,14 @@ class HomeDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
 
-              // 2-by-2 Column Layout for Secondary Operations (Comfortable, large, easy to read and tap)
+              // Operations 2-Column Tiles (Single-Line Labels)
               Row(
                 children: [
                   Expanded(
-                    child: _buildOverviewGridButton(
+                    child: CleanActionTile(
                       title: 'Statement',
                       icon: Icons.assessment_outlined,
-                      color: const Color(0xFF6366F1),
+                      color: const Color(0xFF4F46E5),
                       onTap: () {
                         Navigator.push(
                           context,
@@ -1699,11 +1677,11 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _buildOverviewGridButton(
+                    child: CleanActionTile(
                       title: 'Cash Counter',
                       badge: CurrencyFormatter.format(provider.totalCash),
                       icon: Icons.payments_rounded,
-                      color: const Color(0xFF10B981),
+                      color: const Color(0xFF059669),
                       onTap: () {
                         Navigator.push(
                           context,
@@ -1723,10 +1701,10 @@ class HomeDashboardScreen extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: _buildOverviewGridButton(
+                    child: CleanActionTile(
                       title: 'Book Orders',
                       icon: Icons.store_mall_directory_rounded,
-                      color: const Color(0xFF1E40AF),
+                      color: AppTheme.purvaPrimary,
                       onTap: () {
                         if (onNavigateToOrders != null) {
                           onNavigateToOrders!();
@@ -1741,11 +1719,11 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _buildOverviewGridButton(
+                    child: CleanActionTile(
                       title: 'All Orders',
                       badge: '${provider.salesOrders.length}',
                       icon: Icons.receipt_long_rounded,
-                      color: const Color(0xFF1E3A8A),
+                      color: AppTheme.purvaPrimary,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -1762,10 +1740,10 @@ class HomeDashboardScreen extends StatelessWidget {
                   children: [
                     if (canAssign)
                       Expanded(
-                        child: _buildOverviewGridButton(
+                        child: CleanActionTile(
                           title: 'Assign Routes',
                           icon: Icons.alt_route_rounded,
-                          color: const Color(0xFF0D9488),
+                          color: AppTheme.manasPrimary,
                           onTap: () {
                             _showAssignRouteDialog(context);
                           },
@@ -1774,7 +1752,7 @@ class HomeDashboardScreen extends StatelessWidget {
                     if (canAssign && canTally) const SizedBox(width: 10),
                     if (canTally)
                       Expanded(
-                        child: _buildOverviewGridButton(
+                        child: CleanActionTile(
                           title: 'Tally Hub',
                           icon: Icons.swap_horiz_rounded,
                           color: const Color(0xFF0284C7),
@@ -1787,96 +1765,6 @@ class HomeDashboardScreen extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionTile({
-    required String title,
-    String? subtitle,
-    required IconData icon,
-    required String badge,
-    required List<Color> gradientColors,
-    required Color iconBg,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: gradientColors,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: gradientColors.first.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: iconBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(icon, color: Colors.white, size: 22),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      badge,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
-              ),
-              if (subtitle != null && subtitle.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.88),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -2139,102 +2027,6 @@ class HomeDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildOverviewGridButton({
-    required String title,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-    String? subtitle,
-    String? badge,
-  }) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 5,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color, size: 18),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12.5,
-                        color: Color(0xFF0F172A),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (badge != null) ...[
-                      const SizedBox(height: 2),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          badge,
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            color: color,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                    if (subtitle != null && subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: Colors.blueGrey.shade600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMinimalModePill({
     required String label,
     required double amount,
@@ -2390,9 +2182,9 @@ class _PaymentAlertBellState extends State<_PaymentAlertBell> {
               backgroundColor: const Color(0xFFEF4444), // Red notification badge
               textColor: Colors.white,
               textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-              child: const Icon(Icons.notifications_active_rounded, size: 22, color: Colors.amberAccent),
+              child: const Icon(Icons.notifications_active_rounded, size: 22, color: Color(0xFFD97706)),
             )
-          : const Icon(Icons.notifications_outlined, size: 22, color: Colors.white),
+          : const Icon(Icons.notifications_outlined, size: 22, color: AppTheme.primary),
     );
   }
 }

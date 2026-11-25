@@ -10,6 +10,7 @@ import '../providers/collection_provider.dart';
 import '../services/godown_billing_pdf_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
+import '../utils/theme.dart';
 import 'outlet_order_booking_screen.dart';
 import '../widgets/tally_sync_dialog.dart';
 
@@ -234,29 +235,17 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     final totalWeight = filteredOrders.fold(0.0, (sum, o) => sum + o.totalWeightKg);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E3A8A), // Deep navy
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: AppTheme.primary,
         elevation: 0,
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Store Orders Master',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 0.3),
-            ),
-            Text(
-              'Separated staff orders & godown slips',
-              style: TextStyle(fontSize: 11, color: Color(0xFF93C5FD)),
-            ),
-          ],
-        ),
+        title: const Text('Orders Master'),
         actions: [
           if (filteredOrders.isNotEmpty) ...[
             if (auth.currentUser?.canAccessTally == true)
               IconButton(
-                icon: const Icon(Icons.swap_horiz_rounded, color: Colors.white),
+                icon: const Icon(Icons.swap_horiz_rounded, color: AppTheme.primary),
                 tooltip: 'Export Orders to Tally XML',
                 onPressed: () => TallySyncDialog.show(
                   context,
@@ -264,7 +253,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                 ),
               ),
             IconButton(
-              icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white),
+              icon: const Icon(Icons.picture_as_pdf_rounded, color: AppTheme.primary),
               tooltip: 'Export Godown Slip PDF',
               onPressed: () {
                 GodownBillingPdfService.previewOrSharePdf(
@@ -276,7 +265,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
             ),
           ],
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.primary),
             tooltip: 'Refresh',
             onPressed: () async {
               await provider.syncAllWithCloud(notify: true);

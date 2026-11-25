@@ -916,33 +916,36 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     final todayTotal = todayCollections.fold(0.0, (s, c) => s + c.collectedAmount);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: AppTheme.primary,
         elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.local_shipping, size: 18, color: Color(0xFF38BDF8)),
+                const Icon(Icons.local_shipping_outlined, size: 18, color: Color(0xFF0284C7)),
                 const SizedBox(width: 8),
-                Text(
-                  user.name,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                Flexible(
+                  child: Text(
+                    user.name,
+                    style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: AppTheme.primary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0284C7).withValues(alpha: 0.3),
+                    color: const Color(0xFFE0F2FE),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
+                    border: Border.all(color: const Color(0xFFBAE6FD)),
                   ),
                   child: const Text(
                     'DRIVER',
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF38BDF8)),
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF0369A1)),
                   ),
                 ),
               ],
@@ -950,7 +953,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             const SizedBox(height: 2),
             Text(
               'Route: $routeNamesStr',
-              style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.7)),
+              style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
               overflow: TextOverflow.ellipsis,
             ),
           ],
@@ -958,17 +961,17 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         actions: [
           IconButton(
             tooltip: 'Payment QR',
-            icon: const Icon(Icons.qr_code_2_rounded, color: Colors.white),
+            icon: const Icon(Icons.qr_code_2_rounded, color: AppTheme.primary),
             onPressed: () => PaymentQrDialog.show(context),
           ),
           IconButton(
             tooltip: 'Bank Details',
-            icon: const Icon(Icons.account_balance_outlined, color: Colors.white),
+            icon: const Icon(Icons.account_balance_outlined, color: AppTheme.primary),
             onPressed: () => FirmDetailsHelper.showQuickShareModal(context),
           ),
           IconButton(
             tooltip: 'Sync Data',
-            icon: const Icon(Icons.sync, color: Colors.white70),
+            icon: const Icon(Icons.sync, color: AppTheme.primary),
             onPressed: () async {
               await provider.syncAllWithCloud(notify: true);
               if (context.mounted) {
@@ -980,7 +983,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           ),
           IconButton(
             tooltip: 'Logout',
-            icon: const Icon(Icons.logout, color: Colors.white70),
+            icon: const Icon(Icons.logout, color: AppTheme.balanceDueColor),
             onPressed: () async {
               final confirm = await showDialog<bool>(
                 context: context,
@@ -1096,11 +1099,16 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                 ),
               ],
             ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentTab,
-        onDestinationSelected: (idx) => setState(() => _currentTab = idx),
-        indicatorColor: const Color(0xFF38BDF8).withValues(alpha: 0.2),
-        destinations: [
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: AppTheme.border)),
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentTab,
+          onDestinationSelected: (idx) => setState(() => _currentTab = idx),
+          indicatorColor: const Color(0xFF0284C7).withValues(alpha: 0.12),
+          destinations: [
           NavigationDestination(
             icon: Badge(
               isLabelVisible: deliveryBills.isNotEmpty,
@@ -1138,6 +1146,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             label: 'My Collections',
           ),
         ],
+        ),
       ),
     );
   }

@@ -13,6 +13,7 @@ import '../providers/collection_provider.dart';
 import '../services/godown_billing_pdf_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
+import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
 import 'outlet_order_booking_screen.dart';
 import 'all_orders_screen.dart';
@@ -302,10 +303,10 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
     final bool canGoBack = widget.onBackToOverview != null || Navigator.canPop(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E40AF), // Bizom royal blue
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: AppTheme.primary,
         elevation: 0,
         leading: canGoBack
             ? IconButton(
@@ -322,27 +323,28 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             : null,
         title: Row(
           children: [
-            const Icon(Icons.store_mall_directory_rounded, size: 22, color: Colors.white),
+            const Icon(Icons.store_mall_directory_rounded, size: 20, color: AppTheme.purvaPrimary),
             const SizedBox(width: 8),
             const Text(
               'RETAILER',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 0.8),
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16.5, letterSpacing: 0.4, color: AppTheme.primary),
             ),
             const Spacer(),
             if (user != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
+                  color: AppTheme.purvaLight,
                   borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppTheme.purvaBorder),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.person, size: 14, color: Colors.white),
+                    const Icon(Icons.person_outline, size: 14, color: AppTheme.purvaPrimary),
                     const SizedBox(width: 4),
                     Text(
                       user.plainName,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppTheme.purvaPrimary),
                     ),
                   ],
                 ),
@@ -351,13 +353,13 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_box_rounded),
+            icon: const Icon(Icons.add_box_outlined, color: AppTheme.purvaPrimary),
             tooltip: 'Add Product to Catalog',
             onPressed: _openAddProduct,
           ),
           if (!widget.isEmbedded)
             IconButton(
-              icon: const Icon(Icons.logout_rounded),
+              icon: const Icon(Icons.logout_rounded, color: AppTheme.balanceDueColor),
               tooltip: 'Sign Out',
               onPressed: () => auth.logout(),
             ),
@@ -366,27 +368,30 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(48),
                 child: Container(
-                  color: const Color(0xFF1E3A8A),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: AppTheme.border)),
+                  ),
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   child: Row(
                     children: [
                       _buildHeaderTabChip(
                         title: 'Retailers (${pendingShops.length})',
-                        icon: Icons.storefront,
+                        icon: Icons.storefront_outlined,
                         isSelected: _currentBottomNavIndex == 0,
                         onTap: () => setState(() => _currentBottomNavIndex = 0),
                       ),
                       const SizedBox(width: 6),
                       _buildHeaderTabChip(
                         title: 'Route Map',
-                        icon: Icons.map,
+                        icon: Icons.map_outlined,
                         isSelected: _currentBottomNavIndex == 1,
                         onTap: () => setState(() => _currentBottomNavIndex = 1),
                       ),
                       const SizedBox(width: 6),
                       _buildHeaderTabChip(
                         title: 'Orders (${userDateOrders.length})',
-                        icon: Icons.receipt_long,
+                        icon: Icons.receipt_long_outlined,
                         isSelected: _currentBottomNavIndex == 2,
                         onTap: () => setState(() => _currentBottomNavIndex = 2),
                       ),
@@ -454,7 +459,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.15),
+            color: isSelected ? AppTheme.purvaPrimary : AppTheme.subtleSurface,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -463,7 +468,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
               Icon(
                 icon,
                 size: 15,
-                color: isSelected ? const Color(0xFF1E40AF) : Colors.white70,
+                color: isSelected ? Colors.white : AppTheme.textSecondary,
               ),
               const SizedBox(width: 4),
               Flexible(
@@ -473,8 +478,8 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11.5,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    color: isSelected ? const Color(0xFF1E40AF) : Colors.white,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                    color: isSelected ? Colors.white : AppTheme.textPrimary,
                   ),
                 ),
               ),
@@ -1182,7 +1187,14 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                             color: const Color(0xFFDCFCE7),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('✓ Order Fulfilled', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, size: 11, color: Color(0xFF15803D)),
+                              SizedBox(width: 3),
+                              Text('Order Fulfilled', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
+                            ],
+                          ),
                         ),
                       ],
                     ),

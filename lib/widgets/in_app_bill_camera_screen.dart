@@ -677,7 +677,7 @@ class _InAppBillCameraScreenState extends State<InAppBillCameraScreen> {
                             Text(
                               _capturedPhotos.isEmpty
                                   ? 'TAP SHUTTER TO SNAP'
-                                  : 'TAP GREEN [✓] WHEN DONE (${_capturedPhotos.length})',
+                                  : 'TAP DONE (${_capturedPhotos.length})',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10.5,

@@ -102,6 +102,8 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.primary,
           title: const Text('Ledger'),
           leading: widget.onBackToOverview != null || Navigator.canPop(context)
               ? IconButton(
@@ -165,16 +167,19 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(44),
             child: Container(
-              color: AppTheme.primary,
-              child: TabBar(
-                indicatorColor: Colors.white,
-                indicatorWeight: 3,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: AppTheme.border)),
+              ),
+              child: const TabBar(
+                indicatorColor: AppTheme.purvaPrimary,
+                indicatorWeight: 2.5,
                 indicatorSize: TabBarIndicatorSize.tab,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white60,
-                labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                tabs: const [
+                labelColor: AppTheme.purvaPrimary,
+                unselectedLabelColor: AppTheme.textSecondary,
+                labelStyle: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                tabs: [
                   Tab(
                     height: 44,
                     child: Row(
@@ -410,8 +415,14 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            size: 12,
+                            color: AppTheme.getBusinessTextColor(provider.filterBusiness ?? 'Purva Enterprises'),
+                          ),
+                          const SizedBox(width: 4),
                           Text(
-                            (provider.filterBusiness ?? 'Purva Enterprises') == 'Purva Enterprises' ? 'PURVA ✓' : 'MANAS ✓',
+                            (provider.filterBusiness ?? 'Purva Enterprises') == 'Purva Enterprises' ? 'PURVA' : 'MANAS',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,

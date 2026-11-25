@@ -339,23 +339,53 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                       items: const [
                         DropdownMenuItem(
                           value: UserRole.superAdmin,
-                          child: Text('👑 Super Admin'),
+                          child: Row(
+                            children: [
+                              Icon(Icons.admin_panel_settings_outlined, size: 17, color: AppTheme.purvaPrimary),
+                              SizedBox(width: 8),
+                              Text('Super Admin'),
+                            ],
+                          ),
                         ),
                         DropdownMenuItem(
                           value: UserRole.office,
-                          child: Text('🏢 Office Staff'),
+                          child: Row(
+                            children: [
+                              Icon(Icons.business_center_outlined, size: 17, color: AppTheme.manasPrimary),
+                              SizedBox(width: 8),
+                              Text('Office Staff'),
+                            ],
+                          ),
                         ),
                         DropdownMenuItem(
                           value: UserRole.salesman,
-                          child: Text('🛵 Sales & Collection'),
+                          child: Row(
+                            children: [
+                              Icon(Icons.payments_outlined, size: 17, color: Color(0xFFD97706)),
+                              SizedBox(width: 8),
+                              Text('Sales & Collection'),
+                            ],
+                          ),
                         ),
                         DropdownMenuItem(
                           value: UserRole.driver,
-                          child: Text('🚚 Delivery Driver'),
+                          child: Row(
+                            children: [
+                              Icon(Icons.local_shipping_outlined, size: 17, color: Color(0xFF0284C7)),
+                              SizedBox(width: 8),
+                              Text('Delivery Driver'),
+                            ],
+                          ),
                         ),
                         DropdownMenuItem(
                           value: UserRole.order,
-                          child: Text('🛒 Order Booking (Order Man)'),
+                          child: Row(
+                            children: [
+                              Icon(Icons.shopping_bag_outlined, size: 17, color: Color(0xFF7C3AED)),
+                              SizedBox(width: 8),
+                              Text('Order Booking'),
+                            ],
+                          ),
                         ),
                       ],
                       onChanged: (newRole) {
@@ -697,28 +727,16 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Staff & Role Management',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
-            ),
-            Text(
-              'Assign individual routes & manage staff logins',
-              style: TextStyle(fontSize: 11, color: Colors.white70),
-            ),
-          ],
-        ),
+        title: const Text('Staff & Role Management'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back',
           onPressed: () => Navigator.pop(context),
         ),
-        backgroundColor: AppTheme.primary,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: AppTheme.primary,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -794,17 +812,17 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildRoleFilterChip('All Staff (${allUsers.length})', null),
+                      _buildRoleFilterChip('All (${allUsers.length})', null),
                       const SizedBox(width: 6),
-                      _buildRoleFilterChip('👑 Admin', UserRole.superAdmin),
+                      _buildRoleFilterChip('Admin', UserRole.superAdmin, Icons.admin_panel_settings_outlined),
                       const SizedBox(width: 6),
-                      _buildRoleFilterChip('🛵 Sales', UserRole.salesman),
+                      _buildRoleFilterChip('Sales', UserRole.salesman, Icons.payments_outlined),
                       const SizedBox(width: 6),
-                      _buildRoleFilterChip('🛒 Order', UserRole.order),
+                      _buildRoleFilterChip('Order', UserRole.order, Icons.shopping_bag_outlined),
                       const SizedBox(width: 6),
-                      _buildRoleFilterChip('🚚 Driver', UserRole.driver),
+                      _buildRoleFilterChip('Driver', UserRole.driver, Icons.local_shipping_outlined),
                       const SizedBox(width: 6),
-                      _buildRoleFilterChip('🏢 Office', UserRole.office),
+                      _buildRoleFilterChip('Office', UserRole.office, Icons.business_center_outlined),
                     ],
                   ),
                 ),
@@ -1037,7 +1055,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                                   Expanded(
                                     child: user.isSuperAdmin
                                         ? const Text(
-                                            '👑 Full Master Access (All Routes & Firms)',
+                                            'Full Master Access (All Routes & Firms)',
                                             style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8)),
                                           )
                                         : assignedRoutes.isEmpty
@@ -1159,20 +1177,23 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     );
   }
 
-  Widget _buildRoleFilterChip(String label, UserRole? role) {
+  Widget _buildRoleFilterChip(String label, UserRole? role, [IconData? icon]) {
     final isSelected = _selectedRoleFilter == role;
 
     return ChoiceChip(
+      avatar: icon != null
+          ? Icon(icon, size: 14, color: isSelected ? Colors.white : AppTheme.primary)
+          : null,
       label: Text(label),
       selected: isSelected,
       labelStyle: TextStyle(
         fontSize: 12,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-        color: isSelected ? Colors.white : const Color(0xFF334155),
+        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+        color: isSelected ? Colors.white : AppTheme.primary,
       ),
-      selectedColor: const Color(0xFF1E3A8A),
-      backgroundColor: const Color(0xFFF1F5F9),
-      side: BorderSide(color: isSelected ? const Color(0xFF1E3A8A) : const Color(0xFFE2E8F0)),
+      selectedColor: AppTheme.purvaPrimary,
+      backgroundColor: AppTheme.subtleSurface,
+      side: BorderSide(color: isSelected ? AppTheme.purvaPrimary : AppTheme.border),
       onSelected: (_) => setState(() => _selectedRoleFilter = role),
     );
   }

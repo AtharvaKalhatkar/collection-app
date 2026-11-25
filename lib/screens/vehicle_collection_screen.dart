@@ -1402,13 +1402,20 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                                 color: const Color(0xFF10B981).withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text(
-                                '⚡ Auto-Match',
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF047857),
-                                ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.bolt_rounded, size: 13, color: Color(0xFF047857)),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    'Auto-Match',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF047857),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -1596,7 +1603,7 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const Text(
-                                      '✅ PERFECT MATCH (₹0 DIFFERENCE)',
+                                      'PERFECT MATCH (₹0 DIFFERENCE)',
                                       style: TextStyle(
                                         color: Color(0xFF065F46),
                                         fontWeight: FontWeight.w900,
@@ -1648,8 +1655,8 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                                 children: [
                                   Text(
                                     isShort
-                                        ? '⚠️ CASH SHORTAGE: -${CurrencyFormatter.format(diff.abs().toDouble())}'
-                                        : 'ℹ️ CASH SURPLUS: +${CurrencyFormatter.format(diff.toDouble())}',
+                                        ? 'CASH SHORTAGE: -${CurrencyFormatter.format(diff.abs().toDouble())}'
+                                        : 'CASH SURPLUS: +${CurrencyFormatter.format(diff.toDouble())}',
                                     style: TextStyle(
                                       color: color,
                                       fontWeight: FontWeight.w900,

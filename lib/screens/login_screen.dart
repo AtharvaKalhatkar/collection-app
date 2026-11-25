@@ -76,29 +76,31 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Dark executive slate background
+      backgroundColor: AppTheme.background,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // App Brand Logo / Icon Header
+                  // Brand Logo & Firm Identity
                   Center(
                     child: Container(
-                      width: 84,
-                      height: 84,
+                      width: 72,
+                      height: 72,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(22),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppTheme.border),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
@@ -107,53 +109,52 @@ class _LoginScreenState extends State<LoginScreen> {
                         'assets/images/app_logo.png',
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) => Container(
-                          color: const Color(0xFF1E3A8A),
+                          color: AppTheme.purvaPrimary,
                           child: const Icon(
                             Icons.currency_rupee_rounded,
-                            size: 44,
+                            size: 36,
                             color: Colors.white,
                           ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
-                  // Title & Subtitle
                   const Text(
                     'Purva Enterprises',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.6,
+                      color: AppTheme.primary,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'Distribution & Daily Collection Portal',
+                  const Text(
+                    'Sales, Collection & Delivery Portal',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.75),
+                      color: AppTheme.textSecondary,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      letterSpacing: 0.3,
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 22),
 
-                  // Main Login Card
+                  // Clean White Executive Sign-In Card
                   Container(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppTheme.border),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.25),
-                          blurRadius: 24,
-                          offset: const Offset(0, 10),
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
                         ),
                       ],
                     ),
@@ -163,25 +164,24 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Text(
                           'Staff Sign In',
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: AppTheme.primary,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Enter your registered mobile number and password',
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Sign in with your mobile number and password',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade600,
+                            color: AppTheme.textSecondary,
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 18),
 
-                        // Error Banner
                         if (_errorMessage != null) ...[
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             decoration: BoxDecoration(
                               color: Colors.red.shade50,
                               borderRadius: BorderRadius.circular(10),
@@ -189,8 +189,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
-                                const SizedBox(width: 10),
+                                Icon(Icons.error_outline, color: Colors.red.shade700, size: 18),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
                                     _errorMessage!,
@@ -213,25 +213,25 @@ class _LoginScreenState extends State<LoginScreen> {
                           keyboardType: TextInputType.phone,
                           decoration: InputDecoration(
                             labelText: 'Mobile Number',
-                            hintText: 'e.g. 76209 95547 or 99219 77636',
+                            hintText: 'e.g. 76209 95547',
                             prefixIcon: const Icon(Icons.phone_android_rounded, color: AppTheme.secondary),
                             filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
+                            fillColor: AppTheme.background,
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: AppTheme.border),
                             ),
                             enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: AppTheme.border),
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: AppTheme.secondary, width: 1.8),
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: AppTheme.purvaPrimary, width: 1.6),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
 
                         // Password Input
                         TextField(
@@ -244,7 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                                color: Colors.grey.shade600,
+                                color: AppTheme.textSecondary,
                               ),
                               onPressed: () {
                                 setState(() {
@@ -253,35 +253,34 @@ class _LoginScreenState extends State<LoginScreen> {
                               },
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
+                            fillColor: AppTheme.background,
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: AppTheme.border),
                             ),
                             enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: AppTheme.border),
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: AppTheme.secondary, width: 1.8),
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: AppTheme.purvaPrimary, width: 1.6),
                             ),
                           ),
                           onSubmitted: (_) => _handleLogin(),
                         ),
-                        const SizedBox(height: 22),
+                        const SizedBox(height: 20),
 
-                        // Login Button
                         ElevatedButton(
                           onPressed: _isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F172A),
+                            backgroundColor: AppTheme.purvaPrimary,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            elevation: 2,
+                            elevation: 0,
                           ),
                           child: _isLoading
                               ? const SizedBox(
@@ -293,8 +292,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   'Log In to Dashboard',
                                   style: TextStyle(
                                     fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.3,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                         ),
@@ -302,9 +300,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 18),
 
-                  // Quick Account Selector (Dynamically loaded from all registered staff)
+                  // Quick Staff Account Selector (Material icons, zero emojis)
                   Builder(
                     builder: (context) {
                       final auth = context.watch<AuthProvider>();
@@ -322,7 +320,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               !u.name.toLowerCase().contains('store')).toList()
                           : UserModel.getInitialUsers()).toList();
 
-                      // Guarantee Order 1 is always present
                       if (!staffList.any((u) => u.phone == 'order1' || u.role == UserRole.order)) {
                         staffList.add(UserModel(
                           id: 'user_order_1',
@@ -334,24 +331,24 @@ class _LoginScreenState extends State<LoginScreen> {
                       }
 
                       return Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.border),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.touch_app_outlined, color: Colors.amber.shade400, size: 16),
+                                const Icon(Icons.badge_outlined, color: AppTheme.textSecondary, size: 16),
                                 const SizedBox(width: 8),
-                                Expanded(
+                                const Expanded(
                                   child: Text(
-                                    'Quick Staff Accounts (Tap to fill):',
+                                    'Quick Staff Sign-In',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.9),
+                                      color: AppTheme.textPrimary,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -361,40 +358,40 @@ class _LoginScreenState extends State<LoginScreen> {
                                   const SizedBox(
                                     width: 12,
                                     height: 12,
-                                    child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white54),
+                                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.textSecondary),
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 10),
                             Wrap(
                               spacing: 8,
                               runSpacing: 8,
                               children: staffList.map((u) {
-                                String iconPrefix;
+                                IconData roleIcon;
                                 Color chipColor;
                                 if (u.isSuperAdmin) {
-                                  iconPrefix = '👑';
-                                  chipColor = const Color(0xFF3B82F6);
+                                  roleIcon = Icons.admin_panel_settings_outlined;
+                                  chipColor = AppTheme.purvaPrimary;
                                 } else if (u.isOffice) {
-                                  iconPrefix = '🏢';
-                                  chipColor = const Color(0xFF10B981);
+                                  roleIcon = Icons.business_center_outlined;
+                                  chipColor = AppTheme.manasPrimary;
                                 } else if (u.isDriver) {
-                                  iconPrefix = '🚚';
-                                  chipColor = const Color(0xFF06B6D4);
+                                  roleIcon = Icons.local_shipping_outlined;
+                                  chipColor = const Color(0xFF0284C7);
                                 } else if (u.isOrder) {
-                                  iconPrefix = '🛒';
-                                  chipColor = const Color(0xFF8B5CF6);
+                                  roleIcon = Icons.shopping_bag_outlined;
+                                  chipColor = const Color(0xFF7C3AED);
                                 } else if (u.isSalesman) {
-                                  iconPrefix = '🛵';
-                                  chipColor = const Color(0xFFF59E0B);
+                                  roleIcon = Icons.payments_outlined;
+                                  chipColor = const Color(0xFFD97706);
                                 } else {
-                                  iconPrefix = '📦';
-                                  chipColor = const Color(0xFF8B5CF6);
+                                  roleIcon = Icons.person_outline;
+                                  chipColor = AppTheme.secondary;
                                 }
 
-                                final label = '$iconPrefix ${u.plainName}';
                                 return _buildQuickChip(
-                                  label: label,
+                                  icon: roleIcon,
+                                  label: u.plainName,
                                   phone: u.phone,
                                   name: u.name,
                                   password: u.actualPassword,
@@ -403,10 +400,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               }).toList(),
                             ),
                             const SizedBox(height: 10),
-                            Text(
-                              'Default password for all staff: pass123 (Changeable anytime)',
+                            const Text(
+                              'Default staff password: pass123',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.6),
+                                color: AppTheme.textSecondary,
                                 fontSize: 11,
                               ),
                             ),
@@ -425,6 +422,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildQuickChip({
+    required IconData icon,
     required String label,
     required String phone,
     required String name,
@@ -435,19 +433,26 @@ class _LoginScreenState extends State<LoginScreen> {
       onTap: () => _fillQuickCredentials(phone, name, password),
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.22),
+          color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.45)),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
         ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11.5,
-            fontWeight: FontWeight.w700,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );

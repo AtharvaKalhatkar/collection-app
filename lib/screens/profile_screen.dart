@@ -349,7 +349,7 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '✓ Synced automatically across all logins & devices via Supabase cloud.',
+                'Synced automatically across all logins & devices via Supabase cloud.',
                 style: TextStyle(fontSize: 11, color: Colors.green.shade700, fontWeight: FontWeight.bold),
               ),
             ],
@@ -414,12 +414,9 @@ class ProfileScreen extends StatelessWidget {
     final totalShops = provider.shops.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text(
-          'My Profile',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-        ),
+        title: const Text('My Profile'),
         leading: onBackToOverview != null || Navigator.canPop(context)
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
@@ -433,8 +430,8 @@ class ProfileScreen extends StatelessWidget {
                 },
               )
             : null,
-        backgroundColor: AppTheme.primary,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: AppTheme.primary,
         elevation: 0,
         actions: [
           IconButton(
@@ -894,14 +891,13 @@ class ProfileScreen extends StatelessWidget {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                    color: AppTheme.purvaLight,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.manage_accounts_rounded, color: Color(0xFF2563EB), size: 20),
+                  child: const Icon(Icons.manage_accounts_rounded, color: AppTheme.purvaPrimary, size: 20),
                 ),
                 title: const Text('Staff & Role Management', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                subtitle: const Text('Change staff mobile numbers, passwords & roles', style: TextStyle(fontSize: 11.5)),
-                trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -918,14 +914,13 @@ class ProfileScreen extends StatelessWidget {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                    color: AppTheme.manasLight,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.share_location_outlined, color: Color(0xFF10B981), size: 20),
+                  child: const Icon(Icons.share_location_outlined, color: AppTheme.manasPrimary, size: 20),
                 ),
-                title: const Text('Live Staff Tracking & Route Timeline', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                subtitle: const Text('Live GPS tracking, route history & stops of salesmen & driver', style: TextStyle(fontSize: 11.5)),
-                trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                title: const Text('Live Staff Tracking & Timeline', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -936,8 +931,6 @@ class ProfileScreen extends StatelessWidget {
             ),
             const Divider(height: 1),
           ],
-
-
 
           // 2. Collection Statement & Ledger
           Material(
@@ -953,8 +946,7 @@ class ProfileScreen extends StatelessWidget {
                 child: const Icon(Icons.description_outlined, color: AppTheme.secondary, size: 20),
               ),
               title: const Text('Collection Statement & Ledger', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: const Text('Export and view reports in PDF and Excel', style: TextStyle(fontSize: 11.5)),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
               onTap: () {
                 Navigator.push(
                   context,
@@ -973,14 +965,13 @@ class ProfileScreen extends StatelessWidget {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                  color: AppTheme.manasLight,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 20),
+                child: const Icon(Icons.payments_rounded, color: AppTheme.manasPrimary, size: 20),
               ),
               title: const Text('Cash Counter', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: const Text('Count ₹500, ₹200, ₹100 notes & match daily cash', style: TextStyle(fontSize: 11.5)),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
               onTap: () {
                 Navigator.push(
                   context,
@@ -994,7 +985,7 @@ class ProfileScreen extends StatelessWidget {
               },
             ),
           ),
-          const SizedBox(height: 10),
+          const Divider(height: 1),
 
           // Manage Employees / Staff
           Material(
@@ -1004,14 +995,13 @@ class ProfileScreen extends StatelessWidget {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                  color: AppTheme.manasLight,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.people_alt_outlined, color: Color(0xFF10B981), size: 20),
+                child: const Icon(Icons.people_alt_outlined, color: AppTheme.manasPrimary, size: 20),
               ),
-              title: const Text('Manage Employees', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: Text('${provider.employees.length} collection staff registered • Add or remove', style: const TextStyle(fontSize: 11.5)),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+              title: Text('Manage Employees (${provider.employees.length})', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
               onTap: () => _showManageEmployeesDialog(context, provider),
             ),
           ),
@@ -1031,8 +1021,7 @@ class ProfileScreen extends StatelessWidget {
                 child: const Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 20),
               ),
               title: const Text('AI Bill Scanner (Cloud Key)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              subtitle: const Text('Auto-syncs Gemini Vision API key across phone & desktop', style: TextStyle(fontSize: 11.5)),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+              trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
               onTap: () => _showGeminiKeyDialog(context),
             ),
           ),
@@ -1046,17 +1035,17 @@ class ProfileScreen extends StatelessWidget {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                  color: AppTheme.manasLight,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.cloud_sync_rounded, color: Color(0xFF10B981), size: 20),
+                child: const Icon(Icons.cloud_sync_rounded, color: AppTheme.manasPrimary, size: 20),
               ),
-              title: const Text('Automated Cloud Backup', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              title: const Text('Cloud Backup', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
               subtitle: Text(
                 provider.lastBackupTime != null
-                    ? 'Auto-runs every 4 days • Last: ${DateFormat('dd MMM, hh:mm a').format(provider.lastBackupTime!)}'
-                    : 'Auto-runs every 4 days • Cloud Active',
-                style: const TextStyle(fontSize: 11.5),
+                    ? 'Last: ${DateFormat('dd MMM, hh:mm a').format(provider.lastBackupTime!)}'
+                    : 'Auto-backup active',
+                style: const TextStyle(fontSize: 11),
               ),
               trailing: ElevatedButton(
                 onPressed: () async {
@@ -1074,13 +1063,13 @@ class ProfileScreen extends StatelessWidget {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
+                  backgroundColor: AppTheme.manasPrimary,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   minimumSize: const Size(0, 32),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                child: const Text('Backup Now', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                child: const Text('Backup Now', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
               ),
             ),
           ),
@@ -1100,9 +1089,8 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   child: const Icon(Icons.cleaning_services_outlined, color: AppTheme.balanceDueColor, size: 20),
                 ),
-                title: const Text('Start Fresh (Clear Transactions)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppTheme.balanceDueColor)),
-                subtitle: const Text('Clears old records; keeps all Routes & Outlets', style: TextStyle(fontSize: 11.5)),
-                trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                title: const Text('Clear Old Transactions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppTheme.balanceDueColor)),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
                 onTap: () => _confirmClearTransactions(context, provider),
               ),
             ),

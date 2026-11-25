@@ -711,12 +711,9 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Staff Tracking & Map',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.5),
-        ),
-        backgroundColor: AppTheme.primary,
-        foregroundColor: Colors.white,
+        title: const Text('Staff Tracking & Map'),
+        backgroundColor: Colors.white,
+        foregroundColor: AppTheme.primary,
         elevation: 0,
         actions: [
           IconButton(
@@ -724,24 +721,33 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    child: CircularProgressIndicator(color: AppTheme.purvaPrimary, strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh),
             tooltip: 'Refresh GPS & Timeline',
             onPressed: _isRefreshing ? null : _refresh,
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white.withValues(alpha: 0.7),
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-          tabs: const [
-            Tab(icon: Icon(Icons.route_outlined, size: 20), text: 'Location Timeline'),
-            Tab(icon: Icon(Icons.map_outlined, size: 20), text: 'Live Fleet & Map'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: AppTheme.border)),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: AppTheme.purvaPrimary,
+              indicatorWeight: 2.5,
+              labelColor: AppTheme.purvaPrimary,
+              unselectedLabelColor: AppTheme.textSecondary,
+              labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              tabs: const [
+                Tab(icon: Icon(Icons.route_outlined, size: 18), text: 'Location Timeline'),
+                Tab(icon: Icon(Icons.map_outlined, size: 18), text: 'Live Fleet & Map'),
+              ],
+            ),
+          ),
         ),
       ),
       body: TabBarView(
