@@ -102,13 +102,13 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     for (int i = 0; i < order.items.length; i++) {
       final it = order.items[i];
       buffer.writeln('${i + 1}. ${it.productName} [${it.subcategory}]');
-      buffer.writeln('   Qty: ${it.cases} CS + ${it.units} UT @ ₹${it.rate.toStringAsFixed(2)} = ₹${CurrencyFormatter.format(it.subtotal)}');
+      buffer.writeln('   Qty: ${it.cases} CS + ${it.units} UT @ ₹${it.rate.toStringAsFixed(2)} = ${CurrencyFormatter.format(it.subtotal)}');
     }
     buffer.writeln('--------------------------------');
     buffer.writeln('*Total CS:* ${order.totalCases} Cases');
     buffer.writeln('*Total UT:* ${order.totalLooseUnits} Loose');
     buffer.writeln('*Total Weight:* ${order.totalWeightKg.toStringAsFixed(2)} kg');
-    buffer.writeln('*GRAND TOTAL: ₹${CurrencyFormatter.format(order.totalAmount)}*');
+    buffer.writeln('*GRAND TOTAL: ${CurrencyFormatter.format(order.totalAmount)}*');
     if (order.notes != null && order.notes!.isNotEmpty) {
       buffer.writeln('Notes: ${order.notes}');
     }
@@ -535,7 +535,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                 _buildSummaryDivider(),
                 _buildSummaryCol('Weight', '${totalWeight.toStringAsFixed(1)} kg'),
                 _buildSummaryDivider(),
-                _buildSummaryCol('Total Value', '₹${CurrencyFormatter.format(totalAmount)}', isBoldVal: true),
+                _buildSummaryCol('Total Value', CurrencyFormatter.format(totalAmount), isBoldVal: true),
               ],
             ),
           ),
@@ -643,7 +643,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
               ),
             ),
             Text(
-              '₹${CurrencyFormatter.format(order.totalAmount)}',
+              CurrencyFormatter.format(order.totalAmount),
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF16A34A)),
             ),
           ],
@@ -733,7 +733,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                   ),
                   const SizedBox(width: 14),
                   Text(
-                    '₹${CurrencyFormatter.format(it.subtotal)}',
+                    CurrencyFormatter.format(it.subtotal),
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
                   ),
                 ],

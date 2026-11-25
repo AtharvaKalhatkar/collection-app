@@ -208,8 +208,9 @@ class SalesOrderModel {
   final List<OrderItem> items;
   final double totalAmount;
   final int totalQuantity;
-  final String status; // 'Booked', 'Dispatched', 'Delivered'
+  final String status; // 'Booked', 'Dispatched', 'Billed', 'Delivered', 'Cancelled'
   final String? notes;
+  final DateTime updatedAt;
 
   SalesOrderModel({
     required this.id,
@@ -227,7 +228,46 @@ class SalesOrderModel {
     required this.totalQuantity,
     this.status = 'Booked',
     this.notes,
-  });
+    DateTime? updatedAt,
+  }) : updatedAt = updatedAt ?? orderDate;
+
+  SalesOrderModel copyWith({
+    String? id,
+    String? orderNumber,
+    String? firm,
+    String? routeId,
+    String? routeName,
+    String? shopId,
+    String? shopName,
+    String? shopMobile,
+    String? salesmanName,
+    DateTime? orderDate,
+    List<OrderItem>? items,
+    double? totalAmount,
+    int? totalQuantity,
+    String? status,
+    String? notes,
+    DateTime? updatedAt,
+  }) {
+    return SalesOrderModel(
+      id: id ?? this.id,
+      orderNumber: orderNumber ?? this.orderNumber,
+      firm: firm ?? this.firm,
+      routeId: routeId ?? this.routeId,
+      routeName: routeName ?? this.routeName,
+      shopId: shopId ?? this.shopId,
+      shopName: shopName ?? this.shopName,
+      shopMobile: shopMobile ?? this.shopMobile,
+      salesmanName: salesmanName ?? this.salesmanName,
+      orderDate: orderDate ?? this.orderDate,
+      items: items ?? this.items,
+      totalAmount: totalAmount ?? this.totalAmount,
+      totalQuantity: totalQuantity ?? this.totalQuantity,
+      status: status ?? this.status,
+      notes: notes ?? this.notes,
+      updatedAt: updatedAt ?? DateTime.now(),
+    );
+  }
 
   String get businessName => firm;
 
@@ -252,27 +292,35 @@ class SalesOrderModel {
     'totalQuantity': totalQuantity,
     'status': status,
     'notes': notes,
+    'updatedAt': updatedAt.toIso8601String(),
   };
 
-  factory SalesOrderModel.fromJson(Map<String, dynamic> json) => SalesOrderModel(
-    id: json['id'] as String,
-    orderNumber: json['orderNumber'] as String,
-    firm: json['firm'] as String,
-    routeId: json['routeId'] as String,
-    routeName: json['routeName'] as String? ?? 'General Route',
-    shopId: json['shopId'] as String,
-    shopName: json['shopName'] as String,
-    shopMobile: json['shopMobile'] as String? ?? '',
-    salesmanName: json['salesmanName'] as String? ?? 'Akash',
-    orderDate: json['orderDate'] != null
+  factory SalesOrderModel.fromJson(Map<String, dynamic> json) {
+    final parsedOrderDate = json['orderDate'] != null
         ? DateTime.tryParse(json['orderDate'] as String) ?? DateTime.now()
-        : DateTime.now(),
-    items: (json['items'] as List<dynamic>? ?? [])
-        .map((i) => OrderItem.fromJson(i as Map<String, dynamic>))
-        .toList(),
-    totalAmount: (json['totalAmount'] as num).toDouble(),
-    totalQuantity: (json['totalQuantity'] as num).toInt(),
-    status: json['status'] as String? ?? 'Booked',
-    notes: json['notes'] as String?,
-  );
+        : DateTime.now();
+    final parsedUpdatedAt = json['updatedAt'] != null
+        ? DateTime.tryParse(json['updatedAt'] as String) ?? parsedOrderDate
+        : parsedOrderDate;
+    return SalesOrderModel(
+      id: json['id'] as String,
+      orderNumber: json['orderNumber'] as String,
+      firm: json['firm'] as String,
+      routeId: json['routeId'] as String,
+      routeName: json['routeName'] as String? ?? 'General Route',
+      shopId: json['shopId'] as String,
+      shopName: json['shopName'] as String,
+      shopMobile: json['shopMobile'] as String? ?? '',
+      salesmanName: json['salesmanName'] as String? ?? 'Akash',
+      orderDate: parsedOrderDate,
+      items: (json['items'] as List<dynamic>? ?? [])
+          .map((i) => OrderItem.fromJson(i as Map<String, dynamic>))
+          .toList(),
+      totalAmount: (json['totalAmount'] as num).toDouble(),
+      totalQuantity: (json['totalQuantity'] as num).toInt(),
+      status: json['status'] as String? ?? 'Booked',
+      notes: json['notes'] as String?,
+      updatedAt: parsedUpdatedAt,
+    );
+  }
 }

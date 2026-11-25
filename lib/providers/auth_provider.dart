@@ -102,18 +102,52 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> updateCurrentLocation(double latitude, double longitude, {String? landmark}) async {
     if (_currentUser == null) return;
-    final updated = _currentUser!.copyWith(
+    // Merge with latest synced user metadata so periodic GPS pings never overwrite
+    // route assignments, password, role, or active status edited by Super Admin.
+    final latestUser = await _authService.getFreshUserById(_currentUser!.id) ?? _currentUser!;
+    final updated = latestUser.copyWith(
       latitude: latitude,
       longitude: longitude,
       locationUpdatedAt: DateTime.now(),
-      locationLandmark: landmark,
+      locationLandmark: landmark ?? _currentUser!.locationLandmark,
     );
     _currentUser = updated;
-    await saveUser(updated);
+    await _authService.saveUserLocationOnly(updated);
+    notifyListeners();
   }
 
   Future<void> refreshUsers() async {
-    _users = await _authService.loadUsers();
+    final loaded = await _authService.loadUsers();
+    await applySyncedUsers(loaded);
+  }
+
+  /// Applies an already-fetched user list (for example from CollectionProvider sync)
+  /// without triggering a redundant network fetch, keeping the signed-in user's
+  /// route assignments and active status current.
+  Future<void> applySyncedUsers(List<UserModel> syncedUsers) async {
+    _users = syncedUsers;
+    if (_currentUser != null) {
+      final idx = _users.indexWhere((u) => u.id == _currentUser!.id);
+      if (idx != -1) {
+        final remote = _users[idx];
+        if (!remote.isActive) {
+          await logout();
+          return;
+        }
+        final keepLocalGps = _currentUser!.locationUpdatedAt != null &&
+            (remote.locationUpdatedAt == null ||
+                _currentUser!.locationUpdatedAt!.isAfter(remote.locationUpdatedAt!));
+        _currentUser = keepLocalGps
+            ? remote.copyWith(
+                latitude: _currentUser!.latitude,
+                longitude: _currentUser!.longitude,
+                locationUpdatedAt: _currentUser!.locationUpdatedAt,
+                locationLandmark: _currentUser!.locationLandmark,
+              )
+            : remote;
+        await _authService.persistSessionUser(_currentUser!);
+      }
+    }
     notifyListeners();
   }
 }

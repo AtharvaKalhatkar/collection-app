@@ -351,7 +351,9 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
     final existingBill = provider.getBillSummary(shop.id, billNo);
     final priorCollected = existingBill?.totalCollected ?? 0.0;
     final effectiveBillTotal = existingBill != null && existingBill.billTotal > billAmt ? existingBill.billTotal : billAmt;
-    final remainingBeforeThis = (effectiveBillTotal - priorCollected) > 0 ? (effectiveBillTotal - priorCollected) : effectiveBillTotal;
+    final remainingBeforeThis = existingBill != null
+        ? (effectiveBillTotal - priorCollected).clamp(0.0, effectiveBillTotal).toDouble()
+        : effectiveBillTotal;
 
     if (existingBill != null && collAmt > (remainingBeforeThis + 0.01)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -783,8 +785,8 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                         )
                       else
                         DropdownButtonFormField<String>(
-                          key: ValueKey(_selectedShopId),
-                          initialValue: _selectedShopId,
+                          key: ValueKey(shops.any((s) => s.id == _selectedShopId) ? _selectedShopId : 'none'),
+                          initialValue: shops.any((s) => s.id == _selectedShopId) ? _selectedShopId : null,
                           isExpanded: true,
                           decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.storefront_outlined, size: 20),

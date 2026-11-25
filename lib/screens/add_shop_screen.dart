@@ -296,8 +296,8 @@ class _AddShopScreenState extends State<AddShopScreen> {
                       )
                     else
                       DropdownButtonFormField<String>(
-                        key: ValueKey(_selectedRouteId),
-                        initialValue: _selectedRouteId,
+                        key: ValueKey(routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : 'none'),
+                        initialValue: routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : null,
                         decoration: const InputDecoration(
                           prefixIcon: Icon(Icons.alt_route, size: 20),
                           labelText: 'Beat Route',

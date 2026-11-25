@@ -1167,8 +1167,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                             const Text('5. Category', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.textSecondary)),
                             const SizedBox(height: 6),
                             DropdownButtonFormField<String?>(
-                              key: ValueKey('order_category_${_selectedCompany}_${_selectedCategory ?? "all"}'),
-                              initialValue: _selectedCategory,
+                              key: ValueKey('order_category_${_selectedCompany}_${categories.contains(_selectedCategory) ? _selectedCategory : "all"}'),
+                              initialValue: categories.contains(_selectedCategory) ? _selectedCategory : null,
                               decoration: InputDecoration(
                                 prefixIcon: const Icon(Icons.category_rounded, color: AppTheme.primary, size: 20),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -1544,7 +1544,9 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
-                    value: currentUnit,
+                    value: OrderCatalogService.availableUnits.contains(currentUnit)
+                        ? currentUnit
+                        : OrderCatalogService.availableUnits.first,
                     isDense: true,
                     style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                     items: OrderCatalogService.availableUnits

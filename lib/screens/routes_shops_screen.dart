@@ -1052,7 +1052,9 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String?>(
-                        value: _selectedShopId,
+                        value: outletsInSelectedRoute.any((s) => s.id == _selectedShopId)
+                            ? _selectedShopId
+                            : null,
                         isExpanded: true,
                         icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary, size: 22),
                         hint: Row(

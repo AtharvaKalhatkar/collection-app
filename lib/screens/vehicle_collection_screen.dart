@@ -842,7 +842,11 @@ class _VehicleCollectionScreenState extends State<VehicleCollectionScreen> {
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
                               isExpanded: true,
-                              value: _isCustomVehicle ? 'OTHER' : _selectedVehicle,
+                              value: _isCustomVehicle
+                                  ? 'OTHER'
+                                  : (registeredVehicles.contains(_selectedVehicle)
+                                      ? _selectedVehicle
+                                      : 'OTHER'),
                               icon: const Icon(Icons.arrow_drop_down, color: AppTheme.primary),
                               items: [
                                 ...registeredVehicles.map((v) => DropdownMenuItem(

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/pending_bill_model.dart';
+import '../models/route_model.dart';
 import '../models/shop_model.dart';
 import '../providers/collection_provider.dart';
 import '../utils/theme.dart';
@@ -594,7 +595,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
       final shop = provider.getShopById(_selectedShopId!);
       final route = provider.routes.firstWhere(
         (r) => r.id == _selectedRouteId,
-        orElse: () => provider.routes.first,
+        orElse: () => RouteModel(id: _selectedRouteId ?? 'general', name: 'General Route'),
       );
 
       final newPendingBill = PendingBillModel(
@@ -615,7 +616,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
         createdAt: DateTime.now(),
       );
 
-      provider.addPendingBill(newPendingBill);
+      await provider.addPendingBill(newPendingBill);
       _persistDefaults(route.id, shop?.id ?? _selectedShopId!);
 
       if (mounted) {
@@ -800,7 +801,7 @@ class _AddPendingBillScreenState extends State<AddPendingBillScreen> {
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     isExpanded: true,
-                    value: _selectedRouteId,
+                    value: routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : null,
                     hint: const Text('Choose Beat Route'),
                     items: routes.map((r) {
                       final count = provider.getShopsForRoute(r.id).length;

@@ -50,7 +50,14 @@ class DailyCollectionApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => CollectionProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, CollectionProvider>(
+          create: (_) => CollectionProvider(),
+          update: (_, auth, collection) {
+            final provider = collection ?? CollectionProvider();
+            provider.onUsersSynced = auth.applySyncedUsers;
+            return provider;
+          },
+        ),
       ],
       child: MaterialApp(
         title: 'Purva Enterprises',

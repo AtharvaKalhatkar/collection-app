@@ -59,6 +59,12 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   }
 
   @override
+  void dispose() {
+    LocationTrackingService().stopTracking();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;

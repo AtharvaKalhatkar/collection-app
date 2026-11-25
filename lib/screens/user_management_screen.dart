@@ -545,6 +545,21 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     return;
                   }
 
+                  final duplicatePhone = auth.users.any(
+                    (u) =>
+                        UserModel.normalizePhone(u.phone) == cleanPhone &&
+                        u.id != userToEdit?.id,
+                  );
+                  if (duplicatePhone) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Mobile / Login ID already belongs to another staff member'),
+                        backgroundColor: AppTheme.error,
+                      ),
+                    );
+                    return;
+                  }
+
                   final user = UserModel(
                     id: userToEdit?.id ?? 'user_${DateTime.now().millisecondsSinceEpoch}',
                     phone: cleanPhone,

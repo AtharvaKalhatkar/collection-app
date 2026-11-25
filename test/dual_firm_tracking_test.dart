@@ -1,6 +1,131 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:daily_collection_app/models/collection_model.dart';
+import 'package:daily_collection_app/models/pending_bill_model.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
+
+Future<CollectionProvider> createSeededDualFirmProvider() async {
+  final provider = CollectionProvider(autoInitialize: false);
+  await provider.initialize();
+  final now = DateTime.now();
+
+  await provider.addPendingBill(PendingBillModel(
+    id: 'test-pb-purva-1',
+    businessName: 'Purva Enterprises',
+    shopId: 'ata-kirana',
+    shopName: 'ATA Kirana',
+    routeId: 'r-chakan',
+    routeName: 'Chakan',
+    invoiceDate: now,
+    deliveryDate: now,
+    billNumber: 'PE-101',
+    totalAmount: 40000.0,
+    collectedAmount: 30000.0,
+    status: 'partial',
+  ));
+
+  // Purva Enterprises (Total: 65000 = 60000 Cash + 5000 Digital, Due: 10000, 3 bills)
+  await provider.addCollection(CollectionModel(
+    id: 'purva-1',
+    businessName: 'Purva Enterprises',
+    shopId: 'ata-kirana',
+    shopName: 'ATA Kirana',
+    routeId: 'r-chakan',
+    routeName: 'Chakan',
+    billNumber: 'PE-101',
+    billAmount: 40000.0,
+    collectedAmount: 30000.0,
+    balanceRemaining: 10000.0,
+    paymentMode: PaymentMode.cash,
+    salesmanName: 'Akash',
+    collectedAt: now,
+  ));
+  await provider.addCollection(CollectionModel(
+    id: 'purva-2',
+    businessName: 'Purva Enterprises',
+    shopId: 'mahesh-store',
+    shopName: 'Mahesh Provision',
+    routeId: 'r-chakan',
+    routeName: 'Chakan',
+    billNumber: 'PE-102',
+    billAmount: 30000.0,
+    collectedAmount: 30000.0,
+    balanceRemaining: 0.0,
+    paymentMode: PaymentMode.cash,
+    salesmanName: 'Akash',
+    collectedAt: now,
+  ));
+  await provider.addCollection(CollectionModel(
+    id: 'purva-3',
+    businessName: 'Purva Enterprises',
+    shopId: 'om-traders',
+    shopName: 'Om Traders',
+    routeId: 'r-chakan',
+    routeName: 'Chakan',
+    billNumber: 'PE-103',
+    billAmount: 5000.0,
+    collectedAmount: 5000.0,
+    balanceRemaining: 0.0,
+    paymentMode: PaymentMode.cheque,
+    chequeNumber: '123456',
+    bankName: 'HDFC Bank',
+    salesmanName: 'Akash',
+    collectedAt: now,
+  ));
+
+  // Manas Sales (Total: 47000 = 40000 Cash + 7000 Digital, Due: 0, 3 bills)
+  await provider.addCollection(CollectionModel(
+    id: 'manas-1',
+    businessName: 'Manas Sales',
+    shopId: 'shree-ganesh',
+    shopName: 'Shree Ganesh',
+    routeId: 'r-shikrapur',
+    routeName: 'Shikrapur',
+    billNumber: 'MS-201',
+    billAmount: 40000.0,
+    collectedAmount: 40000.0,
+    balanceRemaining: 0.0,
+    paymentMode: PaymentMode.cash,
+    salesmanName: 'Akash',
+    collectedAt: now,
+  ));
+  await provider.addCollection(CollectionModel(
+    id: 'manas-2',
+    businessName: 'Manas Sales',
+    shopId: 'sai-krupa',
+    shopName: 'Sai Krupa',
+    routeId: 'r-shikrapur',
+    routeName: 'Shikrapur',
+    billNumber: 'MS-202',
+    billAmount: 4000.0,
+    collectedAmount: 4000.0,
+    balanceRemaining: 0.0,
+    paymentMode: PaymentMode.upi,
+    referenceNumber: 'UPI1',
+    bankName: 'Central Bank',
+    salesmanName: 'Akash',
+    collectedAt: now,
+  ));
+  await provider.addCollection(CollectionModel(
+    id: 'manas-3',
+    businessName: 'Manas Sales',
+    shopId: 'ata-kirana',
+    shopName: 'ATA Kirana',
+    routeId: 'r-chakan',
+    routeName: 'Chakan',
+    billNumber: 'MS-203',
+    billAmount: 3000.0,
+    collectedAmount: 3000.0,
+    balanceRemaining: 0.0,
+    paymentMode: PaymentMode.netBanking,
+    referenceNumber: 'NEFT1',
+    bankName: 'State Bank of India',
+    salesmanName: 'Akash',
+    collectedAt: now,
+  ));
+
+  return provider;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -11,8 +136,7 @@ void main() {
 
   group('Dual-Firm Entity Separation & Metrics (Purva Enterprises vs Manas Sales)', () {
     test('Accurately calculates per-firm collections, invoices, and pending balances', () async {
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
+      final provider = await createSeededDualFirmProvider();
 
       // Verify Purva Enterprises
       expect(provider.getTotalCollectionForBusiness('Purva Enterprises'), 65000.0);
@@ -40,8 +164,7 @@ void main() {
     });
 
     test('Filtering by firm isolates records and updates active collections', () async {
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
+      final provider = await createSeededDualFirmProvider();
 
       // Filter to Purva Enterprises
       provider.setFilterBusiness('Purva Enterprises');

@@ -59,7 +59,7 @@ void main() {
 
     // Verify Pending Bills Screen fields
     expect(find.text('Pending Bills'), findsWidgets);
-    expect(find.text('All Firms'), findsOneWidget);
+    expect(find.text('Pending Only'), findsOneWidget);
     expect(find.textContaining('Dates'), findsWidgets);
   });
 }

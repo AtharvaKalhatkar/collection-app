@@ -169,7 +169,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
               style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
             ),
             Text(
-              'Amount: ₹${CurrencyFormatter.format(order.totalAmount)} • ${order.totalCases} CS, ${order.totalLooseUnits} UT (${order.items.length} lines)',
+              'Amount: ${CurrencyFormatter.format(order.totalAmount)} • ${order.totalCases} CS, ${order.totalLooseUnits} UT (${order.items.length} lines)',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
             ),
             const SizedBox(height: 14),
@@ -550,7 +550,9 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
               if (availableRoutes.length > 1)
                 DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
-                    value: _selectedRouteId,
+                    value: availableRoutes.any((r) => r.id == _selectedRouteId)
+                        ? _selectedRouteId
+                        : availableRoutes.first.id,
                     isExpanded: true,
                     icon: const Icon(Icons.arrow_drop_down_circle_outlined, color: Color(0xFF1E40AF), size: 18),
                     items: availableRoutes.map((r) {
@@ -1026,7 +1028,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             if (orderForShop != null) ...[
               const SizedBox(height: 6),
               Text(
-                'Booked: ₹${CurrencyFormatter.format(orderForShop.totalAmount)} (${orderForShop.totalCases} CS, ${orderForShop.totalLooseUnits} UT)',
+                'Booked: ${CurrencyFormatter.format(orderForShop.totalAmount)} (${orderForShop.totalCases} CS, ${orderForShop.totalLooseUnits} UT)',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Color(0xFF15803D)),
               ),
             ],

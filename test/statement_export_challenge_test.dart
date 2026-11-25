@@ -510,6 +510,7 @@ void main() {
   group('3. UI Widget Boundary & Deposit Bank Display Tests', () {
     testWidgets('StatementScreen: Empty subset disables export & preview buttons and displays empty state', (tester) async {
       final provider = CollectionProvider();
+      await tester.runAsync(() => provider.initialize());
 
       tester.view.physicalSize = const Size(1000, 1400);
       tester.view.devicePixelRatio = 1.0;
@@ -554,6 +555,26 @@ void main() {
 
     testWidgets('StatementScreen: Single record match enables buttons, shows 1 receipt, and preview displays bank badge', (tester) async {
       final provider = CollectionProvider();
+      await tester.runAsync(() async {
+        await provider.initialize();
+        await provider.addCollection(CollectionModel(
+          id: 'test-pe-4090',
+          businessName: 'Purva Enterprises',
+          shopId: 'shop-om-traders',
+          shopName: 'Om Traders',
+          routeId: 'r-chakan',
+          routeName: 'Chakan',
+          billNumber: 'PE-4090',
+          billAmount: 15000,
+          collectedAmount: 15000,
+          balanceRemaining: 0,
+          paymentMode: PaymentMode.cheque,
+          chequeNumber: '882011',
+          bankName: 'HDFC Bank',
+          salesmanName: 'Akash',
+          collectedAt: DateTime.now(),
+        ));
+      });
 
       tester.view.physicalSize = const Size(1000, 1400);
       tester.view.devicePixelRatio = 1.0;
@@ -612,6 +633,26 @@ void main() {
 
     testWidgets('StatementScreen: Bank name search filter correctly isolates records', (tester) async {
       final provider = CollectionProvider();
+      await tester.runAsync(() async {
+        await provider.initialize();
+        await provider.addCollection(CollectionModel(
+          id: 'test-ms-2022',
+          businessName: 'Manas Sales',
+          shopId: 'shop-balaji',
+          shopName: 'Balaji Super Market',
+          routeId: 'r-shikrapur',
+          routeName: 'Shikrapur',
+          billNumber: 'MS-2022',
+          billAmount: 8500,
+          collectedAmount: 8500,
+          balanceRemaining: 0,
+          paymentMode: PaymentMode.netBanking,
+          referenceNumber: 'NEFT9988',
+          bankName: 'State Bank of India',
+          salesmanName: 'Akash',
+          collectedAt: DateTime.now(),
+        ));
+      });
 
       tester.view.physicalSize = const Size(1000, 1400);
       tester.view.devicePixelRatio = 1.0;

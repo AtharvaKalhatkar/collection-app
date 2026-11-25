@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -19,6 +20,7 @@ import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
 import '../services/backup_service.dart';
 import '../services/auth_service.dart';
+import '../services/location_tracking_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
 
@@ -43,9 +45,143 @@ class StaffCollectionSummary {
 }
 
 class CollectionProvider extends ChangeNotifier {
-  final StorageService _storage = StorageService();
-  final SupabaseService _supabase = SupabaseService();
+  final StorageService _storage;
+  final SupabaseService _supabase;
   final BackupService _backupService = BackupService();
+
+  static const String _keyDirtyRoutes = 'dirty_route_ids_v1';
+  static const String _keyDirtyShops = 'dirty_shop_ids_v1';
+  static const String _keyDirtyBills = 'dirty_bill_ids_v1';
+  static const String _keyDirtyCollections = 'dirty_collection_ids_v1';
+  static const String _keyDirtyOrders = 'dirty_order_ids_v1';
+  static const String _keyDirtyProducts = 'dirty_product_ids_v1';
+  static const String _keyDirtyHandovers = 'dirty_handover_ids_v1';
+  static const String _keyDirtyVehicleCollections = 'dirty_vc_ids_v1';
+  static const String _keyDirtyRouteOrders = 'dirty_route_order_ids_v1';
+  static const String _keyDirtyVehiclesFlag = 'dirty_vehicles_flag_v1';
+  static const String _keyDirtyEmployeesFlag = 'dirty_employees_flag_v1';
+
+  static const String _keyDeletedOrders = 'deleted_order_ids_v1';
+  static const String _keyDeletedProducts = 'deleted_product_ids_v1';
+  static const String _keyDeletedHandovers = 'deleted_handover_ids_v1';
+  static const String _keyDeletedVehicleCollections = 'deleted_vc_ids_v1';
+
+  Set<String> _dirtyRouteIds = {};
+  Set<String> _dirtyShopIds = {};
+  Set<String> _dirtyBillIds = {};
+  Set<String> _dirtyCollectionIds = {};
+  Set<String> _dirtyOrderIds = {};
+  Set<String> _dirtyProductIds = {};
+  Set<String> _dirtyHandoverIds = {};
+  Set<String> _dirtyVehicleCollectionIds = {};
+  Set<String> _dirtyRouteOrderIds = {};
+  bool _dirtyVehiclesFlag = false;
+  bool _dirtyEmployeesFlag = false;
+
+  Set<String> _locallyDeletedOrderIds = {};
+  Set<String> _locallyDeletedProductIds = {};
+  Set<String> _locallyDeletedHandoverIds = {};
+  Set<String> _locallyDeletedVehicleCollectionIds = {};
+
+  Map<String, List<String>> _routeOutletOrders = {};
+  Future<void>? _activeSyncFuture;
+  Future<void> Function(List<UserModel>)? onUsersSynced;
+
+  Future<void> _loadSyncOutboxes() async {
+    _dirtyRouteIds = await _storage.loadIdSet(_keyDirtyRoutes);
+    _dirtyShopIds = await _storage.loadIdSet(_keyDirtyShops);
+    _dirtyBillIds = await _storage.loadIdSet(_keyDirtyBills);
+    _dirtyCollectionIds = await _storage.loadIdSet(_keyDirtyCollections);
+    _dirtyOrderIds = await _storage.loadIdSet(_keyDirtyOrders);
+    _dirtyProductIds = await _storage.loadIdSet(_keyDirtyProducts);
+    _dirtyHandoverIds = await _storage.loadIdSet(_keyDirtyHandovers);
+    _dirtyVehicleCollectionIds =
+        await _storage.loadIdSet(_keyDirtyVehicleCollections);
+    _dirtyRouteOrderIds = await _storage.loadIdSet(_keyDirtyRouteOrders);
+    _dirtyVehiclesFlag = await _storage.loadBoolFlag(_keyDirtyVehiclesFlag);
+    _dirtyEmployeesFlag = await _storage.loadBoolFlag(_keyDirtyEmployeesFlag);
+
+    _locallyDeletedOrderIds = await _storage.loadIdSet(_keyDeletedOrders);
+    _locallyDeletedProductIds = await _storage.loadIdSet(_keyDeletedProducts);
+    _locallyDeletedHandoverIds =
+        await _storage.loadIdSet(_keyDeletedHandovers);
+    _locallyDeletedVehicleCollectionIds =
+        await _storage.loadIdSet(_keyDeletedVehicleCollections);
+    _routeOutletOrders = await _storage.loadRouteOutletOrders();
+  }
+
+  /// Merges an authoritative cloud list [cloudItems] with [localItems] using
+  /// persistent [dirtyIds] and [deletedIds], detecting real content changes.
+  List<T>? _mergeCloudEntity<T>({
+    required List<T> localItems,
+    required List<T> cloudItems,
+    required Set<String> dirtyIds,
+    required Set<String> deletedIds,
+    required String Function(T) idOf,
+    required bool Function(T local, T cloud) differs,
+    bool pruneMissingSynced = true,
+  }) {
+    final cloudMap = <String, T>{};
+    for (final c in cloudItems) {
+      final id = idOf(c);
+      if (!deletedIds.contains(id)) {
+        cloudMap[id] = c;
+      }
+    }
+
+    final localMap = <String, T>{for (final l in localItems) idOf(l): l};
+    final result = <T>[];
+    final seen = <String>{};
+    bool changed = false;
+
+    for (final c in cloudMap.values) {
+      final id = idOf(c);
+      seen.add(id);
+      final local = localMap[id];
+      if (dirtyIds.contains(id) && local != null) {
+        result.add(local);
+      } else {
+        result.add(c);
+        if (local == null || differs(local, c)) {
+          changed = true;
+        }
+      }
+    }
+
+    for (final l in localItems) {
+      final id = idOf(l);
+      if (seen.contains(id)) continue;
+      if (dirtyIds.contains(id) || !pruneMissingSynced) {
+        result.add(l);
+      } else if (!deletedIds.contains(id)) {
+        // Deleted on another device
+        changed = true;
+      }
+    }
+
+    if (result.length != localItems.length) {
+      changed = true;
+    }
+    return changed ? result : null;
+  }
+
+  void _applyStoredRouteOrdersToShops() {
+    if (_routeOutletOrders.isEmpty || _shops.isEmpty) return;
+    final rankByRoute = <String, Map<String, int>>{};
+    for (final entry in _routeOutletOrders.entries) {
+      rankByRoute[entry.key] = {
+        for (int i = 0; i < entry.value.length; i++) entry.value[i]: i,
+      };
+    }
+    _shops.sort((a, b) {
+      final rA = rankByRoute[a.routeId]?[a.id];
+      final rB = rankByRoute[b.routeId]?[b.id];
+      if (rA != null && rB != null) return rA.compareTo(rB);
+      if (rA != null) return -1;
+      if (rB != null) return 1;
+      return 0;
+    });
+  }
   final Uuid _uuid = const Uuid();
   DateTime? _lastBackupTime;
 
@@ -196,11 +332,22 @@ class CollectionProvider extends ChangeNotifier {
     return success;
   }
 
-  CollectionProvider() {
-    initialize();
+  Future<void>? _initFuture;
+
+  CollectionProvider({
+    StorageService? storage,
+    SupabaseService? supabase,
+    bool autoInitialize = true,
+  })  : _storage = storage ?? StorageService(),
+        _supabase = supabase ?? SupabaseService() {
+    if (autoInitialize) {
+      initialize();
+    }
   }
 
-  Future<void> initialize() async {
+  Future<void> initialize() => _initFuture ??= _performInitialize();
+
+  Future<void> _performInitialize() async {
     _isLoading = true;
     notifyListeners();
 
@@ -238,6 +385,9 @@ class CollectionProvider extends ChangeNotifier {
       if (_locallyDeletedCollectionIds.isNotEmpty) {
         _collections.removeWhere((c) => _locallyDeletedCollectionIds.contains(c.id));
       }
+      if (_locallyDeletedBillIds.isNotEmpty) {
+        _pendingBills.removeWhere((b) => _locallyDeletedBillIds.contains(b.id));
+      }
       if (_locallyDeletedShopIds.isNotEmpty) {
         _shops.removeWhere((s) => _locallyDeletedShopIds.contains(s.id));
       }
@@ -245,13 +395,15 @@ class CollectionProvider extends ChangeNotifier {
         _routes.removeWhere((r) => _locallyDeletedRouteIds.contains(r.id));
       }
 
-      // Auto-purge any legacy sample dummy records (col-1..col-6, pb-1..pb-4, shop-*)
-      final hadDummyCol = _collections.any((c) => c.id.startsWith('col-'));
-      final hadDummyPb = _pendingBills.any((b) => b.id.startsWith('pb-'));
+      // Auto-purge only exact legacy sample dummy IDs (col-1..col-6, pb-1..pb-4, shop-*)
+      const legacyDummyCollectionIds = {'col-1', 'col-2', 'col-3', 'col-4', 'col-5', 'col-6'};
+      const legacyDummyBillIds = {'pb-1', 'pb-2', 'pb-3', 'pb-4'};
+      final hadDummyCol = _collections.any((c) => legacyDummyCollectionIds.contains(c.id));
+      final hadDummyPb = _pendingBills.any((b) => legacyDummyBillIds.contains(b.id));
       final hadDummyShop = _shops.any(_isDummyShop);
       if (hadDummyCol || hadDummyPb || hadDummyShop) {
-        _collections.removeWhere((c) => c.id.startsWith('col-'));
-        _pendingBills.removeWhere((b) => b.id.startsWith('pb-'));
+        _collections.removeWhere((c) => legacyDummyCollectionIds.contains(c.id));
+        _pendingBills.removeWhere((b) => legacyDummyBillIds.contains(b.id));
         _shops.removeWhere(_isDummyShop);
         await _storage.saveCollections(_collections);
         await _storage.savePendingBills(_pendingBills);
@@ -282,29 +434,20 @@ class CollectionProvider extends ChangeNotifier {
       _salesmanRole = await _storage.loadSalesmanRole();
       _salesOrders = await _storage.loadSalesOrders();
 
-      // Forced wipe of legacy cached test collections, bills and orders
+      // One-time cleanup of legacy dummy mock records only (never wipe real production data).
       final prefs = await SharedPreferences.getInstance();
-      final forcedClean = prefs.getBool('forced_clean_transactions_v5') ?? false;
-      if (!forcedClean) {
-        _collections.clear();
-        _pendingBills.clear();
-        _salesOrders.clear();
-        _locallyDeletedCollectionIds.clear();
-        _locallyDeletedBillIds.clear();
+      final legacyCleaned = prefs.getBool('legacy_dummy_cleaned_v6') ?? false;
+      if (!legacyCleaned) {
+        _collections.removeWhere((c) => _isDummyShopIdName(c.shopId, c.shopName));
+        _pendingBills.removeWhere((b) => _isDummyShopIdName(b.shopId, b.shopName));
         await _storage.saveCollections(_collections);
         await _storage.savePendingBills(_pendingBills);
-        await _storage.saveSalesOrders(_salesOrders);
-        await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
-        await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
-        await prefs.setBool('forced_clean_transactions_v5', true);
-
-        try {
-          await _supabase.clearAllBillsAndCollections();
-        } catch (e) {
-          debugPrint('Error clearing Supabase in forcedClean: $e');
-        }
+        await prefs.setBool('legacy_dummy_cleaned_v6', true);
       }
     }
+
+    // Load persistent dirty outbox queues & custom route orders for ALL setups
+    await _loadSyncOutboxes();
 
     // Load custom products for both fresh and existing setups
     _customProducts = await _storage.loadCustomProducts();
@@ -326,16 +469,23 @@ class CollectionProvider extends ChangeNotifier {
     // pre-fetch routes and shops from Supabase before unlocking UI
     try {
       await _supabase.init();
+      await LocationTrackingService().flushPendingTimelineToCloud();
       if (_supabase.isInitialized && (_routes.isEmpty || _shops.isEmpty)) {
-        final initialCloudRoutes = await _supabase.fetchRoutes();
-        if (initialCloudRoutes.isNotEmpty) {
-          _routes = initialCloudRoutes;
-          _routes.sort((a, b) => a.priority.compareTo(b.priority));
+        final routesRes = await _supabase.fetchRoutesWithStatus();
+        if (routesRes.success && routesRes.items.isNotEmpty) {
+          _routes = routesRes.items
+              .where((r) => !_locallyDeletedRouteIds.contains(r.id))
+              .toList()
+            ..sort((a, b) => a.priority.compareTo(b.priority));
           await _storage.saveRoutes(_routes);
         }
-        final initialCloudShops = await _supabase.fetchShops();
-        if (initialCloudShops.isNotEmpty) {
-          _shops = _deduplicateShops(initialCloudShops);
+        final shopsRes = await _supabase.fetchShopsWithStatus();
+        if (shopsRes.success && shopsRes.items.isNotEmpty) {
+          final clean = shopsRes.items
+              .where((s) => !_isDummyShop(s) && !_locallyDeletedShopIds.contains(s.id))
+              .toList();
+          _shops = _deduplicateShops(clean);
+          _applyStoredRouteOrdersToShops();
           await _storage.saveShops(_shops);
         }
       }
@@ -352,8 +502,8 @@ class CollectionProvider extends ChangeNotifier {
     _startAutoSyncTimer();
   }
 
-  bool _isDummyShop(ShopModel s) {
-    if (s.id.startsWith('shop-') || s.id.startsWith('sample-')) return true;
+  bool _isDummyShopIdName(String shopId, String shopName) {
+    if (shopId.startsWith('shop-') || shopId.startsWith('sample-')) return true;
     const dummyNames = {
       'ata kirana',
       'shree ganesh traders',
@@ -361,7 +511,113 @@ class CollectionProvider extends ChangeNotifier {
       'sai krupa supermarket',
       'om traders',
     };
-    return dummyNames.contains(s.name.trim().toLowerCase());
+    return dummyNames.contains(shopName.trim().toLowerCase());
+  }
+
+  bool _isDummyShop(ShopModel s) => _isDummyShopIdName(s.id, s.name);
+
+  bool _billsDiffer(PendingBillModel a, PendingBillModel b) {
+    if (a.businessName != b.businessName ||
+        a.shopId != b.shopId ||
+        a.shopName != b.shopName ||
+        a.routeId != b.routeId ||
+        a.routeName != b.routeName ||
+        a.billNumber != b.billNumber ||
+        a.invoiceDate != b.invoiceDate ||
+        a.deliveryDate != b.deliveryDate ||
+        a.totalAmount != b.totalAmount ||
+        a.collectedAmount != b.collectedAmount ||
+        a.status != b.status ||
+        a.photosBase64.length != b.photosBase64.length) {
+      return true;
+    }
+    for (int i = 0; i < a.photosBase64.length; i++) {
+      if (a.photosBase64[i] != b.photosBase64[i]) return true;
+    }
+    return false;
+  }
+
+  bool _collectionsDiffer(CollectionModel a, CollectionModel b) =>
+      a.businessName != b.businessName ||
+      a.shopId != b.shopId ||
+      a.shopName != b.shopName ||
+      a.routeId != b.routeId ||
+      a.routeName != b.routeName ||
+      a.billNumber != b.billNumber ||
+      a.billAmount != b.billAmount ||
+      a.collectedAmount != b.collectedAmount ||
+      a.balanceRemaining != b.balanceRemaining ||
+      a.paymentMode != b.paymentMode ||
+      a.chequeNumber != b.chequeNumber ||
+      a.referenceNumber != b.referenceNumber ||
+      a.bankName != b.bankName ||
+      a.remarks != b.remarks ||
+      a.salesmanName != b.salesmanName ||
+      a.billDate != b.billDate ||
+      a.collectedAt != b.collectedAt;
+
+  bool _shopsDiffer(ShopModel a, ShopModel b) =>
+      a.name != b.name ||
+      a.routeId != b.routeId ||
+      a.routeName != b.routeName ||
+      a.mobileNumber != b.mobileNumber ||
+      a.address != b.address ||
+      a.ownerName != b.ownerName ||
+      a.locationUrl != b.locationUrl ||
+      a.latitude != b.latitude ||
+      a.longitude != b.longitude;
+
+  bool _routesDiffer(RouteModel a, RouteModel b) =>
+      a.name != b.name ||
+      a.priority != b.priority ||
+      a.description != b.description;
+
+  bool _ordersDiffer(SalesOrderModel a, SalesOrderModel b) =>
+      a.status != b.status ||
+      a.notes != b.notes ||
+      a.totalAmount != b.totalAmount ||
+      a.totalQuantity != b.totalQuantity ||
+      a.items.length != b.items.length ||
+      a.updatedAt != b.updatedAt ||
+      a.shopName != b.shopName ||
+      a.routeName != b.routeName;
+
+  bool _productsDiffer(CatalogProduct a, CatalogProduct b) =>
+      jsonEncode(a.toJson()) != jsonEncode(b.toJson());
+
+  bool _handoversDiffer(CashHandoverModel a, CashHandoverModel b) =>
+      jsonEncode(a.toJson()) != jsonEncode(b.toJson());
+
+  bool _vehicleCollectionsDiffer(
+          VehicleCollectionModel a, VehicleCollectionModel b) =>
+      jsonEncode(a.toJson()) != jsonEncode(b.toJson());
+
+  void _cascadeShopUpdates() {
+    bool colChanged = false;
+    bool billChanged = false;
+    final shopMap = {for (final s in _shops) s.id: s};
+    for (int i = 0; i < _collections.length; i++) {
+      final s = shopMap[_collections[i].shopId];
+      if (s != null &&
+          (_collections[i].shopName != s.name ||
+              _collections[i].routeName != s.routeName)) {
+        _collections[i] =
+            _collections[i].copyWith(shopName: s.name, routeName: s.routeName);
+        colChanged = true;
+      }
+    }
+    for (int i = 0; i < _pendingBills.length; i++) {
+      final s = shopMap[_pendingBills[i].shopId];
+      if (s != null &&
+          (_pendingBills[i].shopName != s.name ||
+              _pendingBills[i].routeName != s.routeName)) {
+        _pendingBills[i] =
+            _pendingBills[i].copyWith(shopName: s.name, routeName: s.routeName);
+        billChanged = true;
+      }
+    }
+    if (colChanged) _storage.saveCollections(_collections);
+    if (billChanged) _storage.savePendingBills(_pendingBills);
   }
 
   List<ShopModel> _deduplicateShops(List<ShopModel> list) {
@@ -404,6 +660,7 @@ class CollectionProvider extends ChangeNotifier {
 
   void _startAutoSyncTimer() {
     _autoSyncTimer?.cancel();
+    if (_supabase.isTestMode) return;
     // Optimized 3-minute background fallback poll; Realtime WebSockets deliver immediate updates with zero polling bandwidth
     _autoSyncTimer = Timer.periodic(const Duration(minutes: 3), (_) {
       syncAllWithCloud(notify: false, syncShopsAndRoutes: false);
@@ -417,32 +674,18 @@ class CollectionProvider extends ChangeNotifier {
       final billStream = _supabase.streamPendingBills();
       if (billStream != null) {
         _pendingBillsSubscription = billStream.listen((cloudBills) async {
-          final billMap = <String, PendingBillModel>{};
-          for (final b in cloudBills) {
-            if (_locallyDeletedBillIds.contains(b.id)) continue;
-            billMap[b.id] = b;
-          }
-          for (final b in _pendingBills) {
-            if (!_locallyDeletedBillIds.contains(b.id) && !billMap.containsKey(b.id)) {
-              billMap[b.id] = b;
-            }
-          }
-          final newBills = billMap.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-          bool changed = newBills.length != _pendingBills.length;
-          if (!changed) {
-            for (int i = 0; i < newBills.length; i++) {
-              final nb = newBills[i];
-              final ob = _pendingBills[i];
-              if (nb.id != ob.id || nb.collectedAmount != ob.collectedAmount || nb.status != ob.status) {
-                changed = true;
-                break;
-              }
-            }
-          }
-
-          if (changed) {
-            _pendingBills = newBills;
+          final merged = _mergeCloudEntity<PendingBillModel>(
+            localItems: _pendingBills,
+            cloudItems: cloudBills,
+            dirtyIds: _dirtyBillIds,
+            deletedIds: _locallyDeletedBillIds,
+            idOf: (b) => b.id,
+            differs: _billsDiffer,
+            pruneMissingSynced: true,
+          );
+          if (merged != null) {
+            merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            _pendingBills = merged;
             _invalidateCaches();
             notifyListeners();
             await _storage.savePendingBills(_pendingBills);
@@ -457,32 +700,18 @@ class CollectionProvider extends ChangeNotifier {
       final collStream = _supabase.streamCollections();
       if (collStream != null) {
         _collectionsSubscription = collStream.listen((cloudColls) async {
-          final collMap = <String, CollectionModel>{};
-          for (final c in cloudColls) {
-            if (_locallyDeletedCollectionIds.contains(c.id)) continue;
-            collMap[c.id] = c;
-          }
-          for (final c in _collections) {
-            if (!_locallyDeletedCollectionIds.contains(c.id) && !collMap.containsKey(c.id)) {
-              collMap[c.id] = c;
-            }
-          }
-          final newColls = collMap.values.toList()..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
-
-          bool changed = newColls.length != _collections.length;
-          if (!changed) {
-            for (int i = 0; i < newColls.length; i++) {
-              final nc = newColls[i];
-              final oc = _collections[i];
-              if (nc.id != oc.id || nc.collectedAmount != oc.collectedAmount) {
-                changed = true;
-                break;
-              }
-            }
-          }
-
-          if (changed) {
-            _collections = newColls;
+          final merged = _mergeCloudEntity<CollectionModel>(
+            localItems: _collections,
+            cloudItems: cloudColls,
+            dirtyIds: _dirtyCollectionIds,
+            deletedIds: _locallyDeletedCollectionIds,
+            idOf: (c) => c.id,
+            differs: _collectionsDiffer,
+            pruneMissingSynced: true,
+          );
+          if (merged != null) {
+            merged.sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+            _collections = merged;
             _invalidateCaches();
             notifyListeners();
             await _storage.saveCollections(_collections);
@@ -505,43 +734,19 @@ class CollectionProvider extends ChangeNotifier {
               cleanCloudShops.add(s);
             }
           }
-          final newShops = _deduplicateShops(cleanCloudShops);
-
-          bool changed = newShops.length != _shops.length;
-          if (!changed) {
-            final shopMap = {for (final s in newShops) s.id: s};
-            for (final os in _shops) {
-              final ns = shopMap[os.id];
-              if (ns == null ||
-                  ns.name != os.name ||
-                  ns.routeId != os.routeId ||
-                  ns.routeName != os.routeName ||
-                  ns.mobileNumber != os.mobileNumber ||
-                  ns.address != os.address ||
-                  ns.ownerName != os.ownerName ||
-                  ns.locationUrl != os.locationUrl ||
-                  ns.latitude != os.latitude ||
-                  ns.longitude != os.longitude) {
-                changed = true;
-                break;
-              }
-            }
-          }
-
-          if (changed) {
-            _shops = newShops;
-            for (final s in _shops) {
-              for (int i = 0; i < _collections.length; i++) {
-                if (_collections[i].shopId == s.id && _collections[i].shopName != s.name) {
-                  _collections[i] = _collections[i].copyWith(shopName: s.name, routeName: s.routeName);
-                }
-              }
-              for (int i = 0; i < _pendingBills.length; i++) {
-                if (_pendingBills[i].shopId == s.id && _pendingBills[i].shopName != s.name) {
-                  _pendingBills[i] = _pendingBills[i].copyWith(shopName: s.name, routeName: s.routeName);
-                }
-              }
-            }
+          final merged = _mergeCloudEntity<ShopModel>(
+            localItems: _shops,
+            cloudItems: _deduplicateShops(cleanCloudShops),
+            dirtyIds: _dirtyShopIds,
+            deletedIds: _locallyDeletedShopIds,
+            idOf: (s) => s.id,
+            differs: _shopsDiffer,
+            pruneMissingSynced: cleanCloudShops.isNotEmpty,
+          );
+          if (merged != null) {
+            _shops = _deduplicateShops(merged);
+            _applyStoredRouteOrdersToShops();
+            _cascadeShopUpdates();
             _invalidateCaches();
             notifyListeners();
             await _storage.saveShops(_shops);
@@ -556,26 +761,18 @@ class CollectionProvider extends ChangeNotifier {
       final routeStream = _supabase.streamRoutes();
       if (routeStream != null) {
         _routesSubscription = routeStream.listen((cloudRoutes) async {
-          final cleanRoutes = cloudRoutes
-              .where((r) => !_locallyDeletedRouteIds.contains(r.id))
-              .toList()
-            ..sort((a, b) => a.priority.compareTo(b.priority));
-
-          bool changed = cleanRoutes.length != _routes.length;
-          if (!changed) {
-            for (int i = 0; i < cleanRoutes.length; i++) {
-              if (cleanRoutes[i].id != _routes[i].id ||
-                  cleanRoutes[i].name != _routes[i].name ||
-                  cleanRoutes[i].priority != _routes[i].priority ||
-                  cleanRoutes[i].description != _routes[i].description) {
-                changed = true;
-                break;
-              }
-            }
-          }
-
-          if (changed) {
-            _routes = cleanRoutes;
+          final merged = _mergeCloudEntity<RouteModel>(
+            localItems: _routes,
+            cloudItems: cloudRoutes,
+            dirtyIds: _dirtyRouteIds,
+            deletedIds: _locallyDeletedRouteIds,
+            idOf: (r) => r.id,
+            differs: _routesDiffer,
+            pruneMissingSynced: cloudRoutes.isNotEmpty,
+          );
+          if (merged != null) {
+            merged.sort((a, b) => a.priority.compareTo(b.priority));
+            _routes = merged;
             _invalidateCaches();
             notifyListeners();
             await _storage.saveRoutes(_routes);
@@ -588,6 +785,24 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   Future<bool> syncAllWithCloud({bool notify = true, bool? syncShopsAndRoutes}) async {
+    if (_activeSyncFuture != null) {
+      await _activeSyncFuture;
+      return true;
+    }
+    final completer = Completer<void>();
+    _activeSyncFuture = completer.future;
+    try {
+      return await _runSyncAllWithCloud(
+        notify: notify,
+        syncShopsAndRoutes: syncShopsAndRoutes,
+      );
+    } finally {
+      _activeSyncFuture = null;
+      if (!completer.isCompleted) completer.complete();
+    }
+  }
+
+  Future<bool> _runSyncAllWithCloud({bool notify = true, bool? syncShopsAndRoutes}) async {
     if (_isSyncing) return true;
     _isSyncing = true;
     if (notify) notifyListeners();
@@ -606,279 +821,405 @@ class CollectionProvider extends ChangeNotifier {
 
       bool hasDataChanged = false;
 
-      // 1. Synchronize Collections across all devices
-      final cloudCollections = await _supabase.fetchCollections();
-      final collMap = <String, CollectionModel>{};
-      for (final c in cloudCollections) {
-        if (_locallyDeletedCollectionIds.contains(c.id)) continue;
-        collMap[c.id] = c;
-      }
-      final unsyncedColls = <CollectionModel>[];
-      for (final c in _collections) {
-        if (_locallyDeletedCollectionIds.contains(c.id)) continue;
-        if (!collMap.containsKey(c.id)) {
-          collMap[c.id] = c;
-          unsyncedColls.add(c);
+      // 0. Flush any pending offline GPS/action timeline events first
+      await LocationTrackingService().flushPendingTimelineToCloud();
+
+      // 1. Synchronize Routes & Route Outlet Ordering (Flush deletes -> Push dirty -> Pull)
+      if (_locallyDeletedRouteIds.isNotEmpty) {
+        final ids = _locallyDeletedRouteIds.toList();
+        if (await _supabase.deleteRoutesBulk(ids)) {
+          _locallyDeletedRouteIds.clear();
+          await _storage.saveDeletedRouteIds(_locallyDeletedRouteIds);
         }
       }
-      final newColls = collMap.values.toList()..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
-      if (newColls.length != _collections.length || unsyncedColls.isNotEmpty) {
-        _collections = newColls;
-        await _storage.saveCollections(_collections);
-        hasDataChanged = true;
+      if (_dirtyRouteIds.isNotEmpty) {
+        final dirty = _routes.where((r) => _dirtyRouteIds.contains(r.id)).toList();
+        if (dirty.isEmpty || await _supabase.saveRoutesBulk(dirty)) {
+          _dirtyRouteIds.clear();
+          await _storage.saveIdSet(_keyDirtyRoutes, _dirtyRouteIds);
+        }
       }
-      if (unsyncedColls.isNotEmpty) {
-        await _supabase.saveCollectionsBulk(unsyncedColls);
-      }
-
-      // 2. Synchronize Pending Bills across all devices
-      final cloudBills = await _supabase.fetchPendingBills();
-      final billMap = <String, PendingBillModel>{};
-      for (final b in cloudBills) {
-        if (_locallyDeletedBillIds.contains(b.id)) continue;
-        billMap[b.id] = b;
-      }
-      final unsyncedBills = <PendingBillModel>[];
-      for (final b in _pendingBills) {
-        if (_locallyDeletedBillIds.contains(b.id)) continue;
-        if (!billMap.containsKey(b.id)) {
-          billMap[b.id] = b;
-          unsyncedBills.add(b);
-        } else {
-          // If local has marked as paid or updated amount that cloud hasn't recorded
-          final cb = billMap[b.id]!;
-          if ((b.isPaid && !cb.isPaid) || (b.collectedAmount > cb.collectedAmount)) {
-            billMap[b.id] = b;
-            unsyncedBills.add(b);
+      if (shouldSyncShops || _routes.isEmpty) {
+        final routesRes = await _supabase.fetchRoutesWithStatus();
+        if (routesRes.success && (routesRes.items.isNotEmpty || _dirtyRouteIds.isEmpty)) {
+          final merged = _mergeCloudEntity<RouteModel>(
+            localItems: _routes,
+            cloudItems: routesRes.items,
+            dirtyIds: _dirtyRouteIds,
+            deletedIds: _locallyDeletedRouteIds,
+            idOf: (r) => r.id,
+            differs: _routesDiffer,
+            pruneMissingSynced: routesRes.items.isNotEmpty,
+          );
+          if (merged != null) {
+            merged.sort((a, b) => a.priority.compareTo(b.priority));
+            _routes = merged;
+            await _storage.saveRoutes(_routes);
+            hasDataChanged = true;
           }
         }
       }
-      final newBills = billMap.values.toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      if (newBills.length != _pendingBills.length || unsyncedBills.isNotEmpty) {
-        _pendingBills = newBills;
-        await _storage.savePendingBills(_pendingBills);
-        hasDataChanged = true;
+      if (_dirtyRouteOrderIds.isNotEmpty) {
+        final remainingOrders = <String>{};
+        for (final rId in _dirtyRouteOrderIds) {
+          final orderedIds = _routeOutletOrders[rId] ??
+              _shops.where((s) => s.routeId == rId).map((s) => s.id).toList();
+          final ok = await _supabase.saveRouteOutletOrder(rId, orderedIds);
+          if (!ok) remainingOrders.add(rId);
+        }
+        _dirtyRouteOrderIds = remainingOrders;
+        await _storage.saveIdSet(_keyDirtyRouteOrders, _dirtyRouteOrderIds);
       }
-      if (unsyncedBills.isNotEmpty) {
-        await _supabase.savePendingBillsBulk(unsyncedBills);
+      if (shouldSyncShops) {
+        final orderRes = await _supabase.fetchAllRouteOutletOrdersWithStatus();
+        if (orderRes.success && orderRes.items.isNotEmpty) {
+          bool ordersChanged = false;
+          for (final entry in orderRes.items) {
+            if (_dirtyRouteOrderIds.contains(entry.key)) continue;
+            final existing = _routeOutletOrders[entry.key];
+            if (existing == null || existing.join(',') != entry.value.join(',')) {
+              _routeOutletOrders[entry.key] = entry.value;
+              ordersChanged = true;
+            }
+          }
+          if (ordersChanged) {
+            await _storage.saveRouteOutletOrders(_routeOutletOrders);
+            _applyStoredRouteOrdersToShops();
+            hasDataChanged = true;
+          }
+        }
       }
 
-      // 3. Synchronize Shops & Routes (only when requested, on initial load, or if cache empty)
-      if (shouldSyncShops) {
-        final cloudShops = await _supabase.fetchShops();
-        if (cloudShops.isNotEmpty) {
+      // 2. Synchronize Shops (Flush deletes -> Push dirty -> Pull)
+      if (_locallyDeletedShopIds.isNotEmpty) {
+        final ids = _locallyDeletedShopIds.toList();
+        if (await _supabase.deleteShopsBulk(ids)) {
+          _locallyDeletedShopIds.clear();
+          await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
+        }
+      }
+      if (_dirtyShopIds.isNotEmpty) {
+        final dirty = _shops.where((s) => _dirtyShopIds.contains(s.id)).toList();
+        if (dirty.isEmpty || await _supabase.saveShopsBulk(dirty)) {
+          _dirtyShopIds.clear();
+          await _storage.saveIdSet(_keyDirtyShops, _dirtyShopIds);
+        }
+      }
+      if (shouldSyncShops || _shops.isEmpty) {
+        final shopsRes = await _supabase.fetchShopsWithStatus();
+        if (shopsRes.success) {
           final cleanCloudShops = <ShopModel>[];
-          for (final s in cloudShops) {
+          for (final s in shopsRes.items) {
             if (_isDummyShop(s)) {
               _supabase.deleteShop(s.id);
             } else if (!_locallyDeletedShopIds.contains(s.id)) {
               cleanCloudShops.add(s);
             }
           }
-
-          final shopMap = <String, ShopModel>{};
-          for (final s in cleanCloudShops) {
-            shopMap[s.id] = s;
-          }
-          final unsavedLocalShops = <ShopModel>[];
-          for (final s in _shops) {
-            if (!_locallyDeletedShopIds.contains(s.id) && !shopMap.containsKey(s.id)) {
-              shopMap[s.id] = s;
-              unsavedLocalShops.add(s);
-            }
-          }
-
-          final dedup = _deduplicateShops(shopMap.values.toList());
-          bool shopsChanged = dedup.length != _shops.length;
-          if (!shopsChanged) {
-            final localMap = {for (final s in _shops) s.id: s};
-            for (final s in dedup) {
-              final loc = localMap[s.id];
-              if (loc == null ||
-                  loc.name != s.name ||
-                  loc.routeId != s.routeId ||
-                  loc.routeName != s.routeName ||
-                  loc.mobileNumber != s.mobileNumber ||
-                  loc.address != s.address ||
-                  loc.ownerName != s.ownerName ||
-                  loc.locationUrl != s.locationUrl ||
-                  loc.latitude != s.latitude ||
-                  loc.longitude != s.longitude) {
-                shopsChanged = true;
-                break;
-              }
-            }
-          }
-
-          if (shopsChanged) {
-            _shops = dedup;
-            for (final s in _shops) {
-              for (int i = 0; i < _collections.length; i++) {
-                if (_collections[i].shopId == s.id && _collections[i].shopName != s.name) {
-                  _collections[i] = _collections[i].copyWith(shopName: s.name, routeName: s.routeName);
-                }
-              }
-              for (int i = 0; i < _pendingBills.length; i++) {
-                if (_pendingBills[i].shopId == s.id && _pendingBills[i].shopName != s.name) {
-                  _pendingBills[i] = _pendingBills[i].copyWith(shopName: s.name, routeName: s.routeName);
-                }
-              }
-            }
+          final merged = _mergeCloudEntity<ShopModel>(
+            localItems: _shops,
+            cloudItems: _deduplicateShops(cleanCloudShops),
+            dirtyIds: _dirtyShopIds,
+            deletedIds: _locallyDeletedShopIds,
+            idOf: (s) => s.id,
+            differs: _shopsDiffer,
+            pruneMissingSynced: cleanCloudShops.isNotEmpty,
+          );
+          if (merged != null) {
+            _shops = _deduplicateShops(merged);
+            _applyStoredRouteOrdersToShops();
+            _cascadeShopUpdates();
             await _storage.saveShops(_shops);
             hasDataChanged = true;
           }
-
-          for (final uls in unsavedLocalShops) {
-            await _supabase.saveShop(uls);
-          }
-        }
-
-        final cloudRoutes = await _supabase.fetchRoutes();
-        if (cloudRoutes.isNotEmpty) {
-          final cleanRoutes = cloudRoutes
-              .where((r) => !_locallyDeletedRouteIds.contains(r.id))
-              .toList()
-            ..sort((a, b) => a.priority.compareTo(b.priority));
-
-          bool routesChanged = cleanRoutes.length != _routes.length;
-          if (!routesChanged) {
-            for (int i = 0; i < cleanRoutes.length; i++) {
-              if (cleanRoutes[i].id != _routes[i].id ||
-                  cleanRoutes[i].name != _routes[i].name ||
-                  cleanRoutes[i].priority != _routes[i].priority ||
-                  cleanRoutes[i].description != _routes[i].description) {
-                routesChanged = true;
-                break;
-              }
-            }
-          }
-
-          if (routesChanged) {
-            _routes = cleanRoutes;
-            await _storage.saveRoutes(_routes);
-            hasDataChanged = true;
-          }
         }
       }
 
-      // 4. Retry deletes for locally tracked deleted IDs
-      if (_locallyDeletedBillIds.isNotEmpty) {
-        for (final id in _locallyDeletedBillIds.toList()) {
-          try {
-            await _supabase.deletePendingBill(id);
-            _locallyDeletedBillIds.remove(id);
-          } catch (_) {}
-        }
-        await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
-      }
-
+      // 3. Synchronize Collections (Flush deletes -> Push dirty -> Pull)
       if (_locallyDeletedCollectionIds.isNotEmpty) {
-        for (final id in _locallyDeletedCollectionIds.toList()) {
-          try {
-            await _supabase.deleteCollection(id);
-            _locallyDeletedCollectionIds.remove(id);
-          } catch (_) {}
+        final ids = _locallyDeletedCollectionIds.toList();
+        if (await _supabase.deleteCollectionsBulk(ids)) {
+          _locallyDeletedCollectionIds.clear();
+          await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
         }
-        await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+      }
+      if (_dirtyCollectionIds.isNotEmpty) {
+        final dirty =
+            _collections.where((c) => _dirtyCollectionIds.contains(c.id)).toList();
+        if (dirty.isEmpty || await _supabase.saveCollectionsBulk(dirty)) {
+          _dirtyCollectionIds.clear();
+          await _storage.saveIdSet(_keyDirtyCollections, _dirtyCollectionIds);
+        }
+      }
+      final collsRes = await _supabase.fetchCollectionsWithStatus();
+      if (collsRes.success) {
+        final merged = _mergeCloudEntity<CollectionModel>(
+          localItems: _collections,
+          cloudItems: collsRes.items,
+          dirtyIds: _dirtyCollectionIds,
+          deletedIds: _locallyDeletedCollectionIds,
+          idOf: (c) => c.id,
+          differs: _collectionsDiffer,
+          pruneMissingSynced: true,
+        );
+        if (merged != null) {
+          merged.sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+          _collections = merged;
+          await _storage.saveCollections(_collections);
+          hasDataChanged = true;
+        }
       }
 
-      if (_locallyDeletedShopIds.isNotEmpty) {
-        for (final id in _locallyDeletedShopIds.toList()) {
-          try {
-            await _supabase.deleteShop(id);
-            _locallyDeletedShopIds.remove(id);
-          } catch (_) {}
+      // 4. Synchronize Pending Bills (Flush deletes -> Push dirty -> Pull)
+      if (_locallyDeletedBillIds.isNotEmpty) {
+        final ids = _locallyDeletedBillIds.toList();
+        if (await _supabase.deletePendingBillsBulk(ids)) {
+          _locallyDeletedBillIds.clear();
+          await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
         }
-        await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
+      }
+      if (_dirtyBillIds.isNotEmpty) {
+        final dirty =
+            _pendingBills.where((b) => _dirtyBillIds.contains(b.id)).toList();
+        if (dirty.isEmpty || await _supabase.savePendingBillsBulk(dirty)) {
+          _dirtyBillIds.clear();
+          await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
+        }
+      }
+      final billsRes = await _supabase.fetchPendingBillsWithStatus();
+      if (billsRes.success) {
+        final merged = _mergeCloudEntity<PendingBillModel>(
+          localItems: _pendingBills,
+          cloudItems: billsRes.items,
+          dirtyIds: _dirtyBillIds,
+          deletedIds: _locallyDeletedBillIds,
+          idOf: (b) => b.id,
+          differs: _billsDiffer,
+          pruneMissingSynced: true,
+        );
+        if (merged != null) {
+          merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          _pendingBills = merged;
+          await _storage.savePendingBills(_pendingBills);
+          hasDataChanged = true;
+        }
       }
 
-      if (_locallyDeletedRouteIds.isNotEmpty) {
-        for (final id in _locallyDeletedRouteIds.toList()) {
-          try {
-            await _supabase.deleteRoute(id);
-            _locallyDeletedRouteIds.remove(id);
-          } catch (_) {}
+      // 5. Synchronize Sales Orders (Flush deletes -> Push dirty -> Pull & Update)
+      if (_locallyDeletedOrderIds.isNotEmpty) {
+        final ids = _locallyDeletedOrderIds.toList();
+        if (await _supabase.deleteSalesOrdersBulk(ids)) {
+          _locallyDeletedOrderIds.clear();
+          await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
         }
-        await _storage.saveDeletedRouteIds(_locallyDeletedRouteIds);
+      }
+      if (_dirtyOrderIds.isNotEmpty) {
+        final dirty =
+            _salesOrders.where((o) => _dirtyOrderIds.contains(o.id)).toList();
+        if (dirty.isEmpty || await _supabase.saveSalesOrdersBulk(dirty)) {
+          _dirtyOrderIds.clear();
+          await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
+        }
+      }
+      final ordersRes = await _supabase.fetchSalesOrdersWithStatus();
+      if (ordersRes.success) {
+        final merged = _mergeCloudEntity<SalesOrderModel>(
+          localItems: _salesOrders,
+          cloudItems: ordersRes.items,
+          dirtyIds: _dirtyOrderIds,
+          deletedIds: _locallyDeletedOrderIds,
+          idOf: (o) => o.id,
+          differs: _ordersDiffer,
+          pruneMissingSynced: true,
+        );
+        if (merged != null) {
+          merged.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+          _salesOrders = merged;
+          await _storage.saveSalesOrders(_salesOrders);
+          hasDataChanged = true;
+        }
       }
 
-      // 5. Ensure Realtime subscriptions are active
+      // 6. Synchronize Custom Products
+      if (_locallyDeletedProductIds.isNotEmpty) {
+        final ids = _locallyDeletedProductIds.toList();
+        if (await _supabase.deleteCustomProductsBulk(ids)) {
+          _locallyDeletedProductIds.clear();
+          await _storage.saveIdSet(_keyDeletedProducts, _locallyDeletedProductIds);
+        }
+      }
+      if (_dirtyProductIds.isNotEmpty) {
+        final dirty =
+            _customProducts.where((p) => _dirtyProductIds.contains(p.id)).toList();
+        if (dirty.isEmpty || await _supabase.saveCustomProductsBulk(dirty)) {
+          _dirtyProductIds.clear();
+          await _storage.saveIdSet(_keyDirtyProducts, _dirtyProductIds);
+        }
+      }
+      final productsRes = await _supabase.fetchCustomProductsWithStatus();
+      if (productsRes.success) {
+        final merged = _mergeCloudEntity<CatalogProduct>(
+          localItems: _customProducts,
+          cloudItems: productsRes.items,
+          dirtyIds: _dirtyProductIds,
+          deletedIds: _locallyDeletedProductIds,
+          idOf: (p) => p.id,
+          differs: _productsDiffer,
+          pruneMissingSynced: true,
+        );
+        if (merged != null) {
+          _customProducts = merged;
+          OrderCatalogService.setCustomProducts(_customProducts);
+          await _storage.saveCustomProducts(_customProducts);
+          hasDataChanged = true;
+        }
+      }
+
+      // 7. Synchronize Cash Handovers
+      if (_locallyDeletedHandoverIds.isNotEmpty) {
+        final ids = _locallyDeletedHandoverIds.toList();
+        if (await _supabase.deleteCashHandoversBulk(ids)) {
+          _locallyDeletedHandoverIds.clear();
+          await _storage.saveIdSet(
+              _keyDeletedHandovers, _locallyDeletedHandoverIds);
+        }
+      }
+      if (_dirtyHandoverIds.isNotEmpty) {
+        final dirty =
+            _cashHandovers.where((h) => _dirtyHandoverIds.contains(h.id)).toList();
+        if (dirty.isEmpty || await _supabase.saveCashHandoversBulk(dirty)) {
+          _dirtyHandoverIds.clear();
+          await _storage.saveIdSet(_keyDirtyHandovers, _dirtyHandoverIds);
+        }
+      }
+      final handoversRes = await _supabase.fetchCashHandoversWithStatus();
+      if (handoversRes.success) {
+        final merged = _mergeCloudEntity<CashHandoverModel>(
+          localItems: _cashHandovers,
+          cloudItems: handoversRes.items,
+          dirtyIds: _dirtyHandoverIds,
+          deletedIds: _locallyDeletedHandoverIds,
+          idOf: (h) => h.id,
+          differs: _handoversDiffer,
+          pruneMissingSynced: true,
+        );
+        if (merged != null) {
+          merged.sort((a, b) => b.date.compareTo(a.date));
+          _cashHandovers = merged;
+          await _storage.saveCashHandovers(_cashHandovers);
+          hasDataChanged = true;
+        }
+      }
+
+      // 8. Synchronize Vehicle Collections
+      if (_locallyDeletedVehicleCollectionIds.isNotEmpty) {
+        final ids = _locallyDeletedVehicleCollectionIds.toList();
+        if (await _supabase.deleteVehicleCollectionsBulk(ids)) {
+          _locallyDeletedVehicleCollectionIds.clear();
+          await _storage.saveIdSet(
+            _keyDeletedVehicleCollections,
+            _locallyDeletedVehicleCollectionIds,
+          );
+        }
+      }
+      if (_dirtyVehicleCollectionIds.isNotEmpty) {
+        final dirty = _vehicleCollections
+            .where((v) => _dirtyVehicleCollectionIds.contains(v.id))
+            .toList();
+        if (dirty.isEmpty || await _supabase.saveVehicleCollectionsBulk(dirty)) {
+          _dirtyVehicleCollectionIds.clear();
+          await _storage.saveIdSet(
+            _keyDirtyVehicleCollections,
+            _dirtyVehicleCollectionIds,
+          );
+        }
+      }
+      final vcRes = await _supabase.fetchVehicleCollectionsWithStatus();
+      if (vcRes.success) {
+        final merged = _mergeCloudEntity<VehicleCollectionModel>(
+          localItems: _vehicleCollections,
+          cloudItems: vcRes.items,
+          dirtyIds: _dirtyVehicleCollectionIds,
+          deletedIds: _locallyDeletedVehicleCollectionIds,
+          idOf: (v) => v.id,
+          differs: _vehicleCollectionsDiffer,
+          pruneMissingSynced: true,
+        );
+        if (merged != null) {
+          merged.sort((a, b) => b.date.compareTo(a.date));
+          _vehicleCollections = merged;
+          await _storage.saveVehicleCollections(_vehicleCollections);
+          hasDataChanged = true;
+        }
+      }
+
+      // 9. Synchronize Managed Vehicles & Employees Lists
+      if (_dirtyVehiclesFlag) {
+        if (await _supabase.saveManagedVehicles(_vehicles)) {
+          _dirtyVehiclesFlag = false;
+          await _storage.saveBoolFlag(_keyDirtyVehiclesFlag, false);
+        }
+      } else {
+        final vRes = await _supabase.fetchManagedVehiclesWithStatus();
+        if (vRes.success &&
+            vRes.items.isNotEmpty &&
+            vRes.items.join('|') != _vehicles.join('|')) {
+          _vehicles = vRes.items;
+          await _storage.saveVehicles(_vehicles);
+          hasDataChanged = true;
+        }
+      }
+
+      if (_dirtyEmployeesFlag) {
+        if (await _supabase.saveManagedEmployees(_employees)) {
+          _dirtyEmployeesFlag = false;
+          await _storage.saveBoolFlag(_keyDirtyEmployeesFlag, false);
+        }
+      } else {
+        final eRes = await _supabase.fetchManagedEmployeesWithStatus();
+        if (eRes.success &&
+            eRes.items.isNotEmpty &&
+            eRes.items.join('|') != _employees.join('|')) {
+          _employees = eRes.items;
+          await _storage.saveEmployees(_employees);
+          hasDataChanged = true;
+        }
+      }
+
+      // 10. Ensure Realtime subscriptions are active
       _setupRealtimeListeners();
 
-      // 6. Check and perform auto-backup only if overdue (every 4 days)
+      // 11. Synchronize Users (once), Attendance & Auto-Backup
+      List<UserModel> latestUsers = const [];
+      try {
+        latestUsers = await AuthService().loadUsers();
+        if (onUsersSynced != null) {
+          await onUsersSynced!(latestUsers);
+        }
+        await AttendanceService.flushPending();
+        await AttendanceService.loadEmployees();
+      } catch (e) {
+        debugPrint('Auto background sync users/attendance notice: $e');
+      }
+
       try {
         final lastBackup = await _backupService.getLatestBackupTimeShared();
         final now = DateTime.now();
         if (lastBackup == null || now.difference(lastBackup).inDays >= 4) {
-          final authService = AuthService();
-          final users = await authService.loadUsers();
+          final usersForBackup =
+              latestUsers.isNotEmpty ? latestUsers : await AuthService().loadUsers();
           _lastBackupTime = await _backupService.getLatestBackupTimeShared();
           await _backupService.checkAndRunAutoBackup(
             routes: _routes,
             shops: _shops,
             collections: _collections,
             pendingBills: _pendingBills,
-            users: users,
+            users: usersForBackup,
           );
           _lastBackupTime = await _backupService.getLatestBackupTimeShared();
         }
       } catch (e) {
         debugPrint('Auto backup notice: $e');
-      }
-
-      // 5. Synchronize App Users & Attendance Roster across all devices
-      try {
-        await AuthService().loadUsers();
-        await AttendanceService.loadEmployees();
-      } catch (e) {
-        debugPrint('Auto background sync users/attendance notice: $e');
-      }
-
-      // 6. Synchronize Sales Orders & Custom Products across all devices
-      try {
-        if (_supabase.isInitialized) {
-          final cloudOrders = await _supabase.fetchSalesOrders();
-          if (cloudOrders.isNotEmpty) {
-            final localMap = {for (final o in _salesOrders) o.id: o};
-            bool ordersChanged = false;
-            for (final co in cloudOrders) {
-              if (!localMap.containsKey(co.id)) {
-                _salesOrders.add(co);
-                ordersChanged = true;
-              }
-            }
-            if (ordersChanged) {
-              _salesOrders.sort((a, b) => b.orderDate.compareTo(a.orderDate));
-              await _storage.saveSalesOrders(_salesOrders);
-              hasDataChanged = true;
-            }
-          }
-          // Push local orders that might be missing in cloud
-          for (final lo in _salesOrders) {
-            if (!cloudOrders.any((co) => co.id == lo.id)) {
-              await _supabase.saveSalesOrder(lo);
-            }
-          }
-
-          final cloudProducts = await _supabase.fetchCustomProducts();
-          if (cloudProducts.isNotEmpty) {
-            final localProdMap = {for (final p in _customProducts) p.id: p};
-            bool prodChanged = false;
-            for (final cp in cloudProducts) {
-              if (!localProdMap.containsKey(cp.id)) {
-                _customProducts.add(cp);
-                prodChanged = true;
-              }
-            }
-            if (prodChanged) {
-              OrderCatalogService.setCustomProducts(_customProducts);
-              await _storage.saveCustomProducts(_customProducts);
-              hasDataChanged = true;
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('Auto sync orders/custom products notice: $e');
       }
 
       if (hasDataChanged) {
@@ -1331,6 +1672,16 @@ class CollectionProvider extends ChangeNotifier {
         .fold(0.0, (s, c) => s + c.collectedAmount);
   }
 
+  Future<void> _markDirty(Set<String> set, String key, Iterable<String> ids) async {
+    set.addAll(ids);
+    await _storage.saveIdSet(key, set);
+  }
+
+  Future<void> _clearDirty(Set<String> set, String key, Iterable<String> ids) async {
+    set.removeAll(ids);
+    await _storage.saveIdSet(key, set);
+  }
+
   // --- Route Operations ---
   Future<RouteModel> addRoute({required String name, String? description, int? priority}) async {
     final newPriority = priority ?? (_routes.isEmpty ? 1 : (_routes.map((r) => r.priority).reduce((a, b) => a > b ? a : b) + 1));
@@ -1343,12 +1694,15 @@ class CollectionProvider extends ChangeNotifier {
     );
     _routes.add(newRoute);
     _routes.sort((a, b) => a.priority.compareTo(b.priority));
+    _locallyDeletedRouteIds.remove(newRoute.id);
     await _storage.saveRoutes(_routes);
+    await _storage.saveDeletedRouteIds(_locallyDeletedRouteIds);
+    await _markDirty(_dirtyRouteIds, _keyDirtyRoutes, [newRoute.id]);
     notifyListeners();
-    if (_supabase.isInitialized) {
-      _supabase.saveRoute(newRoute);
+
+    if (await _supabase.saveRoute(newRoute)) {
+      await _clearDirty(_dirtyRouteIds, _keyDirtyRoutes, [newRoute.id]);
     }
-    
     return newRoute;
   }
 
@@ -1356,26 +1710,81 @@ class CollectionProvider extends ChangeNotifier {
     final idx = _routes.indexWhere((r) => r.id == updatedRoute.id);
     if (idx != -1) {
       _routes[idx] = updatedRoute;
-      // Also update routeName for any shops assigned to this route
+      final affectedShopIds = <String>[];
       for (int i = 0; i < _shops.length; i++) {
         if (_shops[i].routeId == updatedRoute.id) {
           _shops[i] = _shops[i].copyWith(routeName: updatedRoute.name);
-          if (_supabase.isInitialized) {
-            _supabase.saveShop(_shops[i]);
-          }
-          
+          affectedShopIds.add(_shops[i].id);
         }
       }
+      final affectedColIds = <String>[];
+      for (int i = 0; i < _collections.length; i++) {
+        if (_collections[i].routeId == updatedRoute.id &&
+            _collections[i].routeName != updatedRoute.name) {
+          _collections[i] = _collections[i].copyWith(routeName: updatedRoute.name);
+          affectedColIds.add(_collections[i].id);
+        }
+      }
+      final affectedBillIds = <String>[];
+      for (int i = 0; i < _pendingBills.length; i++) {
+        if (_pendingBills[i].routeId == updatedRoute.id &&
+            _pendingBills[i].routeName != updatedRoute.name) {
+          _pendingBills[i] = _pendingBills[i].copyWith(routeName: updatedRoute.name);
+          affectedBillIds.add(_pendingBills[i].id);
+        }
+      }
+
       _routes.sort((a, b) => a.priority.compareTo(b.priority));
       await _storage.saveRoutes(_routes);
-      await _storage.saveShops(_shops);
-      notifyListeners();
-      if (_supabase.isInitialized) {
-        _supabase.saveRoute(updatedRoute);
+      await _markDirty(_dirtyRouteIds, _keyDirtyRoutes, [updatedRoute.id]);
+      if (affectedShopIds.isNotEmpty) {
+        await _storage.saveShops(_shops);
+        await _markDirty(_dirtyShopIds, _keyDirtyShops, affectedShopIds);
       }
-      
+      if (affectedColIds.isNotEmpty) {
+        await _storage.saveCollections(_collections);
+        await _markDirty(_dirtyCollectionIds, _keyDirtyCollections, affectedColIds);
+      }
+      if (affectedBillIds.isNotEmpty) {
+        await _storage.savePendingBills(_pendingBills);
+        await _markDirty(_dirtyBillIds, _keyDirtyBills, affectedBillIds);
+      }
+      notifyListeners();
+
+      if (await _supabase.saveRoute(updatedRoute)) {
+        await _clearDirty(_dirtyRouteIds, _keyDirtyRoutes, [updatedRoute.id]);
+      }
+      if (affectedShopIds.isNotEmpty) {
+        final affectedShops = _shops.where((s) => affectedShopIds.contains(s.id)).toList();
+        if (await _supabase.saveShopsBulk(affectedShops)) {
+          await _clearDirty(_dirtyShopIds, _keyDirtyShops, affectedShopIds);
+        }
+      }
+      if (affectedColIds.isNotEmpty) {
+        final affectedCols = _collections.where((c) => affectedColIds.contains(c.id)).toList();
+        if (await _supabase.saveCollectionsBulk(affectedCols)) {
+          await _clearDirty(_dirtyCollectionIds, _keyDirtyCollections, affectedColIds);
+        }
+      }
+      if (affectedBillIds.isNotEmpty) {
+        final affectedBills = _pendingBills.where((b) => affectedBillIds.contains(b.id)).toList();
+        if (await _supabase.savePendingBillsBulk(affectedBills)) {
+          await _clearDirty(_dirtyBillIds, _keyDirtyBills, affectedBillIds);
+        }
+      }
     }
     return updatedRoute;
+  }
+
+  Future<void> _persistAndSyncRouteOrder() async {
+    final ids = _routes.map((r) => r.id).toList();
+    await _storage.saveRoutes(_routes);
+    await _markDirty(_dirtyRouteIds, _keyDirtyRoutes, ids);
+    notifyListeners();
+
+    if (await _supabase.saveRoutesBulk(_routes)) {
+      await _clearDirty(_dirtyRouteIds, _keyDirtyRoutes, ids);
+    }
   }
 
   Future<void> updateRoutePriority(String routeId, int newPriority) async {
@@ -1385,13 +1794,8 @@ class CollectionProvider extends ChangeNotifier {
       _routes.sort((a, b) => a.priority.compareTo(b.priority));
       for (int i = 0; i < _routes.length; i++) {
         _routes[i] = _routes[i].copyWith(priority: i + 1);
-        if (_supabase.isInitialized) {
-          _supabase.saveRoute(_routes[i]);
-        }
-        
       }
-      await _storage.saveRoutes(_routes);
-      notifyListeners();
+      await _persistAndSyncRouteOrder();
     }
   }
 
@@ -1401,15 +1805,10 @@ class CollectionProvider extends ChangeNotifier {
       final idx = _routes.indexWhere((r) => r.id == id);
       if (idx != -1) {
         _routes[idx] = _routes[idx].copyWith(priority: i + 1);
-        if (_supabase.isInitialized) {
-          _supabase.saveRoute(_routes[idx]);
-        }
-        
       }
     }
     _routes.sort((a, b) => a.priority.compareTo(b.priority));
-    await _storage.saveRoutes(_routes);
-    notifyListeners();
+    await _persistAndSyncRouteOrder();
   }
 
   Future<void> moveRouteUp(String routeId) async {
@@ -1442,24 +1841,27 @@ class CollectionProvider extends ChangeNotifier {
     _routes.insert(newIndex, item);
     for (int i = 0; i < _routes.length; i++) {
       _routes[i] = _routes[i].copyWith(priority: i + 1);
-      if (_supabase.isInitialized) {
-        _supabase.saveRoute(_routes[i]);
-      }
-      
     }
-    await _storage.saveRoutes(_routes);
-    notifyListeners();
+    await _persistAndSyncRouteOrder();
   }
 
   Future<void> deleteRoute(String routeId) async {
     _routes.removeWhere((r) => r.id == routeId);
+    _dirtyRouteIds.remove(routeId);
+    _dirtyRouteOrderIds.remove(routeId);
+    _routeOutletOrders.remove(routeId);
     _locallyDeletedRouteIds.add(routeId);
+    await _storage.saveIdSet(_keyDirtyRoutes, _dirtyRouteIds);
+    await _storage.saveIdSet(_keyDirtyRouteOrders, _dirtyRouteOrderIds);
+    await _storage.saveRouteOutletOrders(_routeOutletOrders);
     await _storage.saveDeletedRouteIds(_locallyDeletedRouteIds);
     await _storage.saveRoutes(_routes);
     notifyListeners();
-    try {
-      await _supabase.deleteRoute(routeId);
-    } catch (_) {}
+
+    if (await _supabase.deleteRoute(routeId)) {
+      _locallyDeletedRouteIds.remove(routeId);
+      await _storage.saveDeletedRouteIds(_locallyDeletedRouteIds);
+    }
   }
 
   // --- Shop Operations ---
@@ -1491,13 +1893,12 @@ class CollectionProvider extends ChangeNotifier {
     _locallyDeletedShopIds.remove(newShop.id);
     await _storage.saveShops(_shops);
     await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
+    await _markDirty(_dirtyShopIds, _keyDirtyShops, [newShop.id]);
     notifyListeners();
-    try {
-      await _supabase.saveShop(newShop);
-    } catch (e) {
-      debugPrint('Cloud saveShop notice: $e');
+
+    if (await _supabase.saveShop(newShop)) {
+      await _clearDirty(_dirtyShopIds, _keyDirtyShops, [newShop.id]);
     }
-    
     return newShop;
   }
 
@@ -1514,20 +1915,17 @@ class CollectionProvider extends ChangeNotifier {
     }
     if (toAdd.isEmpty) return 0;
 
+    final addedIds = toAdd.map((s) => s.id).toSet();
     _shops.addAll(toAdd);
+    _locallyDeletedShopIds.removeAll(addedIds);
+    await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
+    await _storage.saveShops(_shops);
+    await _markDirty(_dirtyShopIds, _keyDirtyShops, addedIds);
     notifyListeners();
 
-    try {
-      await _storage.saveShops(_shops);
-    } catch (e) {
-      debugPrint('Storage saveShops bulk error: $e');
+    if (await _supabase.saveShopsBulk(toAdd)) {
+      await _clearDirty(_dirtyShopIds, _keyDirtyShops, addedIds);
     }
-
-    _supabase.saveShopsBulk(toAdd).catchError((e) {
-      debugPrint('Supabase saveShopsBulk error: $e');
-      return false;
-    });
-
     return toAdd.length;
   }
 
@@ -1546,13 +1944,12 @@ class CollectionProvider extends ChangeNotifier {
       );
       _shops[idx] = updated;
       await _storage.saveShops(_shops);
+      await _markDirty(_dirtyShopIds, _keyDirtyShops, [shopId]);
       notifyListeners();
-      try {
-        await _supabase.saveShop(updated);
-      } catch (e) {
-        debugPrint('Cloud saveShop location notice: $e');
+
+      if (await _supabase.saveShop(updated)) {
+        await _clearDirty(_dirtyShopIds, _keyDirtyShops, [shopId]);
       }
-      
       return updated;
     }
     return null;
@@ -1564,13 +1961,12 @@ class CollectionProvider extends ChangeNotifier {
       final updated = _shops[idx].copyWith(clearLocation: true);
       _shops[idx] = updated;
       await _storage.saveShops(_shops);
+      await _markDirty(_dirtyShopIds, _keyDirtyShops, [shopId]);
       notifyListeners();
-      try {
-        await _supabase.saveShop(updated);
-      } catch (e) {
-        debugPrint('Cloud deleteShopLocation notice: $e');
+
+      if (await _supabase.saveShop(updated)) {
+        await _clearDirty(_dirtyShopIds, _keyDirtyShops, [shopId]);
       }
-      
       return updated;
     }
     return null;
@@ -1580,7 +1976,7 @@ class CollectionProvider extends ChangeNotifier {
     final idx = _shops.indexWhere((s) => s.id == updatedShop.id);
     if (idx != -1) {
       _shops[idx] = updatedShop;
-      // Also update shopName in collections for this shop
+      final affectedColIds = <String>[];
       for (int i = 0; i < _collections.length; i++) {
         if (_collections[i].shopId == updatedShop.id) {
           _collections[i] = _collections[i].copyWith(
@@ -1588,9 +1984,10 @@ class CollectionProvider extends ChangeNotifier {
             routeId: updatedShop.routeId,
             routeName: updatedShop.routeName,
           );
+          affectedColIds.add(_collections[i].id);
         }
       }
-      // Also update shopName in pending bills for this shop
+      final affectedBillIds = <String>[];
       for (int i = 0; i < _pendingBills.length; i++) {
         if (_pendingBills[i].shopId == updatedShop.id) {
           _pendingBills[i] = _pendingBills[i].copyWith(
@@ -1598,18 +1995,35 @@ class CollectionProvider extends ChangeNotifier {
             routeId: updatedShop.routeId,
             routeName: updatedShop.routeName,
           );
+          affectedBillIds.add(_pendingBills[i].id);
         }
       }
       await _storage.saveShops(_shops);
-      try {
+      await _markDirty(_dirtyShopIds, _keyDirtyShops, [updatedShop.id]);
+      if (affectedColIds.isNotEmpty) {
         await _storage.saveCollections(_collections);
+        await _markDirty(_dirtyCollectionIds, _keyDirtyCollections, affectedColIds);
+      }
+      if (affectedBillIds.isNotEmpty) {
         await _storage.savePendingBills(_pendingBills);
-      } catch (_) {}
+        await _markDirty(_dirtyBillIds, _keyDirtyBills, affectedBillIds);
+      }
       notifyListeners();
-      try {
-        await _supabase.saveShop(updatedShop);
-      } catch (e) {
-        debugPrint('Cloud saveShop notice: $e');
+
+      if (await _supabase.saveShop(updatedShop)) {
+        await _clearDirty(_dirtyShopIds, _keyDirtyShops, [updatedShop.id]);
+      }
+      if (affectedColIds.isNotEmpty) {
+        final cols = _collections.where((c) => affectedColIds.contains(c.id)).toList();
+        if (await _supabase.saveCollectionsBulk(cols)) {
+          await _clearDirty(_dirtyCollectionIds, _keyDirtyCollections, affectedColIds);
+        }
+      }
+      if (affectedBillIds.isNotEmpty) {
+        final bills = _pendingBills.where((b) => affectedBillIds.contains(b.id)).toList();
+        if (await _supabase.savePendingBillsBulk(bills)) {
+          await _clearDirty(_dirtyBillIds, _keyDirtyBills, affectedBillIds);
+        }
       }
     }
     return updatedShop;
@@ -1617,14 +2031,16 @@ class CollectionProvider extends ChangeNotifier {
 
   Future<void> deleteShop(String shopId) async {
     _shops.removeWhere((s) => s.id == shopId);
+    _dirtyShopIds.remove(shopId);
     _locallyDeletedShopIds.add(shopId);
+    await _storage.saveIdSet(_keyDirtyShops, _dirtyShopIds);
     await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
     await _storage.saveShops(_shops);
     notifyListeners();
-    try {
-      await _supabase.deleteShop(shopId);
-    } catch (e) {
-      debugPrint('Cloud deleteShop notice: $e');
+
+    if (await _supabase.deleteShop(shopId)) {
+      _locallyDeletedShopIds.remove(shopId);
+      await _storage.saveDeletedShopIds(_locallyDeletedShopIds);
     }
   }
 
@@ -1633,6 +2049,7 @@ class CollectionProvider extends ChangeNotifier {
   }
 
   Future<void> reorderShopsForRoute(String routeId, List<String> orderedShopIds) async {
+    _routeOutletOrders[routeId] = List<String>.from(orderedShopIds);
     final routeShops = _shops.where((s) => s.routeId == routeId).toList();
     routeShops.sort((a, b) {
       final idxA = orderedShopIds.indexOf(a.id);
@@ -1645,17 +2062,14 @@ class CollectionProvider extends ChangeNotifier {
 
     final otherShops = _shops.where((s) => s.routeId != routeId).toList();
     _shops = [...otherShops, ...routeShops];
+    await _storage.saveRouteOutletOrders(_routeOutletOrders);
+    await _markDirty(_dirtyRouteOrderIds, _keyDirtyRouteOrders, [routeId]);
+    await _storage.saveShops(_shops);
     notifyListeners();
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList('route_order_$routeId', orderedShopIds);
-      await _storage.saveShops(_shops);
-    } catch (_) {}
-
-    try {
-      await _supabase.saveRouteOutletOrder(routeId, orderedShopIds);
-    } catch (_) {}
+    if (await _supabase.saveRouteOutletOrder(routeId, orderedShopIds)) {
+      await _clearDirty(_dirtyRouteOrderIds, _keyDirtyRouteOrders, [routeId]);
+    }
   }
 
   ShopModel? getShopById(String id) {
@@ -1678,56 +2092,66 @@ class CollectionProvider extends ChangeNotifier {
         ? collection.copyWith(clearPhoto: true)
         : collection;
 
+    _collections.removeWhere((c) => c.id == finalCollection.id);
     _collections.insert(0, finalCollection);
+    _dirtyCollectionIds.add(finalCollection.id);
     try {
       await _storage.saveCollections(_collections);
+      await _storage.saveIdSet(_keyDirtyCollections, _dirtyCollectionIds);
     } catch (e) {
       debugPrint('Storage save notice: $e');
     }
     notifyListeners();
 
-    // Background Supabase Sync (instant write directly to database)
-    () async {
-      try {
-        await _supabase.saveCollection(finalCollection);
-      } catch (e) {
-        debugPrint('Supabase direct sync error: $e');
-      }
-    }();
+    if (await _supabase.saveCollection(finalCollection)) {
+      await _clearDirty(_dirtyCollectionIds, _keyDirtyCollections, [finalCollection.id]);
+    }
 
-    // Record chronological visit & collection checkpoint in staff location timeline
-    () async {
-      try {
-        final shop = getShopById(finalCollection.shopId);
-        final lat = shop?.latitude ?? (_currentUser?.latitude ?? 18.5204);
-        final lng = shop?.longitude ?? (_currentUser?.longitude ?? 73.8567);
-        final landmark = shop != null
-            ? '${shop.name} (${shop.routeName})'
-            : finalCollection.shopName;
+    // Record chronological visit & collection checkpoint cleanly with offline queue fallback
+    try {
+      final shop = getShopById(finalCollection.shopId);
+      final lat = shop?.latitude ?? (_currentUser?.latitude ?? 18.5204);
+      final lng = shop?.longitude ?? (_currentUser?.longitude ?? 73.8567);
+      final landmark = shop != null
+          ? '${shop.name} (${shop.routeName})'
+          : finalCollection.shopName;
 
-        final tlEntry = LocationTimelineEntry(
-          id: 'tl_${_currentUser?.id ?? "staff"}_${DateTime.now().millisecondsSinceEpoch}',
-          userId: _currentUser?.id ?? 'staff',
-          staffName: finalCollection.salesmanName.isNotEmpty ? finalCollection.salesmanName : (_currentUser?.name ?? 'Akash'),
-          staffRole: _currentUser?.role.name ?? 'salesman',
-          timestamp: finalCollection.collectedAt,
-          latitude: lat,
-          longitude: lng,
-          landmark: landmark,
-          eventType: 'collection',
-          details: 'Collected ₹${finalCollection.collectedAmount.toStringAsFixed(0)} (${finalCollection.paymentMode.displayName}) for Bill #${finalCollection.billNumber}',
-          amount: finalCollection.collectedAmount,
-          shopName: finalCollection.shopName,
-          routeName: finalCollection.routeName,
-          billNumber: finalCollection.billNumber,
-        );
-        await _storage.addLocationTimelineEntry(tlEntry);
-        await _supabase.saveLocationTimelineEntry(tlEntry);
-      } catch (e) {
-        debugPrint('Timeline collection log notice: $e');
+      final tlEntry = LocationTimelineEntry(
+        id: 'tl_${_currentUser?.id ?? "staff"}_${DateTime.now().millisecondsSinceEpoch}',
+        userId: _currentUser?.id ?? 'staff',
+        staffName: finalCollection.salesmanName.isNotEmpty
+            ? finalCollection.salesmanName
+            : (_currentUser?.name ?? 'Akash'),
+        staffRole: _currentUser?.role.name ?? 'salesman',
+        timestamp: finalCollection.collectedAt,
+        latitude: lat,
+        longitude: lng,
+        landmark: landmark,
+        eventType: 'collection',
+        details:
+            'Collected ₹${finalCollection.collectedAmount.toStringAsFixed(0)} (${finalCollection.paymentMode.displayName}) for Bill #${finalCollection.billNumber}',
+        amount: finalCollection.collectedAmount,
+        shopName: finalCollection.shopName,
+        routeName: finalCollection.routeName,
+        billNumber: finalCollection.billNumber,
+      );
+      final inserted = await _storage.addLocationTimelineEntry(
+        tlEntry,
+        minDuplicateSeconds: 5,
+        minMovedDegrees: 0.00001,
+      );
+      if (inserted) {
+        final pendingTl = await _storage.loadIdSet(StorageService.keyPendingTimelineIds);
+        pendingTl.add(tlEntry.id);
+        await _storage.saveIdSet(StorageService.keyPendingTimelineIds, pendingTl);
+        if (await _supabase.saveLocationTimelineEntry(tlEntry)) {
+          pendingTl.remove(tlEntry.id);
+          await _storage.saveIdSet(StorageService.keyPendingTimelineIds, pendingTl);
+        }
       }
-    }();
-    
+    } catch (e) {
+      debugPrint('Timeline collection log notice: $e');
+    }
 
     // Auto-delete bill photos when collection completes to keep storage free forever
     if (isSettled) {
@@ -1740,7 +2164,7 @@ class CollectionProvider extends ChangeNotifier {
   Future<void> _syncPendingBillSettlement(CollectionModel coll) async {
     final cleanBill = coll.billNumber.trim().toLowerCase();
     final cleanShop = coll.shopId.trim().toLowerCase();
-    bool changed = false;
+    final updatedBills = <PendingBillModel>[];
 
     for (int i = 0; i < _pendingBills.length; i++) {
       final b = _pendingBills[i];
@@ -1753,18 +2177,20 @@ class CollectionProvider extends ChangeNotifier {
             clearPhoto: true, // Delete photo, all metadata remains permanently!
           );
           _pendingBills[i] = updated;
-          changed = true;
-          if (_supabase.isInitialized) {
-            await _supabase.savePendingBill(updated);
-          }
-          
+          updatedBills.add(updated);
         }
       }
     }
 
-    if (changed) {
+    if (updatedBills.isNotEmpty) {
+      final ids = updatedBills.map((b) => b.id).toList();
       await _storage.savePendingBills(_pendingBills);
+      await _markDirty(_dirtyBillIds, _keyDirtyBills, ids);
       notifyListeners();
+
+      if (await _supabase.savePendingBillsBulk(updatedBills)) {
+        await _clearDirty(_dirtyBillIds, _keyDirtyBills, ids);
+      }
     }
   }
 
@@ -1772,27 +2198,30 @@ class CollectionProvider extends ChangeNotifier {
   Future<void> _purgePhotoForSettledBill(String billNumber, String? shopId) async {
     final cleanBill = billNumber.trim().toLowerCase();
     final cleanShopId = shopId?.trim().toLowerCase();
-    bool changed = false;
+    final updatedColls = <CollectionModel>[];
 
     for (int i = 0; i < _collections.length; i++) {
       final c = _collections[i];
       if (c.billNumber.trim().toLowerCase() == cleanBill) {
         if (cleanShopId == null || cleanShopId.isEmpty || c.shopId.trim().toLowerCase() == cleanShopId) {
           if (c.hasPhoto) {
-            _collections[i] = c.copyWith(clearPhoto: true);
-            changed = true;
-            if (_supabase.isInitialized) {
-              _supabase.saveCollection(_collections[i]);
-            }
-            
+            final updated = c.copyWith(clearPhoto: true);
+            _collections[i] = updated;
+            updatedColls.add(updated);
           }
         }
       }
     }
 
-    if (changed) {
+    if (updatedColls.isNotEmpty) {
+      final ids = updatedColls.map((c) => c.id).toList();
       await _storage.saveCollections(_collections);
+      await _markDirty(_dirtyCollectionIds, _keyDirtyCollections, ids);
       notifyListeners();
+
+      if (await _supabase.saveCollectionsBulk(updatedColls)) {
+        await _clearDirty(_dirtyCollectionIds, _keyDirtyCollections, ids);
+      }
     }
   }
 
@@ -1801,7 +2230,8 @@ class CollectionProvider extends ChangeNotifier {
     if (idx == -1) return;
     final coll = _collections[idx];
 
-    // 1. Mark as locally deleted and permanently blacklisted so background cloud sync/realtime will NEVER resurrect it
+    // 1. Mark as locally deleted so background sync/realtime won't resurrect it
+    _dirtyCollectionIds.remove(id);
     _locallyDeletedCollectionIds.add(id);
     _collections.removeAt(idx);
 
@@ -1813,6 +2243,7 @@ class CollectionProvider extends ChangeNotifier {
         (cleanShop.isEmpty || c.shopId.trim().toLowerCase() == cleanShop)
     ).fold(0.0, (s, c) => s + c.collectedAmount);
 
+    final updatedBills = <PendingBillModel>[];
     for (int i = 0; i < _pendingBills.length; i++) {
       final pb = _pendingBills[i];
       if (pb.billNumber.trim().toLowerCase() == cleanBill &&
@@ -1825,93 +2256,89 @@ class CollectionProvider extends ChangeNotifier {
           status: newStatus,
         );
         _pendingBills[i] = updatedPb;
-        if (_supabase.isInitialized) {
-          _supabase.savePendingBill(updatedPb).catchError((_) => false);
-        }
+        updatedBills.add(updatedPb);
       }
     }
 
     notifyListeners();
 
-    // 3. Persist collections, pending bills, and deleted collection IDs to storage
+    // 3. Persist collections, pending bills, dirty & deleted IDs
     try {
       await _storage.saveCollections(_collections);
+      await _storage.saveIdSet(_keyDirtyCollections, _dirtyCollectionIds);
       await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
-      await _storage.savePendingBills(_pendingBills);
+      if (updatedBills.isNotEmpty) {
+        await _storage.savePendingBills(_pendingBills);
+        await _markDirty(_dirtyBillIds, _keyDirtyBills, updatedBills.map((b) => b.id));
+      }
     } catch (e) {
       debugPrint('Storage deleteCollection error: $e');
     }
 
-    // 4. Delete directly from Supabase
-    try {
-      await _supabase.deleteCollection(id);
-    } catch (e) {
-      debugPrint('Supabase deleteCollection error: $e');
+    // 4. Push updated bills & delete from Supabase, clearing tombstones only on success
+    if (updatedBills.isNotEmpty) {
+      if (await _supabase.savePendingBillsBulk(updatedBills)) {
+        await _clearDirty(_dirtyBillIds, _keyDirtyBills, updatedBills.map((b) => b.id));
+      }
+    }
+    if (await _supabase.deleteCollection(id)) {
+      _locallyDeletedCollectionIds.remove(id);
+      await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
     }
   }
 
   Future<void> deleteBillSummary(BillSummary bill) async {
     final targetBillNum = bill.billNumber.trim().toLowerCase();
 
-    // 1. Identify all collection IDs belonging to this bill & shop
     final matchingCollections = _collections.where((c) =>
         c.shopId == bill.shopId && c.billNumber.trim().toLowerCase() == targetBillNum).toList();
 
-    final collIdsToDelete = <String>{};
-    for (final c in matchingCollections) {
-      collIdsToDelete.add(c.id);
-    }
-    for (final c in bill.collections) {
-      collIdsToDelete.add(c.id);
-    }
+    final collIdsToDelete = <String>{
+      for (final c in matchingCollections) c.id,
+      for (final c in bill.collections) c.id,
+    };
 
-    // 2. Identify all pending bills belonging to this bill & shop
     final matchingPendingBills = _pendingBills.where((pb) =>
         pb.shopId == bill.shopId && pb.billNumber.trim().toLowerCase() == targetBillNum).toList();
 
-    final pendingBillIdsToDelete = <String>{};
-    for (final pb in matchingPendingBills) {
-      pendingBillIdsToDelete.add(pb.id);
-    }
+    final pendingBillIdsToDelete = <String>{
+      for (final pb in matchingPendingBills) pb.id,
+    };
 
-    // 3. Mark collections as locally deleted (tombstone) & remove from local memory
     for (final id in collIdsToDelete) {
+      _dirtyCollectionIds.remove(id);
       _locallyDeletedCollectionIds.add(id);
       _collections.removeWhere((c) => c.id == id);
     }
 
-    // 4. Mark pending bills as locally deleted (tombstone) & remove from local memory
     for (final id in pendingBillIdsToDelete) {
+      _dirtyBillIds.remove(id);
       _locallyDeletedBillIds.add(id);
       _pendingBills.removeWhere((b) => b.id == id);
     }
 
     notifyListeners();
 
-    // 5. Persist to storage
     try {
       await _storage.saveCollections(_collections);
+      await _storage.saveIdSet(_keyDirtyCollections, _dirtyCollectionIds);
       await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
       await _storage.savePendingBills(_pendingBills);
+      await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
       await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
     } catch (e) {
       debugPrint('Storage deleteBillSummary error: $e');
     }
 
-    // 6. Delete from Supabase
-    for (final id in collIdsToDelete) {
-      try {
-        await _supabase.deleteCollection(id);
-      } catch (e) {
-        debugPrint('Supabase deleteCollection $id error: $e');
-      }
+    if (collIdsToDelete.isNotEmpty &&
+        await _supabase.deleteCollectionsBulk(collIdsToDelete.toList())) {
+      _locallyDeletedCollectionIds.removeAll(collIdsToDelete);
+      await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
     }
-    for (final id in pendingBillIdsToDelete) {
-      try {
-        await _supabase.deletePendingBill(id);
-      } catch (e) {
-        debugPrint('Supabase deletePendingBill $id error: $e');
-      }
+    if (pendingBillIdsToDelete.isNotEmpty &&
+        await _supabase.deletePendingBillsBulk(pendingBillIdsToDelete.toList())) {
+      _locallyDeletedBillIds.removeAll(pendingBillIdsToDelete);
+      await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
     }
   }
 
@@ -2016,29 +2443,28 @@ class CollectionProvider extends ChangeNotifier {
 
   // --- Pending Bill Operations ---
   Future<PendingBillModel> addPendingBill(PendingBillModel bill) async {
-    // Clear from deleted tracking if re-added
     if (_locallyDeletedBillIds.contains(bill.id)) {
       _locallyDeletedBillIds.remove(bill.id);
       await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
     }
 
-    // 1. Immediately insert at the top of in-memory list
+    _pendingBills.removeWhere((b) => b.id == bill.id);
     _pendingBills.insert(0, bill);
-    // 2. Immediately notify listeners so the new bill appears in UI in 0ms!
+    _dirtyBillIds.add(bill.id);
     notifyListeners();
 
-    // 3. Persist to local storage synchronously so it survives page reloads and screen transitions
     try {
       await _storage.savePendingBills(_pendingBills);
+      await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
     } catch (e) {
       debugPrint('Storage savePendingBills error: $e');
     }
 
-    // 4. Sync to Supabase in background without blocking UI
-    _supabase.savePendingBill(bill).catchError((e) {
-      debugPrint('Supabase savePendingBill error: $e');
-      return false;
-    });
+    final ok = await _supabase.savePendingBill(bill);
+    if (ok) {
+      _dirtyBillIds.remove(bill.id);
+      await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
+    }
 
     return bill;
   }
@@ -2060,19 +2486,25 @@ class CollectionProvider extends ChangeNotifier {
 
     if (toAdd.isEmpty) return 0;
 
+    final addedIds = toAdd.map((b) => b.id).toSet();
     _pendingBills.insertAll(0, toAdd);
+    _locallyDeletedBillIds.removeAll(addedIds);
+    _dirtyBillIds.addAll(addedIds);
     notifyListeners();
 
     try {
       await _storage.savePendingBills(_pendingBills);
+      await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+      await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
     } catch (e) {
       debugPrint('Storage savePendingBills bulk error: $e');
     }
 
-    _supabase.savePendingBillsBulk(toAdd).catchError((e) {
-      debugPrint('Supabase savePendingBillsBulk error: $e');
-      return false;
-    });
+    final ok = await _supabase.savePendingBillsBulk(toAdd);
+    if (ok) {
+      _dirtyBillIds.removeAll(addedIds);
+      await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
+    }
 
     return toAdd.length;
   }
@@ -2081,16 +2513,19 @@ class CollectionProvider extends ChangeNotifier {
     final idx = _pendingBills.indexWhere((b) => b.id == updatedBill.id);
     if (idx != -1) {
       _pendingBills[idx] = updatedBill;
+      _dirtyBillIds.add(updatedBill.id);
       notifyListeners();
       try {
         await _storage.savePendingBills(_pendingBills);
+        await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
       } catch (e) {
         debugPrint('Storage updatePendingBill error: $e');
       }
-      _supabase.savePendingBill(updatedBill).catchError((e) {
-        debugPrint('Supabase updatePendingBill error: $e');
-        return false;
-      });
+      final ok = await _supabase.savePendingBill(updatedBill);
+      if (ok) {
+        _dirtyBillIds.remove(updatedBill.id);
+        await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
+      }
     }
   }
 
@@ -2102,6 +2537,7 @@ class CollectionProvider extends ChangeNotifier {
     final cleanShop = pb.shopId.trim().toLowerCase();
 
     // 1. Mark pending bill as locally deleted so background cloud sync won't resurrect it
+    _dirtyBillIds.remove(id);
     _locallyDeletedBillIds.add(id);
     _pendingBills.removeAt(idx);
 
@@ -2110,36 +2546,41 @@ class CollectionProvider extends ChangeNotifier {
         c.billNumber.trim().toLowerCase() == cleanBill &&
         (cleanShop.isEmpty || c.shopId.trim().toLowerCase() == cleanShop)
     ).toList();
+    final deletedCollIds = collsToDelete.map((c) => c.id).toList();
 
-    for (final c in collsToDelete) {
-      _locallyDeletedCollectionIds.add(c.id);
-      _collections.removeWhere((col) => col.id == c.id);
-      if (_supabase.isInitialized) {
-        _supabase.deleteCollection(c.id).catchError((_) => false);
-      }
+    for (final cid in deletedCollIds) {
+      _dirtyCollectionIds.remove(cid);
+      _locallyDeletedCollectionIds.add(cid);
+      _collections.removeWhere((col) => col.id == cid);
     }
 
     notifyListeners();
 
-    // 3. Save both pending bills, collections, and deleted ID sets to local storage
+    // 3. Save pending bills, collections, dirty & deleted ID sets to local storage
     try {
       await _storage.savePendingBills(_pendingBills);
+      await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
       await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
       if (collsToDelete.isNotEmpty) {
         await _storage.saveCollections(_collections);
+        await _storage.saveIdSet(_keyDirtyCollections, _dirtyCollectionIds);
         await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
       }
     } catch (e) {
       debugPrint('Storage deletePendingBill error: $e');
     }
 
-    // 4. Delete from Supabase in background; on success, clean up tracking set
-    _supabase.deletePendingBill(id).then((_) {
+    // 4. Delete from Supabase and ONLY clear tombstones if cloud delete succeeded
+    if (deletedCollIds.isNotEmpty) {
+      if (await _supabase.deleteCollectionsBulk(deletedCollIds)) {
+        _locallyDeletedCollectionIds.removeAll(deletedCollIds);
+        await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+      }
+    }
+    if (await _supabase.deletePendingBill(id)) {
       _locallyDeletedBillIds.remove(id);
-      _storage.saveDeletedBillIds(_locallyDeletedBillIds);
-    }).catchError((e) {
-      debugPrint('Supabase deletePendingBill error: $e');
-    });
+      await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+    }
   }
 
   Future<void> syncPendingBillsFromCloud() async {
@@ -2295,8 +2736,34 @@ _Generated via Daily Collection Pro_
   Future<void> saveCashHandover(CashHandoverModel handover) async {
     _cashHandovers.removeWhere((h) => h.id == handover.id);
     _cashHandovers.insert(0, handover);
+    _locallyDeletedHandoverIds.remove(handover.id);
+    _dirtyHandoverIds.add(handover.id);
     await _storage.saveCashHandovers(_cashHandovers);
+    await _storage.saveIdSet(_keyDeletedHandovers, _locallyDeletedHandoverIds);
+    await _storage.saveIdSet(_keyDirtyHandovers, _dirtyHandoverIds);
     notifyListeners();
+
+    final ok = await _supabase.saveCashHandover(handover);
+    if (ok) {
+      _dirtyHandoverIds.remove(handover.id);
+      await _storage.saveIdSet(_keyDirtyHandovers, _dirtyHandoverIds);
+    }
+  }
+
+  Future<void> deleteCashHandover(String id) async {
+    _cashHandovers.removeWhere((h) => h.id == id);
+    _dirtyHandoverIds.remove(id);
+    _locallyDeletedHandoverIds.add(id);
+    await _storage.saveCashHandovers(_cashHandovers);
+    await _storage.saveIdSet(_keyDirtyHandovers, _dirtyHandoverIds);
+    await _storage.saveIdSet(_keyDeletedHandovers, _locallyDeletedHandoverIds);
+    notifyListeners();
+
+    final ok = await _supabase.deleteCashHandover(id);
+    if (ok) {
+      _locallyDeletedHandoverIds.remove(id);
+      await _storage.saveIdSet(_keyDeletedHandovers, _locallyDeletedHandoverIds);
+    }
   }
 
   CashHandoverModel? getLatestHandoverForDate(DateTime date, {String? business}) {
@@ -2358,14 +2825,52 @@ _Daily Collection Pro Cash Verification_
   Future<void> saveVehicleCollection(VehicleCollectionModel entry) async {
     _vehicleCollections.removeWhere((v) => v.id == entry.id);
     _vehicleCollections.insert(0, entry);
+    _locallyDeletedVehicleCollectionIds.remove(entry.id);
+    _dirtyVehicleCollectionIds.add(entry.id);
     await _storage.saveVehicleCollections(_vehicleCollections);
+    await _storage.saveIdSet(
+      _keyDeletedVehicleCollections,
+      _locallyDeletedVehicleCollectionIds,
+    );
+    await _storage.saveIdSet(
+      _keyDirtyVehicleCollections,
+      _dirtyVehicleCollectionIds,
+    );
     notifyListeners();
+
+    final ok = await _supabase.saveVehicleCollection(entry);
+    if (ok) {
+      _dirtyVehicleCollectionIds.remove(entry.id);
+      await _storage.saveIdSet(
+        _keyDirtyVehicleCollections,
+        _dirtyVehicleCollectionIds,
+      );
+    }
   }
 
   Future<void> deleteVehicleCollection(String id) async {
     _vehicleCollections.removeWhere((v) => v.id == id);
+    _dirtyVehicleCollectionIds.remove(id);
+    _locallyDeletedVehicleCollectionIds.add(id);
     await _storage.saveVehicleCollections(_vehicleCollections);
+    await _storage.saveIdSet(
+      _keyDirtyVehicleCollections,
+      _dirtyVehicleCollectionIds,
+    );
+    await _storage.saveIdSet(
+      _keyDeletedVehicleCollections,
+      _locallyDeletedVehicleCollectionIds,
+    );
     notifyListeners();
+
+    final ok = await _supabase.deleteVehicleCollection(id);
+    if (ok) {
+      _locallyDeletedVehicleCollectionIds.remove(id);
+      await _storage.saveIdSet(
+        _keyDeletedVehicleCollections,
+        _locallyDeletedVehicleCollectionIds,
+      );
+    }
   }
 
   VehicleCollectionModel? getLatestVehicleCollectionForDate(DateTime date, {String? vehicleNo}) {
@@ -2394,56 +2899,100 @@ _Daily Collection Pro Cash Verification_
     final v = vehicleNo.trim().toUpperCase();
     if (v.isEmpty || _vehicles.any((x) => x.toUpperCase() == v)) return;
     _vehicles.add(v);
+    _dirtyVehiclesFlag = true;
     await _storage.saveVehicles(_vehicles);
+    await _storage.saveBoolFlag(_keyDirtyVehiclesFlag, true);
     notifyListeners();
+
+    if (await _supabase.saveManagedVehicles(_vehicles)) {
+      _dirtyVehiclesFlag = false;
+      await _storage.saveBoolFlag(_keyDirtyVehiclesFlag, false);
+    }
   }
 
   Future<void> deleteVehicle(String vehicleNo) async {
     _vehicles.removeWhere((v) => v.toUpperCase() == vehicleNo.trim().toUpperCase());
+    _dirtyVehiclesFlag = true;
     await _storage.saveVehicles(_vehicles);
+    await _storage.saveBoolFlag(_keyDirtyVehiclesFlag, true);
     notifyListeners();
+
+    if (await _supabase.saveManagedVehicles(_vehicles)) {
+      _dirtyVehiclesFlag = false;
+      await _storage.saveBoolFlag(_keyDirtyVehiclesFlag, false);
+    }
   }
 
   Future<void> addEmployee(String employeeName) async {
     final name = employeeName.trim();
     if (name.isEmpty || _employees.any((x) => x.toLowerCase() == name.toLowerCase())) return;
     _employees.add(name);
+    _dirtyEmployeesFlag = true;
     await _storage.saveEmployees(_employees);
+    await _storage.saveBoolFlag(_keyDirtyEmployeesFlag, true);
     notifyListeners();
+
+    if (await _supabase.saveManagedEmployees(_employees)) {
+      _dirtyEmployeesFlag = false;
+      await _storage.saveBoolFlag(_keyDirtyEmployeesFlag, false);
+    }
   }
 
   Future<void> deleteEmployee(String employeeName) async {
     _employees.removeWhere((e) => e.trim().toLowerCase() == employeeName.trim().toLowerCase());
+    _dirtyEmployeesFlag = true;
     await _storage.saveEmployees(_employees);
+    await _storage.saveBoolFlag(_keyDirtyEmployeesFlag, true);
     notifyListeners();
+
+    if (await _supabase.saveManagedEmployees(_employees)) {
+      _dirtyEmployeesFlag = false;
+      await _storage.saveBoolFlag(_keyDirtyEmployeesFlag, false);
+    }
   }
 
   // --- Sales Order Operations ---
   Future<void> addSalesOrder(SalesOrderModel order) async {
-    _salesOrders.removeWhere((o) => o.id == order.id);
-    _salesOrders.insert(0, order);
+    final isEdit = _salesOrders.any((o) => o.id == order.id);
+    final savedOrder = isEdit ? order.copyWith(updatedAt: DateTime.now()) : order;
+    _salesOrders.removeWhere((o) => o.id == savedOrder.id);
+    _salesOrders.insert(0, savedOrder);
+    _locallyDeletedOrderIds.remove(savedOrder.id);
+    _dirtyOrderIds.add(savedOrder.id);
     await _storage.saveSalesOrders(_salesOrders);
-    if (_supabase.isInitialized) {
-      try {
-        await _supabase.saveSalesOrder(order);
-      } catch (e) {
-        debugPrint('Error saving sales order to cloud: $e');
-      }
-    }
+    await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
+    await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
     notifyListeners();
+
+    if (await _supabase.saveSalesOrder(savedOrder)) {
+      _dirtyOrderIds.remove(savedOrder.id);
+      await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
+    }
+  }
+
+  Future<void> updateSalesOrderStatus(String orderId, String status) async {
+    final idx = _salesOrders.indexWhere((o) => o.id == orderId);
+    if (idx == -1) return;
+    final updated = _salesOrders[idx].copyWith(
+      status: status,
+      updatedAt: DateTime.now(),
+    );
+    await addSalesOrder(updated);
   }
 
   Future<void> deleteSalesOrder(String orderId) async {
     _salesOrders.removeWhere((o) => o.id == orderId);
+    _dirtyOrderIds.remove(orderId);
+    _locallyDeletedOrderIds.add(orderId);
     await _storage.saveSalesOrders(_salesOrders);
-    if (_supabase.isInitialized) {
-      try {
-        await _supabase.deleteSalesOrder(orderId);
-      } catch (e) {
-        debugPrint('Error deleting sales order from cloud: $e');
-      }
-    }
+    await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
+    await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
     notifyListeners();
+
+    if (await _supabase.deleteSalesOrder(orderId)) {
+      _locallyDeletedOrderIds.remove(orderId);
+      await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
+    }
   }
 
   // --- Customer History for Order Screen ---
@@ -2464,15 +3013,33 @@ _Daily Collection Pro Cash Verification_
     _customProducts.removeWhere((p) => p.id == product.id);
     _customProducts.add(product);
     OrderCatalogService.addCustomProduct(product);
+    _locallyDeletedProductIds.remove(product.id);
+    _dirtyProductIds.add(product.id);
     await _storage.saveCustomProducts(_customProducts);
-    if (_supabase.isInitialized) {
-      try {
-        await _supabase.saveCustomProduct(product);
-      } catch (e) {
-        debugPrint('Error saving custom product to cloud: $e');
-      }
-    }
+    await _storage.saveIdSet(_keyDeletedProducts, _locallyDeletedProductIds);
+    await _storage.saveIdSet(_keyDirtyProducts, _dirtyProductIds);
     notifyListeners();
+
+    if (await _supabase.saveCustomProduct(product)) {
+      _dirtyProductIds.remove(product.id);
+      await _storage.saveIdSet(_keyDirtyProducts, _dirtyProductIds);
+    }
+  }
+
+  Future<void> deleteCustomProduct(String productId) async {
+    _customProducts.removeWhere((p) => p.id == productId);
+    OrderCatalogService.deleteCustomProduct(productId);
+    _dirtyProductIds.remove(productId);
+    _locallyDeletedProductIds.add(productId);
+    await _storage.saveCustomProducts(_customProducts);
+    await _storage.saveIdSet(_keyDirtyProducts, _dirtyProductIds);
+    await _storage.saveIdSet(_keyDeletedProducts, _locallyDeletedProductIds);
+    notifyListeners();
+
+    if (await _supabase.deleteCustomProduct(productId)) {
+      _locallyDeletedProductIds.remove(productId);
+      await _storage.saveIdSet(_keyDeletedProducts, _locallyDeletedProductIds);
+    }
   }
 
   // --- Salesman Profile Management ---
@@ -2494,25 +3061,48 @@ _Daily Collection Pro Cash Verification_
 
   // Clear all transaction data (collections, pending bills, orders) but KEEP all routes & shops
   Future<void> resetTransactions() async {
-    final oldCollections = List<CollectionModel>.from(_collections);
+    final oldCollectionIds = _collections.map((c) => c.id).toSet();
+    final oldBillIds = _pendingBills.map((b) => b.id).toSet();
+    final oldOrderIds = _salesOrders.map((o) => o.id).toList();
+
     _collections.clear();
     _pendingBills.clear();
     _salesOrders.clear();
+    _dirtyCollectionIds.clear();
+    _dirtyBillIds.clear();
+    _dirtyOrderIds.clear();
+
+    _locallyDeletedCollectionIds.addAll(oldCollectionIds);
+    _locallyDeletedBillIds.addAll(oldBillIds);
+    _locallyDeletedOrderIds.addAll(oldOrderIds);
+
     await _storage.saveCollections(_collections);
     await _storage.savePendingBills(_pendingBills);
     await _storage.saveSalesOrders(_salesOrders);
-    if (_supabase.isInitialized) {
-      for (final c in oldCollections) {
-        try {
-          await _supabase.deleteCollection(c.id);
-        } catch (_) {}
-      }
-    }
+    await _storage.saveIdSet(_keyDirtyCollections, _dirtyCollectionIds);
+    await _storage.saveIdSet(_keyDirtyBills, _dirtyBillIds);
+    await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
+    await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+    await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+    await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
     notifyListeners();
+
+    if (await _supabase.clearAllBillsAndCollections()) {
+      _locallyDeletedCollectionIds.removeAll(oldCollectionIds);
+      _locallyDeletedBillIds.removeAll(oldBillIds);
+      await _storage.saveDeletedCollectionIds(_locallyDeletedCollectionIds);
+      await _storage.saveDeletedBillIds(_locallyDeletedBillIds);
+    }
+    if (oldOrderIds.isNotEmpty &&
+        await _supabase.deleteSalesOrdersBulk(oldOrderIds)) {
+      _locallyDeletedOrderIds.removeAll(oldOrderIds);
+      await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
+    }
   }
 
   // Reset to initial sample data
   Future<void> resetToSample() async {
+    _initFuture = null;
     await _storage.clearAll();
     await initialize();
   }

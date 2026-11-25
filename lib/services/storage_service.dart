@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/route_model.dart';
 import '../models/shop_model.dart';
@@ -148,7 +149,7 @@ class StorageService {
       } catch (inner) {
         // Safe failover: in-memory state is preserved even if localStorage is completely locked
         // ignore: avoid_print
-        print('LocalStorage write fallback note: $inner');
+        debugPrint('LocalStorage write fallback note: $inner');
       }
     }
   }
@@ -190,7 +191,7 @@ class StorageService {
           await prefs.setStringList(_keyPendingBills, noPhotos);
         } catch (inner2) {
           // ignore: avoid_print
-          print('LocalStorage pending bills save notice: $inner2');
+          debugPrint('LocalStorage pending bills save notice: $inner2');
         }
       }
     }
@@ -260,7 +261,7 @@ class StorageService {
       await prefs.setStringList(_keySalesOrders, rawList);
     } catch (e) {
       // ignore: avoid_print
-      print('LocalStorage sales orders save notice: $e');
+      debugPrint('LocalStorage sales orders save notice: $e');
     }
   }
 
@@ -280,7 +281,7 @@ class StorageService {
       await prefs.setStringList(_keyCustomProducts, rawList);
     } catch (e) {
       // ignore: avoid_print
-      print('LocalStorage custom products save notice: $e');
+      debugPrint('LocalStorage custom products save notice: $e');
     }
   }
 
@@ -300,7 +301,7 @@ class StorageService {
       await prefs.setStringList(_keyCashHandovers, rawList);
     } catch (e) {
       // ignore: avoid_print
-      print('LocalStorage cash handovers save notice: $e');
+      debugPrint('LocalStorage cash handovers save notice: $e');
     }
   }
 
@@ -320,7 +321,7 @@ class StorageService {
       await prefs.setStringList(_keyVehicleCollections, rawList);
     } catch (e) {
       // ignore: avoid_print
-      print('LocalStorage vehicle collections save notice: $e');
+      debugPrint('LocalStorage vehicle collections save notice: $e');
     }
   }
 
@@ -372,25 +373,97 @@ class StorageService {
       await prefs.setStringList(_keyLocationTimeline, rawList);
     } catch (e) {
       // ignore: avoid_print
-      print('LocalStorage location timeline save notice: $e');
+      debugPrint('LocalStorage location timeline save notice: $e');
     }
   }
 
-  Future<void> addLocationTimelineEntry(LocationTimelineEntry entry) async {
+  /// Returns `true` if a new entry was inserted, or `false` if deduplicated.
+  Future<bool> addLocationTimelineEntry(LocationTimelineEntry entry,
+      {int minDuplicateSeconds = 60, double minMovedDegrees = 0.0001}) async {
     final existing = await loadLocationTimeline();
-    // Prevent duplicate entries within 60 seconds for same user if location unchanged
+    // Prevent redundant stationary entries within threshold
     if (existing.isNotEmpty) {
-      final last = existing.first;
-      if (last.userId == entry.userId &&
+      final last = existing.firstWhere(
+        (e) => e.userId == entry.userId,
+        orElse: () => entry,
+      );
+      if (last != entry &&
           last.eventType == entry.eventType &&
-          entry.timestamp.difference(last.timestamp).inSeconds.abs() < 60 &&
-          (last.latitude - entry.latitude).abs() < 0.0001 &&
-          (last.longitude - entry.longitude).abs() < 0.0001) {
-        return;
+          entry.timestamp.difference(last.timestamp).inSeconds.abs() <
+              minDuplicateSeconds &&
+          (last.latitude - entry.latitude).abs() < minMovedDegrees &&
+          (last.longitude - entry.longitude).abs() < minMovedDegrees) {
+        return false;
       }
     }
     existing.insert(0, entry);
     await saveLocationTimeline(existing);
+    return true;
+  }
+
+  // --- Persistent Sync Outbox Queues & Route Orders ---
+  static const String _keyRouteOutletOrders = 'route_outlet_orders_v1';
+  static const String keyPendingTimelineIds = 'pending_timeline_sync_ids_v1';
+
+  Future<Set<String>> loadIdSet(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return (prefs.getStringList(key) ?? []).toSet();
+    } catch (e) {
+      debugPrint('LocalStorage loadIdSet($key) notice: $e');
+      return <String>{};
+    }
+  }
+
+  Future<void> saveIdSet(String key, Set<String> ids) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(key, ids.toList());
+    } catch (e) {
+      debugPrint('LocalStorage saveIdSet($key) notice: $e');
+    }
+  }
+
+  Future<bool> loadBoolFlag(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(key) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> saveBoolFlag(String key, bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(key, value);
+    } catch (e) {
+      debugPrint('LocalStorage saveBoolFlag($key) notice: $e');
+    }
+  }
+
+  Future<Map<String, List<String>>> loadRouteOutletOrders() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_keyRouteOutletOrders);
+      if (jsonStr == null) return {};
+      final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+      return decoded.map(
+        (k, v) => MapEntry(k, (v as List).map((e) => e.toString()).toList()),
+      );
+    } catch (e) {
+      debugPrint('LocalStorage route orders load notice: $e');
+      return {};
+    }
+  }
+
+  Future<void> saveRouteOutletOrders(Map<String, List<String>> orders) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyRouteOutletOrders, jsonEncode(orders));
+    } catch (e) {
+      debugPrint('LocalStorage route orders save notice: $e');
+    }
   }
 
   Future<void> clearAll() async {

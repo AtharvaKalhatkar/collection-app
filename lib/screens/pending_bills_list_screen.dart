@@ -371,7 +371,9 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                     // Route Dropdown
                     Expanded(
                       child: DropdownButtonFormField<String?>(
-                        initialValue: _selectedRouteId,
+                        initialValue: routes.any((r) => r.id == _selectedRouteId)
+                            ? _selectedRouteId
+                            : null,
                         isExpanded: true,
                         decoration: InputDecoration(
                           hintText: 'All Routes',

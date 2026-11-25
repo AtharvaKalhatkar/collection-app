@@ -4,11 +4,37 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:daily_collection_app/models/collection_model.dart';
+import 'package:daily_collection_app/models/route_model.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
 import 'package:daily_collection_app/screens/orders_screen.dart';
 import 'package:daily_collection_app/screens/statement_screen.dart';
 import 'package:daily_collection_app/widgets/add_product_dialog.dart';
 import 'package:daily_collection_app/services/order_catalog_service.dart';
+import 'package:daily_collection_app/services/storage_service.dart';
+
+Future<void> seedRoutesAndShops(CollectionProvider provider) async {
+  final storage = StorageService();
+  await storage.saveRoutes([
+    RouteModel(id: 'route-chakan', name: 'Chakan', priority: 1),
+    RouteModel(id: 'route-shikrapur', name: 'Shikrapur', priority: 2),
+  ]);
+  await storage.markInitialized();
+  await provider.initialize();
+  await provider.addShop(
+    name: 'ATA Kirana',
+    routeId: 'route-chakan',
+    routeName: 'Chakan',
+    mobileNumber: '9999999991',
+    address: 'Chakan',
+  );
+  await provider.addShop(
+    name: 'Shree Ganesh Super Market',
+    routeId: 'route-shikrapur',
+    routeName: 'Shikrapur',
+    mobileNumber: '9999999992',
+    address: 'Shikrapur',
+  );
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -33,8 +59,8 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
+      final provider = CollectionProvider(autoInitialize: false);
+      await tester.runAsync(() => provider.initialize());
 
       await tester.pumpWidget(buildTestApp(child: const OrdersScreen(), provider: provider));
       await tester.pumpAndSettle();
@@ -70,6 +96,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final purvaItemFinder = find.widgetWithText(DropdownMenuItem<String>, 'Purva Enterprises').last;
+      await tester.ensureVisible(purvaItemFinder);
       await tester.tap(purvaItemFinder);
       await tester.pumpAndSettle();
 
@@ -84,42 +111,18 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
+      final provider = CollectionProvider(autoInitialize: false);
+      await tester.runAsync(() => seedRoutesAndShops(provider));
 
       await tester.pumpWidget(buildTestApp(child: const OrdersScreen(), provider: provider));
       await tester.pumpAndSettle();
 
-      // Find route dropdown
-      final routeDropdownFinder = find.byKey(const ValueKey('order_route_none'));
-      expect(routeDropdownFinder, findsOneWidget);
-
-      // Select Route 1 (Chakan Beat)
-      await tester.tap(routeDropdownFinder);
-      await tester.pumpAndSettle();
-
-      final chakanRouteFinder = find.textContaining('Chakan').last;
-      await tester.tap(chakanRouteFinder);
-      await tester.pumpAndSettle();
-
-      // Verify route is selected, shop dropdown now has Chakan shops
-      expect(find.byKey(const ValueKey('order_shop_none')), findsOneWidget);
-
-      // Tap shop dropdown and pick a shop (ATA Kirana)
-      await tester.tap(find.byKey(const ValueKey('order_shop_none')));
-      await tester.pumpAndSettle();
-
-      final ataShopFinder = find.textContaining('ATA Kirana').last;
-      await tester.tap(ataShopFinder);
-      await tester.pumpAndSettle();
-
-      // Verify ATA Kirana is selected
+      // Route dropdown auto-selects Chakan and auto-selects ATA Kirana
+      final routeActiveFinder = find.byKey(const ValueKey('order_route_route-chakan'));
+      expect(routeActiveFinder, findsOneWidget);
       expect(find.textContaining('ATA Kirana'), findsWidgets);
 
       // Now switch route to Shikrapur Beat (where ATA Kirana is NOT present)
-      final routeActiveFinder = find.byKey(const ValueKey('order_route_route-chakan'));
-      expect(routeActiveFinder, findsOneWidget);
-
       await tester.tap(routeActiveFinder);
       await tester.pumpAndSettle();
 
@@ -127,8 +130,9 @@ void main() {
       await tester.tap(shikrapurRouteFinder);
       await tester.pumpAndSettle();
 
-      // Verify shop dropdown cleanly reverted to order_shop_none without assertion failure
-      expect(find.byKey(const ValueKey('order_shop_none')), findsOneWidget);
+      // Verify shop selection cleanly switched off ATA Kirana to Shikrapur's outlet without assertion errors
+      expect(find.textContaining('ATA Kirana'), findsNothing);
+      expect(find.textContaining('Shree Ganesh Super Market'), findsWidgets);
     });
 
     testWidgets('AddProductDialog: Firm toggle Purva <-> Manas updates company and category options without assertions', (tester) async {
@@ -172,7 +176,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(TextFormField), findsWidgets);
 
-      await tester.tap(find.text('Choose Existing'));
+      await tester.tap(find.text('Choose Existing').first);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('add_prod_company_Purva Enterprises_Wipro')), findsOneWidget);
     });
@@ -180,6 +184,11 @@ void main() {
 
   group('Challenge Area 2: Statement Date Range Boundaries & Filtering', () {
     testWidgets('Date boundaries: 00:00:00 included, 23:59:59.999 included, adjacent days excluded', (tester) async {
+      tester.view.physicalSize = const Size(1000, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final targetDate = DateTime(2026, 10, 5);
 
       final startOfDayExact = DateTime(2026, 10, 5, 0, 0, 0, 0);
@@ -188,8 +197,8 @@ void main() {
       final priorDay = DateTime(2026, 10, 4, 23, 59, 59, 999);
       final nextDay = DateTime(2026, 10, 6, 0, 0, 0, 0);
 
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
+      final provider = CollectionProvider(autoInitialize: false);
+      await tester.runAsync(() => provider.initialize());
 
       // Clear existing sample collections
       for (final col in List.of(provider.collections)) {
@@ -311,10 +320,15 @@ void main() {
     });
 
     testWidgets('Multi-day date range filtering (Oct 1 to Oct 5) correctly filters boundary items', (tester) async {
+      tester.view.physicalSize = const Size(1000, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final range = DateTimeRange(start: DateTime(2026, 10, 1), end: DateTime(2026, 10, 5));
 
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
+      final provider = CollectionProvider(autoInitialize: false);
+      await tester.runAsync(() => provider.initialize());
 
       for (final col in List.of(provider.collections)) {
         await provider.deleteCollection(col.id);
@@ -401,8 +415,8 @@ void main() {
     });
 
     testWidgets('Toggling "All Dates" displays records across entire historical dataset', (tester) async {
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
+      final provider = CollectionProvider(autoInitialize: false);
+      await tester.runAsync(() => provider.initialize());
 
       for (final col in List.of(provider.collections)) {
         await provider.deleteCollection(col.id);
@@ -472,8 +486,8 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
+      final provider = CollectionProvider(autoInitialize: false);
+      await tester.runAsync(() => seedRoutesAndShops(provider));
 
       for (final col in List.of(provider.collections)) {
         await provider.deleteCollection(col.id);

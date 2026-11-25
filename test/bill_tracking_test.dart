@@ -1,7 +1,46 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:daily_collection_app/models/collection_model.dart';
+import 'package:daily_collection_app/models/pending_bill_model.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
+
+Future<void> seedAtaKiranaBill(CollectionProvider provider) async {
+  final now = DateTime.now();
+  await provider.addPendingBill(
+    PendingBillModel(
+      id: 'test-pb-ata-1',
+      businessName: 'Purva Enterprises',
+      shopId: 'shop-ata-kirana',
+      shopName: 'ATA Kirana',
+      routeId: 'route-chakan',
+      routeName: 'Chakan',
+      invoiceDate: now,
+      deliveryDate: now,
+      billNumber: 'PE-4081',
+      totalAmount: 40000.0,
+      collectedAmount: 30000.0,
+      status: 'partial',
+    ),
+  );
+  await provider.addCollection(
+    CollectionModel(
+      id: 'test-col-1',
+      businessName: 'Purva Enterprises',
+      shopId: 'shop-ata-kirana',
+      shopName: 'ATA Kirana',
+      routeId: 'route-chakan',
+      routeName: 'Chakan',
+      billNumber: 'PE-4081',
+      billAmount: 40000.0,
+      collectedAmount: 30000.0,
+      balanceRemaining: 10000.0,
+      paymentMode: PaymentMode.cash,
+      remarks: 'Partial payment received. ₹10,000 pending.',
+      salesmanName: 'Akash',
+      collectedAt: now,
+    ),
+  );
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -12,26 +51,9 @@ void main() {
 
   group('Bill Pending vs Paid & Follow-up Payment Verification', () {
     test('ATA Kirana: Bill 40000 with 30000 collected is marked PENDING with 10000 due', () async {
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      await provider.addCollection(
-        CollectionModel(
-          id: 'test-col-1',
-          businessName: 'Purva Enterprises',
-          shopId: 'shop-ata-kirana',
-          shopName: 'ATA Kirana',
-          routeId: 'route-chakan',
-          routeName: 'Chakan',
-          billNumber: 'PE-4081',
-          billAmount: 40000.0,
-          collectedAmount: 30000.0,
-          paymentMode: PaymentMode.cash,
-          remarks: 'Partial payment received. ₹10,000 pending.',
-          salesmanName: 'Akash',
-          collectedAt: DateTime.now(),
-        ),
-      );
+      final provider = CollectionProvider(autoInitialize: false);
+      await provider.initialize();
+      await seedAtaKiranaBill(provider);
 
       // ATA Kirana has initial bill PE-4081: 40000 total, 30000 collected
       final pendingBills = provider.getPendingBills(forShopId: 'shop-ata-kirana');
@@ -51,26 +73,9 @@ void main() {
     });
 
     test('Recording subsequent payment of 10000 clears the bill and marks it PAID (100%)', () async {
-      final provider = CollectionProvider();
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      await provider.addCollection(
-        CollectionModel(
-          id: 'test-col-1',
-          businessName: 'Purva Enterprises',
-          shopId: 'shop-ata-kirana',
-          shopName: 'ATA Kirana',
-          routeId: 'route-chakan',
-          routeName: 'Chakan',
-          billNumber: 'PE-4081',
-          billAmount: 40000.0,
-          collectedAmount: 30000.0,
-          paymentMode: PaymentMode.cash,
-          remarks: 'Partial payment received. ₹10,000 pending.',
-          salesmanName: 'Akash',
-          collectedAt: DateTime.now(),
-        ),
-      );
+      final provider = CollectionProvider(autoInitialize: false);
+      await provider.initialize();
+      await seedAtaKiranaBill(provider);
 
       final initialBill = provider.getBillSummary('shop-ata-kirana', 'PE-4081');
       expect(initialBill, isNotNull);

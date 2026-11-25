@@ -776,7 +776,7 @@ class _StatementScreenState extends State<StatementScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          if (context.watch<AuthProvider>().currentUser?.canAccessTally == true)
+          if (Provider.of<AuthProvider?>(context)?.currentUser?.canAccessTally == true)
             IconButton(
               icon: const Icon(Icons.swap_horiz_rounded),
               tooltip: 'Tally Hub (Export Receipts)',
@@ -1012,7 +1012,9 @@ class _StatementScreenState extends State<StatementScreen> {
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String?>(
                             isExpanded: true,
-                            value: _selectedRouteId,
+                            value: provider.routes.any((r) => r.id == _selectedRouteId)
+                                ? _selectedRouteId
+                                : null,
                             hint: const Row(
                               children: [
                                 Icon(Icons.alt_route, size: 15, color: Colors.blueGrey),

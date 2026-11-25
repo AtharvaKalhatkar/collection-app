@@ -803,7 +803,10 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
-                            value: _selectedStaffFilter,
+                            value: _selectedStaffFilter == 'all' ||
+                                    users.any((u) => u.name == _selectedStaffFilter)
+                                ? _selectedStaffFilter
+                                : 'all',
                             isExpanded: true,
                             icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
                             items: [
@@ -1401,7 +1404,9 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String?>(
-                          value: _selectedMapRouteId,
+                          value: allRoutes.any((r) => r.id == _selectedMapRouteId)
+                              ? _selectedMapRouteId
+                              : null,
                           isExpanded: true,
                           icon: const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
                           hint: const Text('Select Route', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87)),
@@ -1449,7 +1454,9 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String?>(
-                          value: _selectedStaffUser?.id,
+                          value: users.any((u) => u.id == _selectedStaffUser?.id)
+                              ? _selectedStaffUser?.id
+                              : null,
                           isExpanded: true,
                           icon: const Icon(Icons.arrow_drop_down, size: 18, color: Colors.blueGrey),
                           hint: const Text('All Live Staff', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87)),

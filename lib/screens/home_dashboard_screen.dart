@@ -538,7 +538,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(ok
-                          ? 'Synced: ${provider.collections.length} collections, ${provider.pendingBills.length} bills, 351 outlets!'
+                          ? 'Synced: ${provider.collections.length} collections, ${provider.pendingBills.length} bills, ${provider.allShops.length} outlets!'
                           : 'Sync failed: check internet connection'),
                       backgroundColor: ok ? const Color(0xFF10B981) : AppTheme.balanceDueColor,
                       duration: const Duration(seconds: 2),
@@ -716,81 +716,95 @@ class HomeDashboardScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () async {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Syncing data with cloud across devices...'),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                      final ok = await provider.syncAllWithCloud(notify: true);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(ok
-                                ? 'Synced: ${provider.collections.length} collections, ${provider.pendingBills.length} bills, 351 outlets!'
-                                : 'Offline cache active: will sync when connected'),
-                            backgroundColor: ok ? const Color(0xFF059669) : Colors.blueGrey,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: provider.isCloudConnected
-                            ? const Color(0xFF10B981).withValues(alpha: 0.1)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: provider.isCloudConnected
-                              ? const Color(0xFF10B981).withValues(alpha: 0.3)
-                              : AppTheme.border,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (provider.isSyncing)
-                            const SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF059669)),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            InkWell(
+                              onTap: () async {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Syncing data with cloud across devices...'),
+                                    duration: Duration(seconds: 1),
+                                  ),
+                                );
+                                final ok = await provider.syncAllWithCloud(notify: true);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(ok
+                                          ? 'Synced: ${provider.collections.length} collections, ${provider.pendingBills.length} bills, ${provider.allShops.length} outlets!'
+                                          : 'Offline cache active: will sync when connected'),
+                                      backgroundColor: ok ? const Color(0xFF059669) : Colors.blueGrey,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: provider.isCloudConnected
+                                      ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: provider.isCloudConnected
+                                        ? const Color(0xFF10B981).withValues(alpha: 0.3)
+                                        : AppTheme.border,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (provider.isSyncing)
+                                      const SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF059669)),
+                                        ),
+                                      )
+                                    else
+                                      Icon(
+                                        provider.isCloudConnected ? Icons.cloud_done : Icons.cloud_queue,
+                                        size: 14,
+                                        color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
+                                      ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      provider.isSyncing
+                                          ? 'Syncing...'
+                                          : (provider.isCloudConnected ? 'Cloud Synced' : 'Offline Mode'),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            )
-                          else
-                            Icon(
-                              provider.isCloudConnected ? Icons.cloud_done : Icons.cloud_queue,
-                              size: 14,
-                              color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
                             ),
-                          const SizedBox(width: 5),
-                          Text(
-                            provider.isSyncing
-                                ? 'Syncing...'
-                                : (provider.isCloudConnected ? 'Cloud Synced' : 'Offline Mode'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
-                            ),
-                          ),
-                        ],
+                            if (!isToday) ...[
+                              const SizedBox(width: 4),
+                              TextButton(
+                                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                onPressed: () => provider.setSelectedDate(DateTime.now()),
+                                child: const Text('Today', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                  const Spacer(),
-                  if (!isToday)
-                    TextButton(
-                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                      onPressed: () => provider.setSelectedDate(DateTime.now()),
-                      child: const Text('Today', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1130,20 +1144,27 @@ class HomeDashboardScreen extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Icon(Icons.business_outlined, size: 16, color: AppTheme.getBusinessColor(provider.filterBusiness!)),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Active Firm: ${provider.filterBusiness}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: AppTheme.getBusinessColor(provider.filterBusiness!),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.business_outlined, size: 16, color: AppTheme.getBusinessColor(provider.filterBusiness!)),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Active Firm: ${provider.filterBusiness}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: AppTheme.getBusinessColor(provider.filterBusiness!),
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       InkWell(
                         onTap: () => provider.setFilterBusiness(null),
                         child: Row(
@@ -1187,15 +1208,20 @@ class HomeDashboardScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          heroLabel,
-                          style: TextStyle(
-                            color: Colors.blueGrey.shade200,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.0,
+                        Expanded(
+                          child: Text(
+                            heroLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.blueGrey.shade200,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.0,
+                            ),
                           ),
                         ),
+                        const SizedBox(width: 8),
                         InkWell(
                           onTap: onNavigateToCollections,
                           borderRadius: BorderRadius.circular(4),
@@ -1675,7 +1701,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   Expanded(
                     child: _buildOverviewGridButton(
                       title: 'Cash Counter',
-                      badge: '₹${CurrencyFormatter.format(provider.totalCash)}',
+                      badge: CurrencyFormatter.format(provider.totalCash),
                       icon: Icons.payments_rounded,
                       color: const Color(0xFF10B981),
                       onTap: () {

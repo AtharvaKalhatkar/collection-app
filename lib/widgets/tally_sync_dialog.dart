@@ -310,7 +310,7 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
                             const Text('Total Outstanding', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
                             const SizedBox(height: 4),
                             Text(
-                              '₹${CurrencyFormatter.format(result.totalAmount)}',
+                              CurrencyFormatter.format(result.totalAmount),
                               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
                             ),
                           ],
@@ -374,7 +374,7 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
                           style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                         ),
                         trailing: Text(
-                          '₹${CurrencyFormatter.format(b.totalAmount)}',
+                          CurrencyFormatter.format(b.totalAmount),
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF1E3A8A)),
                         ),
                       );
@@ -719,7 +719,9 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
-                    value: _importFallbackRouteId ?? (routes.isNotEmpty ? routes.first.id : null),
+                    value: routes.any((r) => r.id == _importFallbackRouteId)
+                        ? _importFallbackRouteId
+                        : (routes.isNotEmpty ? routes.first.id : null),
                     isExpanded: true,
                     icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF1E3A8A)),
                     items: routes.map((r) {

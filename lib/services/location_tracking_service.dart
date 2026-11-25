@@ -17,6 +17,7 @@ class LocationTrackingService {
   factory LocationTrackingService() => _instance;
   LocationTrackingService._internal();
 
+  Timer? _initialTimer;
   Timer? _periodicTimer;
   bool _isTracking = false;
   DateTime? _lastCapturedTime;
@@ -29,11 +30,12 @@ class LocationTrackingService {
     required AuthProvider auth,
     required CollectionProvider collectionProvider,
   }) {
-    if (_isTracking) return;
+    if (_isTracking || SupabaseService().isTestMode) return;
     _isTracking = true;
 
     // Initial capture with small delay so app initialization finishes smoothly
-    Future.delayed(const Duration(seconds: 3), () {
+    _initialTimer?.cancel();
+    _initialTimer = Timer(const Duration(seconds: 3), () {
       _captureAndSync(auth, collectionProvider);
     });
 
@@ -45,6 +47,8 @@ class LocationTrackingService {
   }
 
   void stopTracking() {
+    _initialTimer?.cancel();
+    _initialTimer = null;
     _periodicTimer?.cancel();
     _periodicTimer = null;
     _isTracking = false;
@@ -95,8 +99,11 @@ class LocationTrackingService {
           eventType: 'gpsPing',
           details: user.isDriver ? 'Transit on delivery beat' : 'Active on sales route',
         );
-        await StorageService().addLocationTimelineEntry(entry);
-        SupabaseService().saveLocationTimelineEntry(entry);
+        await _persistAndUploadTimelineEntry(
+          entry,
+          minDuplicateSeconds: 900, // Deduplicate stationary pings within 15 min
+          minMovedDegrees: 0.00025, // ~25 meters movement threshold
+        );
       } catch (err) {
         debugPrint('Timeline recording notice: $err');
       }
@@ -142,10 +149,62 @@ class LocationTrackingService {
         routeName: routeName,
         billNumber: billNumber,
       );
-      await StorageService().addLocationTimelineEntry(entry);
-      await SupabaseService().saveLocationTimelineEntry(entry);
+      await _persistAndUploadTimelineEntry(
+        entry,
+        minDuplicateSeconds: 5,
+        minMovedDegrees: 0.00001,
+      );
     } catch (e) {
       debugPrint('Error recording custom timeline event: $e');
+    }
+  }
+
+  Future<void> _persistAndUploadTimelineEntry(
+    LocationTimelineEntry entry, {
+    required int minDuplicateSeconds,
+    required double minMovedDegrees,
+  }) async {
+    final storage = StorageService();
+    final inserted = await storage.addLocationTimelineEntry(
+      entry,
+      minDuplicateSeconds: minDuplicateSeconds,
+      minMovedDegrees: minMovedDegrees,
+    );
+    if (!inserted) return;
+
+    final pending = await storage.loadIdSet(StorageService.keyPendingTimelineIds);
+    pending.add(entry.id);
+    await storage.saveIdSet(StorageService.keyPendingTimelineIds, pending);
+
+    final ok = await SupabaseService().saveLocationTimelineEntry(entry);
+    if (ok) {
+      pending.remove(entry.id);
+      await storage.saveIdSet(StorageService.keyPendingTimelineIds, pending);
+    }
+  }
+
+  /// Flushes any locally queued location timeline events captured while offline.
+  Future<void> flushPendingTimelineToCloud() async {
+    try {
+      final storage = StorageService();
+      final pendingIds = await storage.loadIdSet(StorageService.keyPendingTimelineIds);
+      if (pendingIds.isEmpty) return;
+
+      final timeline = await storage.loadLocationTimeline();
+      final pendingEntries =
+          timeline.where((e) => pendingIds.contains(e.id)).toList();
+      if (pendingEntries.isEmpty) {
+        await storage.saveIdSet(StorageService.keyPendingTimelineIds, {});
+        return;
+      }
+
+      final ok = await SupabaseService().saveLocationTimelineEntriesBulk(pendingEntries);
+      if (ok) {
+        final remaining = pendingIds.difference(pendingEntries.map((e) => e.id).toSet());
+        await storage.saveIdSet(StorageService.keyPendingTimelineIds, remaining);
+      }
+    } catch (e) {
+      debugPrint('Flush pending timeline notice: $e');
     }
   }
 

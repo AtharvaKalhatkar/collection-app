@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/collection_model.dart';
 import '../models/shop_model.dart';
@@ -9,25 +9,60 @@ import '../models/user_model.dart';
 import '../models/location_timeline_entry.dart';
 import '../models/attendance_record.dart';
 import '../models/order_model.dart';
+import '../models/cash_handover_model.dart';
+import '../models/vehicle_collection_model.dart';
+
+class CloudFetchResult<T> {
+  final bool success;
+  final List<T> items;
+  const CloudFetchResult({required this.success, required this.items});
+}
 
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
   factory SupabaseService() => _instance;
   SupabaseService._internal();
 
+  @visibleForTesting
+  SupabaseService.forTesting();
+
   static const String supabaseUrl = 'https://ytetqikoinacavzsxgop.supabase.co';
   static const String supabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0ZXRxaWtvaW5hY2F2enN4Z29wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4NjIyMzksImV4cCI6MjEwNzQzODIzOX0.jTMxPpzD_llgfLgg1hH4zdJyADCD0BXxcuNwZdggpJU';
 
+  @visibleForTesting
+  static bool allowNetworkInTests = false;
+
+  @visibleForTesting
+  static bool? forceTestOffline;
+
   bool _isInitialized = false;
   String? _lastError;
 
-  bool get isInitialized => _isInitialized;
+  bool get isInitialized => _isInitialized && !_isTestEnvironment;
+  bool get isTestMode => _isTestEnvironment;
   String? get lastError => _lastError;
+
+  bool get _isTestEnvironment {
+    if (forceTestOffline != null) return forceTestOffline!;
+    if (allowNetworkInTests) return false;
+    if (const bool.fromEnvironment('FLUTTER_TEST')) return true;
+    try {
+      return WidgetsBinding.instance.runtimeType
+          .toString()
+          .contains('TestWidgetsFlutterBinding');
+    } catch (_) {
+      return false;
+    }
+  }
 
   SupabaseClient get client => Supabase.instance.client;
 
   Future<void> init() async {
+    if (_isTestEnvironment) {
+      _isInitialized = false;
+      return;
+    }
     try {
       if (_isInitialized) return;
       try {
@@ -53,27 +88,107 @@ class SupabaseService {
     }
   }
 
-  // --- Routes ---
-  Future<List<RouteModel>> fetchRoutes() async {
+  Future<bool> _ensureReady() async {
+    if (_isTestEnvironment) return false;
     if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+    return _isInitialized;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchPaginated(
+    String table, {
+    String orderColumn = 'createdAt',
+    bool ascending = true,
+    PostgrestFilterBuilder<PostgrestList> Function(
+            PostgrestFilterBuilder<PostgrestList> q)?
+        filter,
+    int pageSize = 1000,
+  }) async {
+    final allRows = <Map<String, dynamic>>[];
+    int offset = 0;
+    while (true) {
+      var query = client.from(table).select();
+      if (filter != null) {
+        query = filter(query);
+      }
+      final List<dynamic> batch = await query
+          .order(orderColumn, ascending: ascending)
+          .range(offset, offset + pageSize - 1);
+      for (final row in batch) {
+        allRows.add(Map<String, dynamic>.from(row as Map));
+      }
+      if (batch.length < pageSize) break;
+      offset += pageSize;
+    }
+    return allRows;
+  }
+
+  Future<bool> _upsertChunked(
+    String table,
+    List<Map<String, dynamic>> rows, {
+    int chunkSize = 200,
+    String errorLabel = 'records',
+  }) async {
+    if (rows.isEmpty) return true;
+    if (!await _ensureReady()) return false;
 
     try {
-      final List<dynamic> data =
-          await client.from('routes').select().order('priority', ascending: true);
-      return data
-          .map((row) => RouteModel.fromJson(Map<String, dynamic>.from(row as Map)))
-          .toList();
+      for (int i = 0; i < rows.length; i += chunkSize) {
+        final end = (i + chunkSize < rows.length) ? i + chunkSize : rows.length;
+        await client.from(table).upsert(rows.sublist(i, end));
+      }
+      return true;
     } catch (e) {
       _lastError = e.toString();
-      debugPrint('Error fetching routes from Supabase: $e');
-      return [];
+      debugPrint('Error saving $errorLabel to Supabase: $e');
+      return false;
     }
   }
 
+  Future<bool> _deleteChunked(
+    String table,
+    List<String> ids, {
+    String column = 'id',
+    int chunkSize = 100,
+    String errorLabel = 'records',
+  }) async {
+    if (ids.isEmpty) return true;
+    if (!await _ensureReady()) return false;
+
+    try {
+      for (int i = 0; i < ids.length; i += chunkSize) {
+        final end = (i + chunkSize < ids.length) ? i + chunkSize : ids.length;
+        await client.from(table).delete().inFilter(column, ids.sublist(i, end));
+      }
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error deleting $errorLabel from Supabase: $e');
+      return false;
+    }
+  }
+
+  // --- Routes ---
+  Future<CloudFetchResult<RouteModel>> fetchRoutesWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
+
+    try {
+      final data = await _fetchPaginated('routes', orderColumn: 'priority', ascending: true);
+      final items = data.map((row) => RouteModel.fromJson(row)).toList();
+      return CloudFetchResult(success: true, items: items);
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error fetching routes from Supabase: $e');
+      return const CloudFetchResult(success: false, items: []);
+    }
+  }
+
+  Future<List<RouteModel>> fetchRoutes() async =>
+      (await fetchRoutesWithStatus()).items;
+
   Future<bool> saveRoute(RouteModel route) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('routes').upsert(route.toJson());
@@ -85,9 +200,14 @@ class SupabaseService {
     }
   }
 
+  Future<bool> saveRoutesBulk(List<RouteModel> routes) => _upsertChunked(
+        'routes',
+        routes.map((r) => r.toJson()).toList(),
+        errorLabel: 'routes',
+      );
+
   Future<bool> deleteRoute(String id) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('routes').delete().eq('id', id);
@@ -98,6 +218,12 @@ class SupabaseService {
       return false;
     }
   }
+
+  Future<bool> deleteRoutesBulk(List<String> ids) => _deleteChunked(
+        'routes',
+        ids,
+        errorLabel: 'routes',
+      );
 
   Stream<List<RouteModel>>? streamRoutes() {
     if (!_isInitialized) return null;
@@ -117,26 +243,33 @@ class SupabaseService {
   }
 
   // --- Shops ---
-  Future<List<ShopModel>> fetchShops() async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+  Future<CloudFetchResult<ShopModel>> fetchShopsWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
 
     try {
-      final List<dynamic> data =
-          await client.from('shops').select().order('name', ascending: true);
-      return data
-          .map((row) => ShopModel.fromJson(Map<String, dynamic>.from(row as Map)))
-          .toList();
+      final data = await _fetchPaginated(
+        'shops',
+        orderColumn: 'name',
+        ascending: true,
+      );
+      return CloudFetchResult(
+        success: true,
+        items: data.map((row) => ShopModel.fromJson(row)).toList(),
+      );
     } catch (e) {
       _lastError = e.toString();
       debugPrint('Error fetching shops from Supabase: $e');
-      return [];
+      return const CloudFetchResult(success: false, items: []);
     }
   }
 
+  Future<List<ShopModel>> fetchShops() async =>
+      (await fetchShopsWithStatus()).items;
+
   Future<bool> saveShop(ShopModel shop) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('shops').upsert(shop.toJson());
@@ -148,23 +281,14 @@ class SupabaseService {
     }
   }
 
-  Future<bool> saveShopsBulk(List<ShopModel> shops) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized || shops.isEmpty) return false;
-
-    try {
-      await client.from('shops').upsert(shops.map((s) => s.toJson()).toList());
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      debugPrint('Error bulk saving shops to Supabase: $e');
-      return false;
-    }
-  }
+  Future<bool> saveShopsBulk(List<ShopModel> shops) => _upsertChunked(
+        'shops',
+        shops.map((s) => s.toJson()).toList(),
+        errorLabel: 'shops',
+      );
 
   Future<bool> deleteShop(String id) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('shops').delete().eq('id', id);
@@ -176,8 +300,14 @@ class SupabaseService {
     }
   }
 
+  Future<bool> deleteShopsBulk(List<String> ids) => _deleteChunked(
+        'shops',
+        ids,
+        errorLabel: 'shops',
+      );
+
   Stream<List<ShopModel>>? streamShops() {
-    if (!_isInitialized) return null;
+    if (!isInitialized) return null;
 
     try {
       return client
@@ -194,29 +324,34 @@ class SupabaseService {
   }
 
   // --- Pending Bills ---
-  Future<List<PendingBillModel>> fetchPendingBills() async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+  Future<CloudFetchResult<PendingBillModel>>
+      fetchPendingBillsWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
 
     try {
-      final List<dynamic> data = await client
-          .from('pending_bills')
-          .select()
-          .order('createdAt', ascending: false)
-          .limit(500);
-      return data
-          .map((row) => PendingBillModel.fromJson(Map<String, dynamic>.from(row as Map)))
-          .toList();
+      final List<Map<String, dynamic>> data = await _fetchPaginated(
+        'pending_bills',
+        orderColumn: 'createdAt',
+        ascending: false,
+      );
+      return CloudFetchResult(
+        success: true,
+        items: data.map((row) => PendingBillModel.fromJson(row)).toList(),
+      );
     } catch (e) {
       _lastError = e.toString();
       debugPrint('Error fetching pending bills from Supabase: $e');
-      return [];
+      return const CloudFetchResult(success: false, items: []);
     }
   }
 
+  Future<List<PendingBillModel>> fetchPendingBills() async =>
+      (await fetchPendingBillsWithStatus()).items;
+
   Future<bool> savePendingBill(PendingBillModel bill) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('pending_bills').upsert(bill.toJson());
@@ -229,8 +364,7 @@ class SupabaseService {
   }
 
   Future<bool> deletePendingBill(String id) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('pending_bills').delete().eq('id', id);
@@ -242,8 +376,14 @@ class SupabaseService {
     }
   }
 
+  Future<bool> deletePendingBillsBulk(List<String> ids) => _deleteChunked(
+        'pending_bills',
+        ids,
+        errorLabel: 'pending bills',
+      );
+
   Stream<List<PendingBillModel>>? streamPendingBills() {
-    if (!_isInitialized) return null;
+    if (!isInitialized) return null;
 
     try {
       return client
@@ -260,29 +400,33 @@ class SupabaseService {
   }
 
   // --- Collections ---
-  Future<List<CollectionModel>> fetchCollections() async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+  Future<CloudFetchResult<CollectionModel>> fetchCollectionsWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
 
     try {
-      final List<dynamic> data = await client
-          .from('collections')
-          .select()
-          .order('collectedAt', ascending: false)
-          .limit(500);
-      return data
-          .map((row) => CollectionModel.fromJson(Map<String, dynamic>.from(row as Map)))
-          .toList();
+      final List<Map<String, dynamic>> data = await _fetchPaginated(
+        'collections',
+        orderColumn: 'collectedAt',
+        ascending: false,
+      );
+      return CloudFetchResult(
+        success: true,
+        items: data.map((row) => CollectionModel.fromJson(row)).toList(),
+      );
     } catch (e) {
       _lastError = e.toString();
       debugPrint('Error fetching collections from Supabase: $e');
-      return [];
+      return const CloudFetchResult(success: false, items: []);
     }
   }
 
+  Future<List<CollectionModel>> fetchCollections() async =>
+      (await fetchCollectionsWithStatus()).items;
+
   Future<bool> saveCollection(CollectionModel collection) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('collections').upsert(collection.toJson());
@@ -295,7 +439,7 @@ class SupabaseService {
   }
 
   Stream<List<CollectionModel>>? streamCollections() {
-    if (!_isInitialized) return null;
+    if (!isInitialized) return null;
 
     try {
       return client
@@ -311,37 +455,21 @@ class SupabaseService {
     }
   }
 
-  Future<bool> savePendingBillsBulk(List<PendingBillModel> bills) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized || bills.isEmpty) return false;
+  Future<bool> savePendingBillsBulk(List<PendingBillModel> bills) => _upsertChunked(
+        'pending_bills',
+        bills.map((b) => b.toJson()).toList(),
+        errorLabel: 'pending bills',
+      );
 
-    try {
-      await client.from('pending_bills').upsert(bills.map((b) => b.toJson()).toList());
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      debugPrint('Error bulk saving pending bills to Supabase: $e');
-      return false;
-    }
-  }
-
-  Future<bool> saveCollectionsBulk(List<CollectionModel> collections) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized || collections.isEmpty) return false;
-
-    try {
-      await client.from('collections').upsert(collections.map((c) => c.toJson()).toList());
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      debugPrint('Error bulk saving collections to Supabase: $e');
-      return false;
-    }
-  }
+  Future<bool> saveCollectionsBulk(List<CollectionModel> collections) =>
+      _upsertChunked(
+        'collections',
+        collections.map((c) => c.toJson()).toList(),
+        errorLabel: 'collections',
+      );
 
   Future<bool> deleteCollection(String id) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) {
+    if (!await _ensureReady()) {
       debugPrint('Supabase not initialized for deleting collection $id');
       return false;
     }
@@ -358,9 +486,14 @@ class SupabaseService {
     }
   }
 
+  Future<bool> deleteCollectionsBulk(List<String> ids) => _deleteChunked(
+        'collections',
+        ids.map((id) => id.trim()).toList(),
+        errorLabel: 'collections',
+      );
+
   Future<bool> clearAllBillsAndCollections() async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('collections').delete().neq('id', '00000000-0000-0000-0000-000000000000');
@@ -374,43 +507,88 @@ class SupabaseService {
     }
   }
 
+  bool _isStaffUserRow(Map<String, dynamic> row) {
+    final id = row['id'] as String? ?? '';
+    final role = (row['role'] as String? ?? '').toLowerCase();
+    return id.isNotEmpty &&
+        id != 'config_gemini_api' &&
+        !id.startsWith('config_') &&
+        !id.startsWith('tl_') &&
+        !id.startsWith('timeline_') &&
+        !id.startsWith('att_') &&
+        !id.startsWith('route_order_') &&
+        !id.startsWith('so_') &&
+        !id.startsWith('cp_') &&
+        !id.startsWith('ch_') &&
+        !id.startsWith('vc_') &&
+        !id.startsWith('cfg_') &&
+        role != 'sales_order' &&
+        role != 'custom_product' &&
+        role != 'route_order' &&
+        role != 'cash_handover' &&
+        role != 'vehicle_collection' &&
+        role != 'app_config' &&
+        role != 'advance';
+  }
+
   // --- Users ---
-  Future<List<UserModel>> fetchUsers() async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+  Future<CloudFetchResult<UserModel>> fetchUsersWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
 
     try {
-      final List<dynamic> data =
-          await client.from('app_users').select().order('createdAt', ascending: true);
-      return data
-          .where((row) {
-            final id = row['id'] as String? ?? '';
-            final role = (row['role'] as String? ?? '').toLowerCase();
-            return id != 'config_gemini_api' &&
-                !id.startsWith('tl_') &&
-                !id.startsWith('timeline_') &&
-                !id.startsWith('att_') &&
-                !id.startsWith('route_order_') &&
-                !id.startsWith('so_') &&
-                !id.startsWith('cp_') &&
-                role != 'sales_order' &&
-                role != 'custom_product' &&
-                role != 'route_order' &&
-                role != 'advance';
-          })
-          .map((row) => UserModel.fromJson(Map<String, dynamic>.from(row as Map)))
+      final List<Map<String, dynamic>> data = await _fetchPaginated(
+        'app_users',
+        orderColumn: 'createdAt',
+        ascending: true,
+        filter: (q) => q
+            .not('id', 'like', 'tl_%')
+            .not('id', 'like', 'so_%')
+            .not('id', 'like', 'cp_%')
+            .not('id', 'like', 'att_%')
+            .not('id', 'like', 'route_order_%')
+            .not('id', 'like', 'ch_%')
+            .not('id', 'like', 'vc_%')
+            .not('id', 'like', 'cfg_%')
+            .neq('id', 'config_gemini_api'),
+      );
+      final items = data
+          .where(_isStaffUserRow)
+          .map((row) => UserModel.fromJson(row))
           .toList();
+      return CloudFetchResult(success: true, items: items);
     } catch (e) {
       _lastError = e.toString();
       debugPrint('Error fetching users from Supabase: $e');
-      return [];
+      return const CloudFetchResult(success: false, items: []);
+    }
+  }
+
+  Future<List<UserModel>> fetchUsers() async =>
+      (await fetchUsersWithStatus()).items;
+
+  Future<UserModel?> fetchUserById(String userId) async {
+    if (!await _ensureReady()) return null;
+    try {
+      final row = await client
+          .from('app_users')
+          .select()
+          .eq('id', userId)
+          .maybeSingle();
+      if (row == null) return null;
+      final map = Map<String, dynamic>.from(row);
+      if (!_isStaffUserRow(map)) return null;
+      return UserModel.fromJson(map);
+    } catch (e) {
+      debugPrint('Error fetching user $userId from Supabase: $e');
+      return null;
     }
   }
 
   // --- Gemini Cloud API Key Sync ---
   Future<void> syncGeminiApiKey(String apiKey) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return;
+    if (!await _ensureReady()) return;
     try {
       await client.from('app_users').upsert({
         'id': 'config_gemini_api',
@@ -427,8 +605,7 @@ class SupabaseService {
   }
 
   Future<String?> fetchGeminiApiKey() async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return null;
+    if (!await _ensureReady()) return null;
     try {
       final res = await client
           .from('app_users')
@@ -446,8 +623,7 @@ class SupabaseService {
   }
 
   Future<bool> saveUser(UserModel user) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('app_users').upsert(user.toJson());
@@ -460,8 +636,7 @@ class SupabaseService {
   }
 
   Future<bool> deleteUser(String id) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('app_users').delete().eq('id', id);
@@ -475,8 +650,7 @@ class SupabaseService {
 
   // --- Location Timeline Breadcrumbs & Live Tracking ---
   Future<bool> saveLocationTimelineEntry(LocationTimelineEntry entry) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('app_users').upsert(entry.toSupabaseUserRow());
@@ -488,22 +662,30 @@ class SupabaseService {
     }
   }
 
+  Future<bool> saveLocationTimelineEntriesBulk(
+          List<LocationTimelineEntry> entries) =>
+      _upsertChunked(
+        'app_users',
+        entries.map((e) => e.toSupabaseUserRow()).toList(),
+        errorLabel: 'location timeline',
+      );
+
   Future<List<LocationTimelineEntry>> fetchLocationTimeline({
     DateTime? date,
     String? staffName,
   }) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+    if (!await _ensureReady()) return [];
 
     try {
-      final List<dynamic> data = await client
-          .from('app_users')
-          .select()
-          .like('id', 'tl_%')
-          .order('createdAt', ascending: true);
+      final data = await _fetchPaginated(
+        'app_users',
+        orderColumn: 'createdAt',
+        ascending: true,
+        filter: (q) => q.like('id', 'tl_%'),
+      );
 
       final entries = data
-          .map((row) => LocationTimelineEntry.fromSupabaseUserRow(Map<String, dynamic>.from(row as Map)))
+          .map((row) => LocationTimelineEntry.fromSupabaseUserRow(row))
           .whereType<LocationTimelineEntry>()
           .toList();
 
@@ -711,8 +893,7 @@ class SupabaseService {
 
   // --- Route Outlet Order Cloud Sync ---
   Future<List<String>> fetchRouteOutletOrder(String routeId) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+    if (!await _ensureReady()) return [];
 
     try {
       final res = await client
@@ -723,8 +904,13 @@ class SupabaseService {
 
       if (res != null && res['password'] != null) {
         final pass = res['password'] as String;
-        final decoded = jsonDecode(pass) as List<dynamic>;
-        return decoded.map((e) => e.toString()).toList();
+        final decoded = jsonDecode(pass);
+        if (decoded is List) {
+          return decoded.map((e) => e.toString()).toList();
+        }
+        if (decoded is Map<String, dynamic> && decoded['shopIds'] is List) {
+          return (decoded['shopIds'] as List).map((e) => e.toString()).toList();
+        }
       }
     } catch (e) {
       debugPrint('Error fetching route outlet order: $e');
@@ -732,9 +918,51 @@ class SupabaseService {
     return [];
   }
 
+  Future<CloudFetchResult<MapEntry<String, List<String>>>>
+      fetchAllRouteOutletOrdersWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
+
+    try {
+      final data = await _fetchPaginated(
+        'app_users',
+        orderColumn: 'createdAt',
+        ascending: true,
+        filter: (q) => q.like('id', 'route_order_%'),
+      );
+      final list = <MapEntry<String, List<String>>>[];
+      for (final row in data) {
+        try {
+          final id = (row['id'] as String? ?? '');
+          final routeId = id.startsWith('route_order_')
+              ? id.substring('route_order_'.length)
+              : (row['phone'] as String? ?? '');
+          final pass = row['password'] as String? ?? '';
+          if (routeId.isEmpty || pass.isEmpty) continue;
+          final decoded = jsonDecode(pass);
+          if (decoded is List) {
+            list.add(MapEntry(routeId, decoded.map((e) => e.toString()).toList()));
+          } else if (decoded is Map<String, dynamic> &&
+              decoded['shopIds'] is List) {
+            list.add(MapEntry(
+              routeId,
+              (decoded['shopIds'] as List).map((e) => e.toString()).toList(),
+            ));
+          }
+        } catch (e) {
+          debugPrint('Error parsing route outlet order row: $e');
+        }
+      }
+      return CloudFetchResult(success: true, items: list);
+    } catch (e) {
+      debugPrint('Error fetching route outlet orders from Supabase: $e');
+      return const CloudFetchResult(success: false, items: []);
+    }
+  }
+
   Future<bool> saveRouteOutletOrder(String routeId, List<String> shopIds) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('app_users').upsert({
@@ -754,15 +982,18 @@ class SupabaseService {
   }
 
   // --- Sales Orders Cloud Sync (Stored in app_users with prefix so_) ---
-  Future<List<SalesOrderModel>> fetchSalesOrders() async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+  Future<CloudFetchResult<SalesOrderModel>> fetchSalesOrdersWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
 
     try {
-      final List<dynamic> data = await client
-          .from('app_users')
-          .select()
-          .like('id', 'so_%');
+      final data = await _fetchPaginated(
+        'app_users',
+        orderColumn: 'createdAt',
+        ascending: false,
+        filter: (q) => q.like('id', 'so_%'),
+      );
 
       final list = <SalesOrderModel>[];
       for (final row in data) {
@@ -776,19 +1007,17 @@ class SupabaseService {
           debugPrint('Error parsing sales order row: $e');
         }
       }
-      return list;
+      return CloudFetchResult(success: true, items: list);
     } catch (e) {
       debugPrint('Error fetching sales orders from Supabase: $e');
-      return [];
+      return const CloudFetchResult(success: false, items: []);
     }
   }
 
-  Future<bool> saveSalesOrder(SalesOrderModel order) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+  Future<List<SalesOrderModel>> fetchSalesOrders() async =>
+      (await fetchSalesOrdersWithStatus()).items;
 
-    try {
-      await client.from('app_users').upsert({
+  Map<String, dynamic> _salesOrderRow(SalesOrderModel order) => {
         'id': 'so_${order.id}',
         'name': order.shopName,
         'role': 'sales_order',
@@ -796,7 +1025,13 @@ class SupabaseService {
         'password': jsonEncode(order.toJson()),
         'isActive': true,
         'createdAt': order.orderDate.toIso8601String(),
-      });
+      };
+
+  Future<bool> saveSalesOrder(SalesOrderModel order) async {
+    if (!await _ensureReady()) return false;
+
+    try {
+      await client.from('app_users').upsert(_salesOrderRow(order));
       return true;
     } catch (e) {
       _lastError = e.toString();
@@ -805,9 +1040,14 @@ class SupabaseService {
     }
   }
 
+  Future<bool> saveSalesOrdersBulk(List<SalesOrderModel> orders) => _upsertChunked(
+        'app_users',
+        orders.map(_salesOrderRow).toList(),
+        errorLabel: 'sales orders',
+      );
+
   Future<bool> deleteSalesOrder(String orderId) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('app_users').delete().eq('id', 'so_$orderId');
@@ -819,16 +1059,25 @@ class SupabaseService {
     }
   }
 
+  Future<bool> deleteSalesOrdersBulk(List<String> orderIds) => _deleteChunked(
+        'app_users',
+        orderIds.map((id) => 'so_$id').toList(),
+        errorLabel: 'sales orders',
+      );
+
   // --- Custom Products Master Cloud Sync (Stored in app_users with prefix cp_) ---
-  Future<List<CatalogProduct>> fetchCustomProducts() async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return [];
+  Future<CloudFetchResult<CatalogProduct>> fetchCustomProductsWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
 
     try {
-      final List<dynamic> data = await client
-          .from('app_users')
-          .select()
-          .like('id', 'cp_%');
+      final data = await _fetchPaginated(
+        'app_users',
+        orderColumn: 'createdAt',
+        ascending: true,
+        filter: (q) => q.like('id', 'cp_%'),
+      );
 
       final list = <CatalogProduct>[];
       for (final row in data) {
@@ -842,19 +1091,17 @@ class SupabaseService {
           debugPrint('Error parsing custom product row: $e');
         }
       }
-      return list;
+      return CloudFetchResult(success: true, items: list);
     } catch (e) {
       debugPrint('Error fetching custom products from Supabase: $e');
-      return [];
+      return const CloudFetchResult(success: false, items: []);
     }
   }
 
-  Future<bool> saveCustomProduct(CatalogProduct product) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+  Future<List<CatalogProduct>> fetchCustomProducts() async =>
+      (await fetchCustomProductsWithStatus()).items;
 
-    try {
-      await client.from('app_users').upsert({
+  Map<String, dynamic> _customProductRow(CatalogProduct product) => {
         'id': 'cp_${product.id}',
         'name': product.name,
         'role': 'custom_product',
@@ -862,7 +1109,13 @@ class SupabaseService {
         'password': jsonEncode(product.toJson()),
         'isActive': true,
         'createdAt': DateTime.now().toIso8601String(),
-      });
+      };
+
+  Future<bool> saveCustomProduct(CatalogProduct product) async {
+    if (!await _ensureReady()) return false;
+
+    try {
+      await client.from('app_users').upsert(_customProductRow(product));
       return true;
     } catch (e) {
       _lastError = e.toString();
@@ -871,9 +1124,15 @@ class SupabaseService {
     }
   }
 
+  Future<bool> saveCustomProductsBulk(List<CatalogProduct> products) =>
+      _upsertChunked(
+        'app_users',
+        products.map(_customProductRow).toList(),
+        errorLabel: 'custom products',
+      );
+
   Future<bool> deleteCustomProduct(String productId) async {
-    if (!_isInitialized) await init();
-    if (!_isInitialized) return false;
+    if (!await _ensureReady()) return false;
 
     try {
       await client.from('app_users').delete().eq('id', 'cp_$productId');
@@ -884,4 +1143,239 @@ class SupabaseService {
       return false;
     }
   }
+
+  Future<bool> deleteCustomProductsBulk(List<String> productIds) =>
+      _deleteChunked(
+        'app_users',
+        productIds.map((id) => 'cp_$id').toList(),
+        errorLabel: 'custom products',
+      );
+
+  // --- Cash Handovers Cloud Sync (Stored in app_users with prefix ch_) ---
+  Future<CloudFetchResult<CashHandoverModel>> fetchCashHandoversWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
+
+    try {
+      final data = await _fetchPaginated(
+        'app_users',
+        orderColumn: 'createdAt',
+        ascending: false,
+        filter: (q) => q.like('id', 'ch_%'),
+      );
+      final list = <CashHandoverModel>[];
+      for (final row in data) {
+        try {
+          final pass = row['password'] as String? ?? '';
+          if (pass.startsWith('{') && pass.endsWith('}')) {
+            list.add(CashHandoverModel.fromJson(jsonDecode(pass) as Map<String, dynamic>));
+          }
+        } catch (e) {
+          debugPrint('Error parsing cash handover row: $e');
+        }
+      }
+      return CloudFetchResult(success: true, items: list);
+    } catch (e) {
+      debugPrint('Error fetching cash handovers from Supabase: $e');
+      return const CloudFetchResult(success: false, items: []);
+    }
+  }
+
+  Map<String, dynamic> _cashHandoverRow(CashHandoverModel h) => {
+        'id': 'ch_${h.id}',
+        'name': '${h.businessName} | ${h.date.toIso8601String().substring(0, 10)}',
+        'role': 'cash_handover',
+        'phone': 'ch_${h.id}',
+        'password': jsonEncode(h.toJson()),
+        'isActive': true,
+        'createdAt': h.createdAt.toIso8601String(),
+      };
+
+  Future<bool> saveCashHandover(CashHandoverModel h) async {
+    if (!await _ensureReady()) return false;
+    try {
+      await client.from('app_users').upsert(_cashHandoverRow(h));
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error saving cash handover to Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<bool> saveCashHandoversBulk(List<CashHandoverModel> list) => _upsertChunked(
+        'app_users',
+        list.map(_cashHandoverRow).toList(),
+        errorLabel: 'cash handovers',
+      );
+
+  Future<bool> deleteCashHandover(String id) async {
+    if (!await _ensureReady()) return false;
+    try {
+      await client.from('app_users').delete().eq('id', 'ch_$id');
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error deleting cash handover from Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteCashHandoversBulk(List<String> ids) => _deleteChunked(
+        'app_users',
+        ids.map((id) => 'ch_$id').toList(),
+        errorLabel: 'cash handovers',
+      );
+
+  // --- Vehicle Collections Cloud Sync (Stored in app_users with prefix vc_) ---
+  Future<CloudFetchResult<VehicleCollectionModel>>
+      fetchVehicleCollectionsWithStatus() async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
+
+    try {
+      final data = await _fetchPaginated(
+        'app_users',
+        orderColumn: 'createdAt',
+        ascending: false,
+        filter: (q) => q.like('id', 'vc_%'),
+      );
+      final list = <VehicleCollectionModel>[];
+      for (final row in data) {
+        try {
+          final pass = row['password'] as String? ?? '';
+          if (pass.startsWith('{') && pass.endsWith('}')) {
+            list.add(
+                VehicleCollectionModel.fromJson(jsonDecode(pass) as Map<String, dynamic>));
+          }
+        } catch (e) {
+          debugPrint('Error parsing vehicle collection row: $e');
+        }
+      }
+      return CloudFetchResult(success: true, items: list);
+    } catch (e) {
+      debugPrint('Error fetching vehicle collections from Supabase: $e');
+      return const CloudFetchResult(success: false, items: []);
+    }
+  }
+
+  Map<String, dynamic> _vehicleCollectionRow(VehicleCollectionModel vc) => {
+        'id': 'vc_${vc.id}',
+        'name': '${vc.vehicleNo} | ${vc.employeeName}',
+        'role': 'vehicle_collection',
+        'phone': 'vc_${vc.id}',
+        'password': jsonEncode(vc.toJson()),
+        'isActive': true,
+        'createdAt': vc.createdAt.toIso8601String(),
+      };
+
+  Future<bool> saveVehicleCollection(VehicleCollectionModel vc) async {
+    if (!await _ensureReady()) return false;
+    try {
+      await client.from('app_users').upsert(_vehicleCollectionRow(vc));
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error saving vehicle collection to Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<bool> saveVehicleCollectionsBulk(List<VehicleCollectionModel> list) =>
+      _upsertChunked(
+        'app_users',
+        list.map(_vehicleCollectionRow).toList(),
+        errorLabel: 'vehicle collections',
+      );
+
+  Future<bool> deleteVehicleCollection(String id) async {
+    if (!await _ensureReady()) return false;
+    try {
+      await client.from('app_users').delete().eq('id', 'vc_$id');
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      debugPrint('Error deleting vehicle collection from Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteVehicleCollectionsBulk(List<String> ids) => _deleteChunked(
+        'app_users',
+        ids.map((id) => 'vc_$id').toList(),
+        errorLabel: 'vehicle collections',
+      );
+
+  // --- Shared App Fleet Config (Vehicles & Employees) Sync ---
+  Future<CloudFetchResult<String>> fetchStringListConfigWithStatus(
+      String configId) async {
+    if (!await _ensureReady()) {
+      return const CloudFetchResult(success: false, items: []);
+    }
+    try {
+      final res = await client
+          .from('app_users')
+          .select('password')
+          .eq('id', configId)
+          .maybeSingle();
+      if (res == null || res['password'] == null) {
+        return const CloudFetchResult(success: true, items: []);
+      }
+      final pass = res['password'] as String;
+      final decoded = jsonDecode(pass);
+      if (decoded is List) {
+        return CloudFetchResult(
+          success: true,
+          items: decoded.map((e) => e.toString()).toList(),
+        );
+      }
+      if (decoded is Map<String, dynamic> && decoded['items'] is List) {
+        return CloudFetchResult(
+          success: true,
+          items: (decoded['items'] as List).map((e) => e.toString()).toList(),
+        );
+      }
+      return const CloudFetchResult(success: true, items: []);
+    } catch (e) {
+      debugPrint('Error fetching config $configId from Supabase: $e');
+      return const CloudFetchResult(success: false, items: []);
+    }
+  }
+
+  Future<bool> saveStringListConfig(
+      String configId, String displayName, List<String> items) async {
+    if (!await _ensureReady()) return false;
+    try {
+      await client.from('app_users').upsert({
+        'id': configId,
+        'name': displayName,
+        'role': 'app_config',
+        'phone': configId,
+        'password': jsonEncode({
+          'items': items,
+          'updatedAt': DateTime.now().toUtc().toIso8601String(),
+        }),
+        'isActive': true,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('Error saving config $configId to Supabase: $e');
+      return false;
+    }
+  }
+
+  Future<CloudFetchResult<String>> fetchManagedVehiclesWithStatus() =>
+      fetchStringListConfigWithStatus('cfg_vehicles');
+
+  Future<bool> saveManagedVehicles(List<String> vehicles) =>
+      saveStringListConfig('cfg_vehicles', 'Managed Vehicles', vehicles);
+
+  Future<CloudFetchResult<String>> fetchManagedEmployeesWithStatus() =>
+      fetchStringListConfigWithStatus('cfg_employees');
+
+  Future<bool> saveManagedEmployees(List<String> employees) =>
+      saveStringListConfig('cfg_employees', 'Managed Employees', employees);
 }

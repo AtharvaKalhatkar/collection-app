@@ -660,7 +660,7 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     isExpanded: true,
-                    value: _selectedRouteId,
+                    value: routes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : null,
                     hint: const Text('Select Route'),
                     items: routes.map((r) {
                       final billsCount = provider.getPendingBillsForRoute(r.id, businessName: _selectedBusiness).length;
