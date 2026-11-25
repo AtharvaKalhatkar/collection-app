@@ -62,6 +62,7 @@ class CollectionProvider extends ChangeNotifier {
   static const String _keyDirtyEmployeesFlag = 'dirty_employees_flag_v1';
 
   static const String _keyDeletedOrders = 'deleted_order_ids_v1';
+  static const String _keyCloudDeletedOrders = 'cloud_deleted_order_ids_v1';
   static const String _keyDeletedProducts = 'deleted_product_ids_v1';
   static const String _keyDeletedHandovers = 'deleted_handover_ids_v1';
   static const String _keyDeletedVehicleCollections = 'deleted_vc_ids_v1';
@@ -79,6 +80,8 @@ class CollectionProvider extends ChangeNotifier {
   bool _dirtyEmployeesFlag = false;
 
   Set<String> _locallyDeletedOrderIds = {};
+  Set<String> _cloudDeletedOrderIds = {};
+  final Set<String> _sessionDeletedOrderIds = {};
   Set<String> _locallyDeletedProductIds = {};
   Set<String> _locallyDeletedHandoverIds = {};
   Set<String> _locallyDeletedVehicleCollectionIds = {};
@@ -102,6 +105,7 @@ class CollectionProvider extends ChangeNotifier {
     _dirtyEmployeesFlag = await _storage.loadBoolFlag(_keyDirtyEmployeesFlag);
 
     _locallyDeletedOrderIds = await _storage.loadIdSet(_keyDeletedOrders);
+    _cloudDeletedOrderIds = await _storage.loadIdSet(_keyCloudDeletedOrders);
     _locallyDeletedProductIds = await _storage.loadIdSet(_keyDeletedProducts);
     _locallyDeletedHandoverIds =
         await _storage.loadIdSet(_keyDeletedHandovers);
@@ -251,6 +255,7 @@ class CollectionProvider extends ChangeNotifier {
   bool get _shouldFilterByAssignedRoutes {
     if (_currentUser == null) return false;
     if (_currentUser!.isSuperAdmin) return false;
+    if (_currentUser!.isDriver) return true;
     return _currentUser!.assignedRouteIds.isNotEmpty;
   }
 
@@ -454,6 +459,11 @@ class CollectionProvider extends ChangeNotifier {
 
     // Load persistent dirty outbox queues & custom route orders for ALL setups
     await _loadSyncOutboxes();
+    if (_locallyDeletedOrderIds.isNotEmpty || _cloudDeletedOrderIds.isNotEmpty) {
+      final tombstoned = {..._locallyDeletedOrderIds, ..._cloudDeletedOrderIds};
+      _salesOrders.removeWhere((o) => tombstoned.contains(o.id));
+      _dirtyOrderIds.removeAll(tombstoned);
+    }
 
     // Load custom products for both fresh and existing setups
     _customProducts = await _storage.loadCustomProducts();
@@ -1011,13 +1021,61 @@ class CollectionProvider extends ChangeNotifier {
         }
       }
 
-      // 5. Synchronize Sales Orders (Flush deletes -> Push dirty -> Pull & Update)
+      // 5. Synchronize Sales Orders (Sync tombstones -> Flush deletes -> Push dirty -> Pull & Update)
+      final tombstoneRes = await _supabase.fetchDeletedOrderTombstonesWithStatus();
+      bool tombstonesDirty = false;
+      if (tombstoneRes.success) {
+        final mergedTombstones = {
+          ..._cloudDeletedOrderIds,
+          ...tombstoneRes.items,
+          ..._locallyDeletedOrderIds,
+          ..._sessionDeletedOrderIds,
+        };
+        if (mergedTombstones.length != _cloudDeletedOrderIds.length ||
+            !_cloudDeletedOrderIds.containsAll(mergedTombstones)) {
+          _cloudDeletedOrderIds = mergedTombstones;
+          await _storage.saveIdSet(_keyCloudDeletedOrders, _cloudDeletedOrderIds);
+        }
+        if (tombstoneRes.items.length != _cloudDeletedOrderIds.length ||
+            !tombstoneRes.items.toSet().containsAll(_cloudDeletedOrderIds)) {
+          tombstonesDirty = true;
+        }
+      } else {
+        _cloudDeletedOrderIds = {
+          ..._cloudDeletedOrderIds,
+          ..._locallyDeletedOrderIds,
+          ..._sessionDeletedOrderIds,
+        };
+      }
+
+      final allOrderTombstones = {
+        ..._locallyDeletedOrderIds,
+        ..._cloudDeletedOrderIds,
+        ..._sessionDeletedOrderIds,
+      };
+      if (allOrderTombstones.isNotEmpty) {
+        final removedLocal = _salesOrders.any((o) => allOrderTombstones.contains(o.id));
+        _salesOrders.removeWhere((o) => allOrderTombstones.contains(o.id));
+        if (_dirtyOrderIds.any(allOrderTombstones.contains)) {
+          _dirtyOrderIds.removeAll(allOrderTombstones);
+          await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
+        }
+        if (removedLocal) {
+          await _storage.saveSalesOrders(_salesOrders);
+          hasDataChanged = true;
+        }
+      }
+
       if (_locallyDeletedOrderIds.isNotEmpty) {
         final ids = _locallyDeletedOrderIds.toList();
         if (await _supabase.deleteSalesOrdersBulk(ids)) {
           _locallyDeletedOrderIds.clear();
           await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
+          tombstonesDirty = true;
         }
+      }
+      if (tombstonesDirty && _cloudDeletedOrderIds.isNotEmpty) {
+        await _supabase.saveDeletedOrderTombstones(_cloudDeletedOrderIds.toList());
       }
       if (_dirtyOrderIds.isNotEmpty) {
         final dirty =
@@ -1029,11 +1087,23 @@ class CollectionProvider extends ChangeNotifier {
       }
       final ordersRes = await _supabase.fetchSalesOrdersWithStatus();
       if (ordersRes.success) {
+        final effectiveTombstones = {
+          ..._locallyDeletedOrderIds,
+          ..._cloudDeletedOrderIds,
+          ..._sessionDeletedOrderIds,
+        };
+        final zombieCloudIds = ordersRes.items
+            .where((o) => effectiveTombstones.contains(o.id))
+            .map((o) => o.id)
+            .toList();
+        if (zombieCloudIds.isNotEmpty) {
+          await _supabase.deleteSalesOrdersBulk(zombieCloudIds);
+        }
         final merged = _mergeCloudEntity<SalesOrderModel>(
           localItems: _salesOrders,
           cloudItems: ordersRes.items,
           dirtyIds: _dirtyOrderIds,
-          deletedIds: _locallyDeletedOrderIds,
+          deletedIds: effectiveTombstones,
           idOf: (o) => o.id,
           differs: _ordersDiffer,
           pruneMissingSynced: true,
@@ -2959,15 +3029,35 @@ _Daily Collection Pro Cash Verification_
   }
 
   // --- Sales Order Operations ---
+  List<SalesOrderModel> getAccessibleSalesOrders(UserModel? user) {
+    if (user == null || user.isSuperAdmin || user.isOffice) {
+      return _salesOrders;
+    }
+    if (user.assignedRouteIds.isEmpty) {
+      return _salesOrders;
+    }
+    final assigned = user.assignedRouteIds.toSet();
+    final plain = user.plainName.toLowerCase().trim();
+    final full = user.name.toLowerCase().trim();
+    return _salesOrders.where((o) {
+      final orderStaff = o.salesmanName.toLowerCase().trim();
+      final isOwn = orderStaff == plain || orderStaff == full;
+      return isOwn || assigned.contains(o.routeId);
+    }).toList();
+  }
+
   Future<void> addSalesOrder(SalesOrderModel order) async {
     final isEdit = _salesOrders.any((o) => o.id == order.id);
     final savedOrder = isEdit ? order.copyWith(updatedAt: DateTime.now()) : order;
     _salesOrders.removeWhere((o) => o.id == savedOrder.id);
     _salesOrders.insert(0, savedOrder);
     _locallyDeletedOrderIds.remove(savedOrder.id);
+    _cloudDeletedOrderIds.remove(savedOrder.id);
+    _sessionDeletedOrderIds.remove(savedOrder.id);
     _dirtyOrderIds.add(savedOrder.id);
     await _storage.saveSalesOrders(_salesOrders);
     await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
+    await _storage.saveIdSet(_keyCloudDeletedOrders, _cloudDeletedOrderIds);
     await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
     notifyListeners();
 
@@ -2987,19 +3077,25 @@ _Daily Collection Pro Cash Verification_
     await addSalesOrder(updated);
   }
 
-  Future<void> deleteSalesOrder(String orderId) async {
+  Future<bool> deleteSalesOrder(String orderId) async {
     _salesOrders.removeWhere((o) => o.id == orderId);
     _dirtyOrderIds.remove(orderId);
     _locallyDeletedOrderIds.add(orderId);
+    _cloudDeletedOrderIds.add(orderId);
+    _sessionDeletedOrderIds.add(orderId);
     await _storage.saveSalesOrders(_salesOrders);
     await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
     await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
+    await _storage.saveIdSet(_keyCloudDeletedOrders, _cloudDeletedOrderIds);
     notifyListeners();
 
-    if (await _supabase.deleteSalesOrder(orderId)) {
+    final deletedInCloud = await _supabase.deleteSalesOrder(orderId);
+    if (deletedInCloud) {
       _locallyDeletedOrderIds.remove(orderId);
       await _storage.saveIdSet(_keyDeletedOrders, _locallyDeletedOrderIds);
+      await _supabase.saveDeletedOrderTombstones(_cloudDeletedOrderIds.toList());
     }
+    return deletedInCloud;
   }
 
   // --- Customer History for Order Screen ---

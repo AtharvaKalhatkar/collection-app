@@ -270,7 +270,9 @@ class _AssignRoutesDialogState extends State<AssignRoutesDialog> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              u.assignedRouteIds.isEmpty ? 'All' : '${u.assignedRouteIds.length}',
+                              u.assignedRouteIds.isEmpty
+                                  ? (u.isDriver ? 'None' : 'All')
+                                  : '${u.assignedRouteIds.length}',
                               style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: color),
                             ),
                           ),
@@ -293,7 +295,9 @@ class _AssignRoutesDialogState extends State<AssignRoutesDialog> {
                 children: [
                   Text(
                     _selectedRoutes.isEmpty
-                        ? 'All Routes (${allRoutes.length}) Accessible'
+                        ? (selectedUser?.isDriver == true
+                            ? 'No route assigned (Driver blocked until assigned)'
+                            : 'All Routes (${allRoutes.length}) Accessible')
                         : 'Selected: ${_selectedRoutes.length} of ${allRoutes.length}',
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.primary),
                   ),
@@ -420,7 +424,7 @@ class _AssignRoutesDialogState extends State<AssignRoutesDialog> {
                     if (ok) {
                       QuickAlert.success(
                         context,
-                        'Saved ${_selectedRoutes.isEmpty ? "All Routes" : "${_selectedRoutes.length} route(s)"} for ${target.plainName}',
+                        'Saved ${_selectedRoutes.isEmpty ? (target.isDriver ? "0 routes" : "All Routes") : "${_selectedRoutes.length} route(s)"} for ${target.plainName}',
                       );
                       final currIdx = filteredStaff.indexWhere((u) => u.id == target.id);
                       final next = filteredStaff[(currIdx + 1) % filteredStaff.length];
@@ -441,7 +445,7 @@ class _AssignRoutesDialogState extends State<AssignRoutesDialog> {
                   if (ok) {
                     QuickAlert.success(
                       context,
-                      'Assigned ${_selectedRoutes.isEmpty ? "All Routes" : "${_selectedRoutes.length} route(s)"} to ${target.plainName}',
+                      'Assigned ${_selectedRoutes.isEmpty ? (target.isDriver ? "0 routes" : "All Routes") : "${_selectedRoutes.length} route(s)"} to ${target.plainName}',
                     );
                   }
                 },

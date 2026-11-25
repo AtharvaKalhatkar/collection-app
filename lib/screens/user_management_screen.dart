@@ -1077,9 +1077,11 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                                             style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8)),
                                           )
                                         : assignedRoutes.isEmpty
-                                            ? const Text(
-                                                'No route assigned (All routes accessible)',
-                                                style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
+                                            ? Text(
+                                                user.isDriver
+                                                    ? 'No route assigned (Delivery locked until assigned)'
+                                                    : 'No route assigned (All routes accessible)',
+                                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
                                               )
                                             : Wrap(
                                                 spacing: 6,

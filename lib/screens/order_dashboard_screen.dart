@@ -124,8 +124,20 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             onPressed: () async {
               Navigator.pop(dlgCtx);
               final provider = Provider.of<CollectionProvider>(context, listen: false);
-              await provider.deleteSalesOrder(order.id);
-              if (mounted) setState(() {});
+              final messenger = ScaffoldMessenger.of(context);
+              final deletedCloud = await provider.deleteSalesOrder(order.id);
+              if (mounted) {
+                setState(() {});
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(deletedCloud
+                        ? 'Deleted order #${order.orderNumber}'
+                        : 'Deleted locally (will sync when online)'),
+                    backgroundColor: const Color(0xFF0F172A),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
             },
             child: const Text('Delete', style: TextStyle(color: Colors.white)),
           ),
@@ -155,12 +167,20 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDCFCE7),
+                    color: order.status == 'Cancelled'
+                        ? const Color(0xFFFEF2F2)
+                        : const Color(0xFFDCFCE7),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Text(
-                    'Order Booked',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                  child: Text(
+                    '${order.firm == 'Purva Enterprises' ? 'PURVA' : 'MANAS'} • ${order.status}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: order.status == 'Cancelled'
+                          ? AppTheme.balanceDueColor
+                          : const Color(0xFF15803D),
+                    ),
                   ),
                 ),
               ],
@@ -259,7 +279,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
     final provider = context.watch<CollectionProvider>();
     final user = auth.currentUser;
 
-    // Filter available routes for this user whenever specific routes are assigned
+    // Filter available routes cleanly; never leak stale routes if unassigned/reassigned
     List<RouteModel> availableRoutes = provider.allRoutes;
     if (user != null && !user.isSuperAdmin && user.assignedRouteIds.isNotEmpty) {
       availableRoutes = provider.allRoutes
@@ -267,23 +287,26 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
           .toList();
     }
 
-    if (availableRoutes.isNotEmpty) {
-      if (_selectedRouteId == null || !availableRoutes.any((r) => r.id == _selectedRouteId)) {
-        _selectedRouteId = availableRoutes.first.id;
-      }
-    }
+    final String? effectiveRouteId = availableRoutes.isEmpty
+        ? null
+        : (availableRoutes.any((r) => r.id == _selectedRouteId)
+            ? _selectedRouteId
+            : availableRoutes.first.id);
+    _selectedRouteId = effectiveRouteId;
 
     final selectedRoute = availableRoutes.firstWhere(
-      (r) => r.id == _selectedRouteId,
+      (r) => r.id == effectiveRouteId,
       orElse: () => availableRoutes.isNotEmpty
           ? availableRoutes.first
-          : RouteModel(id: '', name: 'General Route'),
+          : RouteModel(id: '', name: 'No Route Available'),
     );
 
     // Get all shops for this route
-    final allRouteShops = provider.allShops
-        .where((s) => s.routeId == _selectedRouteId)
-        .toList();
+    final allRouteShops = effectiveRouteId == null
+        ? <ShopModel>[]
+        : provider.allShops
+            .where((s) => s.routeId == effectiveRouteId)
+            .toList();
 
     // Today's orders for this date (newest first so lookup matches latest order)
     final allDateOrders = provider.salesOrders
@@ -291,9 +314,13 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
         .toList()
       ..sort((a, b) => b.orderDate.compareTo(a.orderDate));
 
-    // Separate orders by staff: if non-admin/office, show only this user's orders in Orders tab
+    // Separate orders by staff: non-admin/office see own orders (plainName or full name)
     final userDateOrders = (user != null && !user.isSuperAdmin && !user.isOffice)
-        ? allDateOrders.where((o) => o.salesmanName.toLowerCase().trim() == user.plainName.toLowerCase().trim()).toList()
+        ? allDateOrders.where((o) {
+            final staff = o.salesmanName.toLowerCase().trim();
+            return staff == user.plainName.toLowerCase().trim() ||
+                staff == user.name.toLowerCase().trim();
+          }).toList()
         : allDateOrders;
 
     final bookedShopIds = allDateOrders.map((o) => o.shopId).toSet();
@@ -1311,8 +1338,19 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                               padding: const EdgeInsets.symmetric(vertical: 8),
                             ),
                             onPressed: () async {
-                              final text = '*Order #${order.orderNumber}* (${order.firm}) for *${order.shopName}*\nTotal: ₹${order.totalAmount} (${order.totalCases} CS, ${order.totalLooseUnits} UT)';
-                              final url = Uri.parse('https://api.whatsapp.com/send?text=${Uri.encodeComponent(text)}');
+                              final buf = StringBuffer()
+                                ..writeln('*${order.firm.toUpperCase()} - STORE ORDER*')
+                                ..writeln('Order #${order.orderNumber} • ${DateFormat('dd MMM yyyy').format(order.orderDate)}')
+                                ..writeln('Store: ${order.shopName} (${order.routeName})');
+                              for (int i = 0; i < order.items.length; i++) {
+                                final it = order.items[i];
+                                buf.writeln('${i + 1}. ${it.productName} - ${it.cases} CS, ${it.units} UT (${CurrencyFormatter.format(it.subtotal)})');
+                              }
+                              buf.writeln('*Total: ${CurrencyFormatter.format(order.totalAmount)}* (${order.totalCases} CS, ${order.totalLooseUnits} UT)');
+                              if (order.notes != null && order.notes!.isNotEmpty) {
+                                buf.writeln('Notes: ${order.notes}');
+                              }
+                              final url = Uri.parse('https://api.whatsapp.com/send?text=${Uri.encodeComponent(buf.toString())}');
                               try {
                                 await launchUrl(url, mode: LaunchMode.externalApplication);
                               } catch (_) {}

@@ -84,6 +84,7 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
   List<SalesOrderModel> _getFilteredOrders(CollectionProvider provider) {
     final now = DateTime.now();
     return provider.salesOrders.where((o) {
+      if (_selectedFirm != 'All' && o.firm != _selectedFirm) return false;
       if (_dateRange == 'today') {
         return o.orderDate.year == now.year &&
             o.orderDate.month == now.month &&

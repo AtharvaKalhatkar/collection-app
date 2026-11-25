@@ -120,7 +120,13 @@ class OrderItem {
     return quantity;
   }
 
-  double get totalWeightKg => (weightKg > 0 ? weightKg * (cases > 0 ? cases : 1) : 0.0);
+  double get totalWeightKg {
+    if (weightKg <= 0) return 0.0;
+    if (unitsPerCase > 0) {
+      return weightKg * (totalUnits / unitsPerCase);
+    }
+    return weightKg * (cases > 0 ? cases : 1);
+  }
 
   double get subtotal {
     final effectiveUnits = totalUnits;

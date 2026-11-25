@@ -1252,6 +1252,43 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                 Text('Owner: ${widget.shop.ownerName ?? 'Not set'}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
                 Text('Address: ${widget.shop.address}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
                 Text('Mobile: ${widget.shop.mobileNumber}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                const SizedBox(height: 8),
+                Builder(
+                  builder: (context) {
+                    final pendingDue = provider.getTotalBalanceForShop(widget.shop.id);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: pendingDue > 0 ? const Color(0xFFFEF2F2) : AppTheme.manasLight,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: pendingDue > 0
+                              ? AppTheme.balanceDueColor.withValues(alpha: 0.3)
+                              : AppTheme.manasBorder,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.account_balance_wallet_outlined,
+                            size: 15,
+                            color: pendingDue > 0 ? AppTheme.balanceDueColor : AppTheme.manasPrimary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Pending Due: ${CurrencyFormatter.format(pendingDue)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: pendingDue > 0 ? AppTheme.balanceDueColor : AppTheme.manasPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
@@ -1304,8 +1341,40 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade200)),
                 child: ListTile(
                   title: Text(ord.orderNumber, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  subtitle: Text('${DateFormat('dd MMM yyyy').format(ord.orderDate)} • ${ord.items.length} lines'),
-                  trailing: Text(CurrencyFormatter.format(ord.totalAmount), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                  subtitle: Text('${DateFormat('dd MMM yyyy').format(ord.orderDate)} • ${ord.items.length} lines • ${ord.firm == 'Purva Enterprises' ? 'Purva' : 'Manas'}'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        CurrencyFormatter.format(ord.totalAmount),
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      ),
+                      const SizedBox(width: 6),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _selectedFirm = ord.firm;
+                            for (final item in ord.items) {
+                              _cart[item.productId] = item.copyWith();
+                            }
+                            _tabController.animateTo(2);
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Loaded ${ord.items.length} item(s) from #${ord.orderNumber}'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        child: const Text('Repeat', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }),
@@ -1384,7 +1453,13 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                           ),
                         ),
                         IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF1E40AF)),
+                          tooltip: 'Edit CS / UT',
+                          onPressed: () => _showOrderItemEditDialog(item),
+                        ),
+                        IconButton(
                           icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                          tooltip: 'Remove item',
                           onPressed: () {
                             setState(() {
                               _cart.remove(item.productId);
@@ -1491,6 +1566,84 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
         ),
       ],
     );
+  }
+
+  void _showOrderItemEditDialog(OrderItem item) {
+    final csCtrl = TextEditingController(text: '${item.cases}');
+    final utCtrl = TextEditingController(text: '${item.units}');
+    showDialog<void>(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text(
+          item.productName,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '₹${item.rate.toStringAsFixed(2)}/UT  •  1 CS = ${item.unitsPerCase} UT',
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: csCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Cases (CS)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: utCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Units (UT)'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dlgCtx);
+              setState(() => _cart.remove(item.productId));
+            },
+            child: const Text('Remove', style: TextStyle(color: AppTheme.balanceDueColor)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newCs = (int.tryParse(csCtrl.text.trim()) ?? 0).clamp(0, 99999);
+              final newUt = (int.tryParse(utCtrl.text.trim()) ?? 0).clamp(0, 99999);
+              Navigator.pop(dlgCtx);
+              setState(() {
+                if (newCs == 0 && newUt == 0) {
+                  _cart.remove(item.productId);
+                } else {
+                  final upc = item.unitsPerCase > 0 ? item.unitsPerCase : 1;
+                  _cart[item.productId] = item.copyWith(
+                    cases: newCs,
+                    units: newUt,
+                    quantity: (newCs * upc) + newUt,
+                  );
+                }
+              });
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    ).then((_) {
+      csCtrl.dispose();
+      utCtrl.dispose();
+    });
   }
 
   Widget _buildSummaryPill(String label, String value) {

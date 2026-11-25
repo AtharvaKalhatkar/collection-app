@@ -884,6 +884,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       return const Scaffold(body: Center(child: Text('Session expired. Please log in.')));
     }
 
+    final bool hasAssignedRoute = user.assignedRouteIds.isNotEmpty;
     final assignedRoutes = provider.allRoutes
         .where((r) => user.assignedRouteIds.contains(r.id))
         .toList();
@@ -891,25 +892,29 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         ? assignedRoutes.map((r) => r.name).join(', ')
         : 'No route assigned';
 
-    // Pending bills for this driver's assigned routes
-    final deliveryBills = provider.pendingBills
-        .where((b) => !b.isPaid)
-        .where((b) {
-          if (_searchQuery.trim().isEmpty) return true;
-          final q = _searchQuery.toLowerCase().trim();
-          return MarathiSearchHelper.matches(b.shopName, q) ||
-              b.billNumber.toLowerCase().contains(q);
-        })
-        .toList();
+    // Pending bills for this driver's assigned routes (empty when unassigned)
+    final deliveryBills = !hasAssignedRoute
+        ? <PendingBillModel>[]
+        : provider.pendingBills
+            .where((b) => !b.isPaid)
+            .where((b) {
+              if (_searchQuery.trim().isEmpty) return true;
+              final q = _searchQuery.toLowerCase().trim();
+              return MarathiSearchHelper.matches(b.shopName, q) ||
+                  b.billNumber.toLowerCase().contains(q);
+            })
+            .toList();
 
-    // Outlets for this driver's assigned routes
-    final routeShops = provider.shops.where((s) {
-      if (_searchQuery.trim().isEmpty) return true;
-      final q = _searchQuery.toLowerCase().trim();
-      return MarathiSearchHelper.matches(s.name, q) ||
-          s.address.toLowerCase().contains(q) ||
-          s.mobileNumber.contains(q);
-    }).toList();
+    // Outlets for this driver's assigned routes (empty when unassigned)
+    final routeShops = !hasAssignedRoute
+        ? <ShopModel>[]
+        : provider.shops.where((s) {
+            if (_searchQuery.trim().isEmpty) return true;
+            final q = _searchQuery.toLowerCase().trim();
+            return MarathiSearchHelper.matches(s.name, q) ||
+                s.address.toLowerCase().contains(q) ||
+                s.mobileNumber.contains(q);
+          }).toList();
 
     // Driver's collections today
     final todayCollections = provider.getFilteredCollections();
@@ -973,6 +978,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             tooltip: 'Sync Data',
             icon: const Icon(Icons.sync, color: AppTheme.primary),
             onPressed: () async {
+              await auth.initialize();
+              provider.setCurrentUser(auth.currentUser);
               await provider.syncAllWithCloud(notify: true);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1038,7 +1045,19 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                     ElevatedButton.icon(
                       icon: const Icon(Icons.refresh),
                       label: const Text('Check for Assigned Route'),
-                      onPressed: () => auth.initialize(),
+                      onPressed: () async {
+                        await auth.initialize();
+                        provider.setCurrentUser(auth.currentUser);
+                        await provider.syncAllWithCloud(notify: true);
+                        if (context.mounted && (auth.currentUser?.assignedRouteIds.isEmpty ?? true)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('No route assigned yet. Contact Super Admin or Sales.'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -1111,7 +1130,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           destinations: [
           NavigationDestination(
             icon: Badge(
-              isLabelVisible: deliveryBills.isNotEmpty,
+              isLabelVisible: hasAssignedRoute && deliveryBills.isNotEmpty,
               label: Text('${deliveryBills.length}'),
               child: const Icon(Icons.local_shipping_outlined),
             ),
@@ -1120,7 +1139,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           ),
           NavigationDestination(
             icon: Badge(
-              isLabelVisible: routeShops.isNotEmpty,
+              isLabelVisible: hasAssignedRoute && routeShops.isNotEmpty,
               label: Text('${routeShops.length}'),
               child: const Icon(Icons.storefront_outlined),
             ),
@@ -1129,7 +1148,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           ),
           NavigationDestination(
             icon: Badge(
-              isLabelVisible: routeShops.isNotEmpty,
+              isLabelVisible: hasAssignedRoute && routeShops.isNotEmpty,
               label: Text('${routeShops.length}'),
               child: const Icon(Icons.map_outlined),
             ),

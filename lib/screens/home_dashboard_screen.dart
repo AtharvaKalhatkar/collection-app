@@ -1023,7 +1023,7 @@ class HomeDashboardScreen extends StatelessWidget {
                             title: 'All Booked Orders',
                             icon: Icons.receipt_long_outlined,
                             color: AppTheme.purvaPrimary,
-                            trailingValue: '${provider.salesOrders.length}',
+                            trailingValue: '${provider.getAccessibleSalesOrders(currentUser).length}',
                             onTap: () {
                               Navigator.push(
                                 context,

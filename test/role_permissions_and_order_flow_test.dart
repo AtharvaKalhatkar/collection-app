@@ -6,11 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:daily_collection_app/main.dart';
 import 'package:daily_collection_app/models/order_model.dart';
+import 'package:daily_collection_app/models/pending_bill_model.dart';
 import 'package:daily_collection_app/models/route_model.dart';
 import 'package:daily_collection_app/models/shop_model.dart';
 import 'package:daily_collection_app/models/user_model.dart';
 import 'package:daily_collection_app/providers/auth_provider.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
+import 'package:daily_collection_app/screens/all_orders_screen.dart';
+import 'package:daily_collection_app/screens/driver_dashboard_screen.dart';
 import 'package:daily_collection_app/screens/outlet_order_booking_screen.dart';
 import 'package:daily_collection_app/widgets/assign_routes_dialog.dart';
 
@@ -347,6 +350,240 @@ void main() {
       final saved = collection.salesOrders.firstWhere((o) => o.id == 'ord_existing_1');
       expect(saved.status, 'Billed');
       expect(saved.firm, 'Manas Sales');
+    });
+
+    testWidgets('Unassigned Driver sees 0 routes, 0 shops, 0 bills, and ZERO bottom nav count badges',
+        (tester) async {
+      final r1 = RouteModel(id: 'r_chakan', name: 'Chakan');
+      final s1 = ShopModel(
+        id: 's1',
+        name: 'G R Mart',
+        routeId: 'r_chakan',
+        routeName: 'Chakan',
+        mobileNumber: '9850070556',
+        address: 'Main Road',
+      );
+      final b1 = PendingBillModel(
+        id: 'b1',
+        businessName: 'Purva Enterprises',
+        shopId: 's1',
+        shopName: 'G R Mart',
+        routeId: 'r_chakan',
+        routeName: 'Chakan',
+        billNumber: 'INV-1',
+        totalAmount: 1000,
+        collectedAmount: 0,
+        status: 'pending',
+        invoiceDate: DateTime.now(),
+        deliveryDate: DateTime.now(),
+        createdAt: DateTime.now(),
+      );
+      final driver = UserModel(
+        id: 'user_driver_user1',
+        phone: 'user1',
+        name: 'Driver',
+        role: UserRole.driver,
+        password: 'user123',
+        assignedRouteIds: const [],
+      );
+
+      SharedPreferences.setMockInitialValues({
+        'app_sample_data_initialized_v1': true,
+        'app_users_cache_v1': jsonEncode([driver.toJson()]),
+        'current_logged_in_user_id_v1': driver.id,
+        'app_routes_v1': [jsonEncode(r1.toJson())],
+        'app_shops_v1': [jsonEncode(s1.toJson())],
+        'app_pending_bills_v1': [jsonEncode(b1.toJson())],
+      });
+
+      final auth = AuthProvider();
+      final collection = CollectionProvider();
+      await auth.initialize();
+      await collection.initialize();
+      collection.setCurrentUser(auth.currentUser);
+
+      // Provider scoping: unassigned Driver must get 0 routes, 0 shops, 0 bills
+      expect(collection.routes, isEmpty);
+      expect(collection.shops, isEmpty);
+      expect(collection.pendingBills, isEmpty);
+
+      tester.view.physicalSize = const Size(430, 932);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider.value(value: collection),
+          ],
+          child: const MaterialApp(
+            home: DriverDashboardScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('No Delivery Route Assigned Today'), findsOneWidget);
+      final visibleBadges = find.byWidgetPredicate(
+        (w) => w is Badge && w.isLabelVisible,
+      );
+      expect(visibleBadges, findsNothing);
+    });
+
+    test('deleteSalesOrder persists durable tombstones so stale caches cannot resurrect deleted orders',
+        () async {
+      final ord1 = SalesOrderModel(
+        id: 'ord-1795324988775',
+        orderNumber: 'ORD-261122-7802',
+        firm: 'Purva Enterprises',
+        routeId: 'r1',
+        routeName: 'Kharabwadi',
+        shopId: 's1',
+        shopName: 'G R Mart',
+        shopMobile: '9850070556',
+        salesmanName: 'Akash',
+        orderDate: DateTime(2026, 11, 22, 10, 52),
+        items: [
+          OrderItem(
+            productId: 'p1',
+            productName: 'Santoor handwash 150gm',
+            company: 'Wipro',
+            category: 'HC',
+            packing: '150gm',
+            rate: 27.5,
+            quantity: 1,
+            cases: 0,
+            units: 1,
+            unitsPerCase: 24,
+            weightKg: 5.07,
+          ),
+        ],
+        totalAmount: 27.5,
+        totalQuantity: 1,
+      );
+      final ord2 = ord1.copyWith(id: 'ord-keep-2', orderNumber: 'ORD-2', shopName: 'Keep Store');
+
+      // Check accurate loose-unit weight math
+      expect(ord1.totalWeightKg, closeTo(5.07 / 24, 0.01));
+
+      SharedPreferences.setMockInitialValues({
+        'app_sample_data_initialized_v1': true,
+        'app_sales_orders_v1': [jsonEncode(ord1.toJson()), jsonEncode(ord2.toJson())],
+      });
+
+      final provider = CollectionProvider();
+      await provider.initialize();
+      expect(provider.salesOrders.length, 2);
+
+      await provider.deleteSalesOrder(ord1.id);
+      expect(provider.salesOrders.map((o) => o.id), ['ord-keep-2']);
+
+      // Simulate stale local list still containing ord1 while cloud tombstone was stored
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'app_sales_orders_v1',
+        [jsonEncode(ord1.toJson()), jsonEncode(ord2.toJson())],
+      );
+
+      final reloaded = CollectionProvider();
+      await reloaded.initialize();
+      expect(reloaded.salesOrders.map((o) => o.id), ['ord-keep-2']);
+    });
+
+    testWidgets('AllOrdersScreen supports All Dates toggle and Status filter chips',
+        (tester) async {
+      final today = DateTime.now();
+      final oldOrder = SalesOrderModel(
+        id: 'ord_old',
+        orderNumber: 'ORD-OLD',
+        firm: 'Purva Enterprises',
+        routeId: 'r1',
+        routeName: 'Chakan',
+        shopId: 's1',
+        shopName: 'G R Mart',
+        shopMobile: '9999999999',
+        salesmanName: 'Akash',
+        orderDate: DateTime(2026, 11, 22, 10, 0),
+        items: [
+          OrderItem(
+            productId: 'p1',
+            productName: 'Item 1',
+            company: 'Wipro',
+            category: 'HC',
+            packing: '150gm',
+            rate: 50,
+            quantity: 2,
+            cases: 0,
+            units: 2,
+          ),
+        ],
+        totalAmount: 100,
+        totalQuantity: 2,
+        status: 'Booked',
+      );
+      final todayBilled = oldOrder.copyWith(
+        id: 'ord_today',
+        orderNumber: 'ORD-TODAY',
+        shopName: 'Modern Mart',
+        orderDate: today,
+        status: 'Billed',
+      );
+
+      final admin = UserModel(
+        id: 'u_admin',
+        phone: '9921977636',
+        name: 'Super Admin',
+        role: UserRole.superAdmin,
+        password: 'p',
+      );
+
+      SharedPreferences.setMockInitialValues({
+        'app_sample_data_initialized_v1': true,
+        'app_users_cache_v1': jsonEncode([admin.toJson()]),
+        'current_logged_in_user_id_v1': admin.id,
+        'app_sales_orders_v1': [jsonEncode(oldOrder.toJson()), jsonEncode(todayBilled.toJson())],
+      });
+
+      final auth = AuthProvider();
+      final collection = CollectionProvider();
+      await auth.initialize();
+      await collection.initialize();
+
+      tester.view.physicalSize = const Size(430, 932);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider.value(value: collection),
+          ],
+          child: const MaterialApp(
+            home: AllOrdersScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially today only: shows Modern Mart, not G R Mart
+      expect(find.text('Modern Mart'), findsOneWidget);
+      expect(find.text('G R Mart'), findsNothing);
+
+      // Tap "All Dates": reveals both orders
+      await tester.tap(find.text('All Dates'));
+      await tester.pumpAndSettle();
+      expect(find.text('Modern Mart'), findsOneWidget);
+      expect(find.text('G R Mart'), findsOneWidget);
+
+      // Filter by status chip 'Booked': keeps G R Mart only
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Booked'));
+      await tester.pumpAndSettle();
+      expect(find.text('G R Mart'), findsOneWidget);
+      expect(find.text('Modern Mart'), findsNothing);
     });
   });
 }

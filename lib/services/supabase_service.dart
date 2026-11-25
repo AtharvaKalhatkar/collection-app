@@ -1049,8 +1049,14 @@ class SupabaseService {
   Future<bool> deleteSalesOrder(String orderId) async {
     if (!await _ensureReady()) return false;
 
+    final cleanId = orderId.trim();
+    if (cleanId.isEmpty) return true;
     try {
-      await client.from('app_users').delete().eq('id', 'so_$orderId');
+      await client
+          .from('app_users')
+          .delete()
+          .inFilter('id', ['so_$cleanId', cleanId])
+          .select('id');
       return true;
     } catch (e) {
       _lastError = e.toString();
@@ -1059,11 +1065,33 @@ class SupabaseService {
     }
   }
 
-  Future<bool> deleteSalesOrdersBulk(List<String> orderIds) => _deleteChunked(
-        'app_users',
-        orderIds.map((id) => 'so_$id').toList(),
-        errorLabel: 'sales orders',
-      );
+  Future<bool> deleteSalesOrdersBulk(List<String> orderIds) {
+    final targetIds = <String>{
+      for (final raw in orderIds)
+        if (raw.trim().isNotEmpty) ...['so_${raw.trim()}', raw.trim()],
+    }.toList();
+    return _deleteChunked(
+      'app_users',
+      targetIds,
+      errorLabel: 'sales orders',
+    );
+  }
+
+  /// Cross-device tombstone list so deleted sales orders cannot be resurrected by
+  /// another device or offline cache. Capped to recent 500 IDs.
+  Future<CloudFetchResult<String>> fetchDeletedOrderTombstonesWithStatus() =>
+      fetchStringListConfigWithStatus('cfg_deleted_orders');
+
+  Future<bool> saveDeletedOrderTombstones(List<String> orderIds) {
+    final bounded = orderIds.length > 500
+        ? orderIds.sublist(orderIds.length - 500)
+        : orderIds;
+    return saveStringListConfig(
+      'cfg_deleted_orders',
+      'Deleted Sales Orders Tombstones',
+      bounded,
+    );
+  }
 
   // --- Custom Products Master Cloud Sync (Stored in app_users with prefix cp_) ---
   Future<CloudFetchResult<CatalogProduct>> fetchCustomProductsWithStatus() async {

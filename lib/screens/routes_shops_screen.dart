@@ -739,9 +739,12 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CollectionProvider>();
+    final currentUser = context.watch<AuthProvider>().currentUser;
     final routes = provider.routes;
 
-    final isAllRoutes = _selectedRouteId == null || _selectedRouteId == 'all';
+    final isAllRoutes = _selectedRouteId == null ||
+        _selectedRouteId == 'all' ||
+        !routes.any((r) => r.id == _selectedRouteId);
 
     final selectedRoute = isAllRoutes
         ? RouteModel(id: 'all', name: 'All Routes')
@@ -864,14 +867,19 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                     child: Center(
-                      child: TextButton.icon(
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('Create your first beat (e.g. Chakan)'),
-                        onPressed: () => showDialog(
-                          context: context,
-                          builder: (ctx) => const AddRouteDialog(),
-                        ),
-                      ),
+                      child: (currentUser?.isDriver == true)
+                          ? const Text(
+                              'No route assigned to this driver account.',
+                              style: TextStyle(fontSize: 13, color: Colors.blueGrey, fontWeight: FontWeight.w600),
+                            )
+                          : TextButton.icon(
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('Create your first beat (e.g. Chakan)'),
+                              onPressed: () => showDialog(
+                                context: context,
+                                builder: (ctx) => const AddRouteDialog(),
+                              ),
+                            ),
                     ),
                   )
                 else

@@ -30,7 +30,9 @@ class AllOrdersScreen extends StatefulWidget {
 
 class _AllOrdersScreenState extends State<AllOrdersScreen> {
   late DateTime _selectedDate;
+  bool _allDates = false;
   String _selectedFirm = 'ALL';
+  String _selectedStatus = 'ALL';
   String _selectedStaff = 'ALL';
   String _selectedRouteId = 'ALL';
   String _searchQuery = '';
@@ -137,8 +139,20 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
             onPressed: () async {
               Navigator.pop(dlgCtx);
               final provider = Provider.of<CollectionProvider>(context, listen: false);
-              await provider.deleteSalesOrder(order.id);
-              if (mounted) setState(() {});
+              final messenger = ScaffoldMessenger.of(context);
+              final deletedCloud = await provider.deleteSalesOrder(order.id);
+              if (mounted) {
+                setState(() {});
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(deletedCloud
+                        ? 'Deleted order #${order.orderNumber}'
+                        : 'Deleted locally (will sync deletion when online)'),
+                    backgroundColor: const Color(0xFF0F172A),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
             },
             child: const Text('Delete', style: TextStyle(color: Colors.white)),
           ),
@@ -178,15 +192,21 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final provider = context.watch<CollectionProvider>();
+    final accessibleRoutes = provider.routes;
     final isToday = _isSameDay(_selectedDate, DateTime.now());
 
-    // All orders matching selected date
-    var dateOrders = provider.salesOrders
-        .where((o) => _isSameDay(o.orderDate, _selectedDate))
-        .toList();
+    // Orders scoped to current user's accessible scope + selected date (or All Dates)
+    var dateOrders = provider.getAccessibleSalesOrders(auth.currentUser).where((o) {
+      if (!_allDates && !_isSameDay(o.orderDate, _selectedDate)) return false;
+      return true;
+    }).toList();
 
     if (_selectedFirm != 'ALL') {
       dateOrders = dateOrders.where((o) => o.firm == _selectedFirm).toList();
+    }
+
+    if (_selectedStatus != 'ALL') {
+      dateOrders = dateOrders.where((o) => o.status == _selectedStatus).toList();
     }
 
     // Collect distinct staff names who have orders or are order/sales users
@@ -266,6 +286,8 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                   context,
                   orders: filteredOrders,
                   salesmanName: _selectedStaff == 'ALL' ? 'All Staff' : _selectedStaff,
+                  firmFilter: _selectedFirm == 'ALL' ? null : _selectedFirm,
+                  reportDate: _allDates ? null : _selectedDate,
                 );
               },
             ),
@@ -274,28 +296,38 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
             icon: const Icon(Icons.refresh_rounded, color: AppTheme.primary),
             tooltip: 'Refresh',
             onPressed: () async {
-              await provider.syncAllWithCloud(notify: true);
-              setState(() {});
+              final messenger = ScaffoldMessenger.of(context);
+              final ok = await provider.syncAllWithCloud(notify: true);
+              if (mounted) {
+                setState(() {});
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(ok ? 'Orders synced from cloud' : 'Showing offline cached orders'),
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
+              }
             },
           ),
         ],
       ),
       body: Column(
         children: [
-          // 1. Date Selector Bar
+          // 1. Date Selector Bar + All Dates toggle
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left_rounded, size: 24, color: Color(0xFF0F172A)),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _stepDate(-1),
-                ),
+                if (!_allDates)
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left_rounded, size: 24, color: Color(0xFF0F172A)),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _stepDate(-1),
+                  ),
                 Expanded(
                   child: InkWell(
-                    onTap: _pickDate,
+                    onTap: _allDates ? () => setState(() => _allDates = false) : _pickDate,
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -306,14 +338,30 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.calendar_today_rounded, size: 14, color: isToday ? const Color(0xFF16A34A) : const Color(0xFF1E3A8A)),
+                          Icon(
+                            _allDates ? Icons.date_range_rounded : Icons.calendar_today_rounded,
+                            size: 14,
+                            color: _allDates
+                                ? AppTheme.purvaPrimary
+                                : (isToday ? const Color(0xFF16A34A) : const Color(0xFF1E3A8A)),
+                          ),
                           const SizedBox(width: 6),
-                          Text(
-                            isToday ? 'Today: ${DateFormat('dd MMM yyyy').format(_selectedDate)}' : DateFormat('EEE, dd MMM yyyy').format(_selectedDate),
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: isToday ? const Color(0xFF16A34A) : const Color(0xFF0F172A),
+                          Flexible(
+                            child: Text(
+                              _allDates
+                                  ? 'All Dates'
+                                  : (isToday
+                                      ? 'Today: ${DateFormat('dd MMM yyyy').format(_selectedDate)}'
+                                      : DateFormat('EEE, dd MMM yyyy').format(_selectedDate)),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: _allDates
+                                    ? AppTheme.purvaPrimary
+                                    : (isToday ? const Color(0xFF16A34A) : const Color(0xFF0F172A)),
+                              ),
                             ),
                           ),
                         ],
@@ -321,10 +369,32 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right_rounded, size: 24, color: Color(0xFF0F172A)),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _stepDate(1),
+                if (!_allDates)
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right_rounded, size: 24, color: Color(0xFF0F172A)),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _stepDate(1),
+                  ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () => setState(() => _allDates = !_allDates),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _allDates ? AppTheme.purvaPrimary : AppTheme.subtleSurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _allDates ? AppTheme.purvaPrimary : AppTheme.border),
+                    ),
+                    child: Text(
+                      'All Dates',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: _allDates ? Colors.white : AppTheme.primary,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -347,6 +417,36 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                   _buildFirmFilterBtn('Purva', 'Purva Enterprises', AppTheme.purvaPrimary),
                   _buildFirmFilterBtn('Manas', 'Manas Sales', AppTheme.manasPrimary),
                 ],
+              ),
+            ),
+          ),
+
+          // Status Filter Chips
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: ['ALL', 'Booked', 'Dispatched', 'Billed', 'Delivered', 'Cancelled']
+                    .map((status) {
+                  final selected = _selectedStatus == status;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(status == 'ALL' ? 'All Status' : status),
+                      selected: selected,
+                      visualDensity: VisualDensity.compact,
+                      selectedColor: AppTheme.primary.withValues(alpha: 0.12),
+                      labelStyle: TextStyle(
+                        fontSize: 11,
+                        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                        color: selected ? AppTheme.primary : AppTheme.textSecondary,
+                      ),
+                      onSelected: (_) => setState(() => _selectedStatus = status),
+                    ),
+                  );
+                }).toList(),
               ),
             ),
           ),
@@ -434,7 +534,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
-                        value: provider.allRoutes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : 'ALL',
+                        value: accessibleRoutes.any((r) => r.id == _selectedRouteId) ? _selectedRouteId : 'ALL',
                         isExpanded: true,
                         icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF0F766E)),
                         items: [
@@ -454,7 +554,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                               ],
                             ),
                           ),
-                          ...provider.allRoutes.map((r) {
+                          ...accessibleRoutes.map((r) {
                             return DropdownMenuItem<String>(
                               value: r.id,
                               child: Row(
@@ -663,6 +763,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
       elevation: 0,
       color: Colors.white,
       child: ExpansionTile(
+        key: ValueKey('order_card_${order.id}'),
         tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
         leading: Container(
