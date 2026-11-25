@@ -19,7 +19,6 @@ import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import 'live_staff_locations_screen.dart';
-import 'order_dashboard_screen.dart';
 import 'all_orders_screen.dart';
 import '../widgets/tally_sync_dialog.dart';
 import '../utils/firm_details.dart';
@@ -453,21 +452,6 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.shopping_bag_outlined, size: 21),
-            tooltip: 'Book Store Orders (Bizom)',
-            visualDensity: VisualDensity.compact,
-            onPressed: () {
-              if (onNavigateToOrders != null) {
-                onNavigateToOrders!();
-              } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
-                );
-              }
-            },
-          ),
           // Live Payment Alert Bell with Red Notification Badge (Super Admin & Office Staff Only)
           if (context.watch<AuthProvider>().currentUser?.isSuperAdmin == true ||
               context.watch<AuthProvider>().currentUser?.isOffice == true)
@@ -491,16 +475,7 @@ class HomeDashboardScreen extends StatelessWidget {
             icon: const Icon(Icons.more_vert, size: 20),
             tooltip: 'More Options',
             onSelected: (val) async {
-              if (val == 'book_orders') {
-                if (onNavigateToOrders != null) {
-                  onNavigateToOrders!();
-                } else {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
-                  );
-                }
-              } else if (val == 'all_orders') {
+              if (val == 'all_orders') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const AllOrdersScreen()),
@@ -555,26 +530,18 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'book_orders',
-                child: Row(
-                  children: [
-                    Icon(Icons.store_mall_directory_rounded, size: 18, color: Color(0xFF1E40AF)),
-                    SizedBox(width: 10),
-                    Text('Book Store Orders'),
-                  ],
+              if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true ||
+                  context.read<AuthProvider>().currentUser?.isOffice == true)
+                const PopupMenuItem(
+                  value: 'all_orders',
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long_rounded, size: 18, color: Color(0xFF1E3A8A)),
+                      SizedBox(width: 10),
+                      Text('Booked Orders Master'),
+                    ],
+                  ),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'all_orders',
-                child: Row(
-                  children: [
-                    Icon(Icons.receipt_long_rounded, size: 18, color: Color(0xFF1E3A8A)),
-                    SizedBox(width: 10),
-                    Text('All Booked Orders (By Staff)'),
-                  ],
-                ),
-              ),
               if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true) ...[
                 const PopupMenuItem(
                   value: 'live_map',
@@ -599,7 +566,6 @@ class HomeDashboardScreen extends StatelessWidget {
                   ),
                 ),
               ],
-
               const PopupMenuItem(
                 value: 'bank_info',
                 child: Row(
@@ -675,1099 +641,993 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async => provider.syncAllWithCloud(notify: true),
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Date Indicator & Business Pills Row
-              Row(
-                children: [
-                  InkWell(
-                    onTap: () => _pickDate(context),
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppTheme.border),
+      body: Column(
+        children: [
+          // 1. Integrated Sub-Header Control Bar (Segmented Firm Switcher + Compact Date + Sync)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: Row(
+              children: [
+                // Compact Segmented Firm Pill
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.subtleSurface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Row(
+                      children: [
+                        _buildFirmTabPill(
+                          label: 'All',
+                          isSelected: provider.filterBusiness == null,
+                          activeColor: AppTheme.primary,
+                          onTap: () => provider.setFilterBusiness(null),
+                        ),
+                        _buildFirmTabPill(
+                          label: 'Purva',
+                          isSelected: provider.filterBusiness == 'Purva Enterprises',
+                          activeColor: AppTheme.purvaPrimary,
+                          onTap: () => provider.setFilterBusiness('Purva Enterprises'),
+                        ),
+                        _buildFirmTabPill(
+                          label: 'Manas',
+                          isSelected: provider.filterBusiness == 'Manas Sales',
+                          activeColor: AppTheme.manasPrimary,
+                          onTap: () => provider.setFilterBusiness('Manas Sales'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Date Pill
+                InkWell(
+                  onTap: () => _pickDate(context),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isToday ? AppTheme.subtleSurface : AppTheme.chequeColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isToday ? AppTheme.border : AppTheme.chequeColor.withValues(alpha: 0.35),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.calendar_month_outlined,
-                            size: 15,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 13,
+                          color: isToday ? AppTheme.primary : AppTheme.chequeColor,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          isToday ? 'Today' : DateFormat('dd MMM').format(provider.selectedDate),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
                             color: isToday ? AppTheme.primary : AppTheme.chequeColor,
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isToday ? 'Today: $dateStr' : dateStr,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: isToday ? AppTheme.primary : AppTheme.chequeColor,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            InkWell(
-                              onTap: () async {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Syncing data with cloud across devices...'),
-                                    duration: Duration(seconds: 1),
-                                  ),
-                                );
-                                final ok = await provider.syncAllWithCloud(notify: true);
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(ok
-                                          ? 'Synced: ${provider.collections.length} collections, ${provider.pendingBills.length} bills, ${provider.allShops.length} outlets!'
-                                          : 'Offline cache active: will sync when connected'),
-                                      backgroundColor: ok ? const Color(0xFF059669) : Colors.blueGrey,
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                }
-                              },
-                              borderRadius: BorderRadius.circular(6),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: provider.isCloudConnected
-                                      ? const Color(0xFF10B981).withValues(alpha: 0.1)
-                                      : Colors.white,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: provider.isCloudConnected
-                                        ? const Color(0xFF10B981).withValues(alpha: 0.3)
-                                        : AppTheme.border,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (provider.isSyncing)
-                                      const SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF059669)),
-                                        ),
-                                      )
-                                    else
-                                      Icon(
-                                        provider.isCloudConnected ? Icons.cloud_done : Icons.cloud_queue,
-                                        size: 14,
-                                        color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
-                                      ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      provider.isSyncing
-                                          ? 'Syncing...'
-                                          : (provider.isCloudConnected ? 'Cloud Synced' : 'Offline Mode'),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: provider.isCloudConnected ? const Color(0xFF059669) : Colors.blueGrey,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            if (!isToday) ...[
-                              const SizedBox(width: 4),
-                              TextButton(
-                                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                                onPressed: () => provider.setSelectedDate(DateTime.now()),
-                                child: const Text('Today', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                              ),
-                            ],
-                          ],
+                ),
+                const SizedBox(width: 6),
+
+                // Compact Live Cloud Sync Status Button
+                InkWell(
+                  onTap: () async {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Syncing data across devices...'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                    final ok = await provider.syncAllWithCloud(notify: true);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(ok
+                              ? 'Synced ${provider.collections.length} collections & ${provider.pendingBills.length} bills'
+                              : 'Offline cache active'),
+                          backgroundColor: ok ? AppTheme.manasPrimary : AppTheme.textSecondary,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Tooltip(
+                    message: provider.isCloudConnected ? 'Cloud Synced' : 'Offline Cache',
+                    child: Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: provider.isCloudConnected
+                            ? AppTheme.manasLight
+                            : AppTheme.subtleSurface,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: provider.isCloudConnected
+                              ? AppTheme.manasBorder
+                              : AppTheme.border,
                         ),
                       ),
+                      child: provider.isSyncing
+                          ? const SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.manasPrimary),
+                              ),
+                            )
+                          : Icon(
+                              provider.isCloudConnected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                              size: 16,
+                              color: provider.isCloudConnected ? AppTheme.manasPrimary : AppTheme.textSecondary,
+                            ),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // High-Visibility Dual-Firm Quick Switcher Bar
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.border),
-                ),
-                child: Row(
-                  children: [
-                    // All Firms / Combined Option
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => provider.setFilterBusiness(null),
-                        borderRadius: BorderRadius.circular(7),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: provider.filterBusiness == null ? AppTheme.primary : Colors.transparent,
-                            borderRadius: BorderRadius.circular(7),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                'ALL FIRMS',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5,
-                                  color: provider.filterBusiness == null ? Colors.white : Colors.blueGrey.shade800,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  CurrencyFormatter.format(purvaTotal + manasTotal),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: provider.filterBusiness == null ? Colors.white70 : Colors.blueGrey.shade600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-
-                    // Purva Enterprises Option
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => provider.setFilterBusiness('Purva Enterprises'),
-                        borderRadius: BorderRadius.circular(7),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: provider.filterBusiness == 'Purva Enterprises'
-                                ? AppTheme.purvaPrimary
-                                : AppTheme.purvaLight,
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(
-                              color: provider.filterBusiness == 'Purva Enterprises'
-                                  ? AppTheme.purvaPrimary
-                                  : AppTheme.purvaBorder,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                'PURVA',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5,
-                                  color: provider.filterBusiness == 'Purva Enterprises'
-                                      ? Colors.white
-                                      : AppTheme.purvaText,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  CurrencyFormatter.format(purvaTotal),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: provider.filterBusiness == 'Purva Enterprises'
-                                        ? Colors.white70
-                                        : AppTheme.purvaText,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-
-                    // Manas Sales Option
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => provider.setFilterBusiness('Manas Sales'),
-                        borderRadius: BorderRadius.circular(7),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            color: provider.filterBusiness == 'Manas Sales'
-                                ? AppTheme.manasPrimary
-                                : AppTheme.manasLight,
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(
-                              color: provider.filterBusiness == 'Manas Sales'
-                                  ? AppTheme.manasPrimary
-                                  : AppTheme.manasBorder,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                'MANAS',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5,
-                                  color: provider.filterBusiness == 'Manas Sales'
-                                      ? Colors.white
-                                      : AppTheme.manasText,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  CurrencyFormatter.format(manasTotal),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: provider.filterBusiness == 'Manas Sales'
-                                        ? Colors.white70
-                                        : AppTheme.manasText,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Side-by-Side Dual-Firm Overview Cards (shown when 'All' is active)
-              if (provider.filterBusiness == null) ...[
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    // Purva Card
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => provider.setFilterBusiness('Purva Enterprises'),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.purvaBorder, width: 1.5),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.purvaLight,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Text(
-                                      'PURVA',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w900,
-                                        color: AppTheme.purvaText,
-                                      ),
-                                    ),
-                                  ),
-                                  const Icon(Icons.arrow_forward_ios, size: 10, color: AppTheme.purvaText),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'Purva',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                CurrencyFormatter.format(purvaTotal),
-                                style: AppTheme.tabularAmount(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.purvaPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    '$purvaBills ${purvaBills == 1 ? 'bill' : 'bills'}',
-                                    style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
-                                  ),
-                                  Text(
-                                    purvaPending > 0
-                                        ? 'Due: ${CurrencyFormatter.format(purvaPending)}'
-                                        : 'All Paid',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: purvaPending > 0 ? AppTheme.balanceDueColor : AppTheme.cashColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-
-                    // Manas Card
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => provider.setFilterBusiness('Manas Sales'),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.manasBorder, width: 1.5),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.manasLight,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Text(
-                                      'MANAS',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w900,
-                                        color: AppTheme.manasText,
-                                      ),
-                                    ),
-                                  ),
-                                  const Icon(Icons.arrow_forward_ios, size: 10, color: AppTheme.manasText),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'Manas',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                CurrencyFormatter.format(manasTotal),
-                                style: AppTheme.tabularAmount(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.manasPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    '$manasBills ${manasBills == 1 ? 'bill' : 'bills'}',
-                                    style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
-                                  ),
-                                  Text(
-                                    manasPending > 0
-                                        ? 'Due: ${CurrencyFormatter.format(manasPending)}'
-                                        : 'All Paid',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: manasPending > 0 ? AppTheme.balanceDueColor : AppTheme.cashColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
+            ),
+          ),
+          const Divider(height: 1),
 
-              // Active Firm Indicator (when a single firm is selected)
-              if (provider.filterBusiness != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: AppTheme.getBusinessLightColor(provider.filterBusiness!),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.getBusinessBorderColor(provider.filterBusiness!)),
+          // Scrollable Editorial Dashboard Body
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async => provider.syncAllWithCloud(notify: true),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                children: [
+                  // 2. Signature White Architectural Summary Card
+                  _buildEditorialSummaryCard(
+                    context: context,
+                    provider: provider,
+                    heroColor: heroColor,
+                    heroLabel: heroLabel,
+                    dateStr: dateStr,
+                    isToday: isToday,
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                  // 3. Firm Split Bar (Compact side-by-side when viewing All Firms)
+                  if (provider.filterBusiness == null) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildFirmMiniSplitCard(
+                            tag: 'PURVA',
+                            amount: purvaTotal,
+                            pendingAmount: purvaPending,
+                            billsCount: purvaBills,
+                            accentColor: AppTheme.purvaPrimary,
+                            onTap: () => provider.setFilterBusiness('Purva Enterprises'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildFirmMiniSplitCard(
+                            tag: 'MANAS',
+                            amount: manasTotal,
+                            pendingAmount: manasPending,
+                            billsCount: manasBills,
+                            accentColor: AppTheme.manasPrimary,
+                            onTap: () => provider.setFilterBusiness('Manas Sales'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+
+                  // 4. Primary Split CTA Row (Single-Line Sharp Buttons, Zero Subheadings)
+                  Row(
                     children: [
                       Expanded(
-                        child: Row(
-                          children: [
-                            Icon(Icons.business_outlined, size: 16, color: AppTheme.getBusinessColor(provider.filterBusiness!)),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                'Active Firm: ${provider.filterBusiness}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                  color: AppTheme.getBusinessColor(provider.filterBusiness!),
-                                ),
+                        child: Material(
+                          color: heroColor,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const MakeCollectionScreen()),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.payments_outlined, color: Colors.white, size: 19),
+                                  SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      'Collection',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14.5,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      InkWell(
-                        onTap: () => provider.setFilterBusiness(null),
-                        child: Row(
-                          children: [
-                            Text(
-                              'Show Both',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.getBusinessColor(provider.filterBusiness!),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Material(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFF0284C7), width: 1.4),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.receipt_long_outlined, color: Color(0xFF0284C7), size: 19),
+                                  const SizedBox(width: 7),
+                                  const Flexible(
+                                    child: Text(
+                                      'Pending Bills',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: AppTheme.primary,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE0F2FE),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '${provider.pendingBills.where((b) => !b.isPaid).length}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF0369A1),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 4),
-                            Icon(Icons.close, size: 14, color: AppTheme.getBusinessColor(provider.filterBusiness!)),
-                          ],
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
-              const SizedBox(height: 12),
+                  const SizedBox(height: 18),
 
-              // Executive Financial Overview Hero Card (dynamically branded by firm)
-              Container(
-                decoration: BoxDecoration(
-                  color: heroColor,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: heroColor.withValues(alpha: 0.25),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+                  // 5. Grouped Field Operations List Card (Zero Subheadings, Clean Hairlines)
+                  const CleanSectionHeader(title: 'Field Tools'),
+                  const SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildToolRow(
+                          title: 'Upload Bill',
+                          icon: Icons.add_photo_alternate_outlined,
+                          color: const Color(0xFF0284C7),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const AddPendingBillScreen()),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1),
+                        _buildToolRow(
+                          title: 'Statement',
+                          icon: Icons.assessment_outlined,
+                          color: const Color(0xFF4F46E5),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const StatementScreen()),
+                            );
+                          },
+                        ),
+                        const Divider(height: 1),
+                        _buildToolRow(
+                          title: 'Cash Counter',
+                          icon: Icons.payments_rounded,
+                          color: AppTheme.manasPrimary,
+                          trailingValue: CurrencyFormatter.format(provider.totalCash),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CashHandoverScreen(
+                                  initialDate: provider.selectedDate,
+                                  initialBusiness: provider.filterBusiness,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        if (canAssign) ...[
+                          const Divider(height: 1),
+                          _buildToolRow(
+                            title: 'Assign Routes',
+                            icon: Icons.alt_route_rounded,
+                            color: AppTheme.purvaPrimary,
+                            onTap: () => _showAssignRouteDialog(context),
+                          ),
+                        ],
+                        if (canTally) ...[
+                          const Divider(height: 1),
+                          _buildToolRow(
+                            title: 'Tally Hub',
+                            icon: Icons.swap_horiz_rounded,
+                            color: const Color(0xFF0284C7),
+                            onTap: () => TallySyncDialog.show(context),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // 6. Recent Receipts Feed on Home Dashboard
+                  CleanSectionHeader(
+                    title: isToday ? 'Recent Collections' : 'Receipts ($dateStr)',
+                    trailing: TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: onNavigateToCollections,
+                      child: Text(
+                        'View Ledger',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: heroColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildRecentReceiptsCard(context, todayCollections, heroColor),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFirmTabPill({
+    required String label,
+    required bool isSelected,
+    required Color activeColor,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(7),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? activeColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: isSelected ? Colors.white : AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEditorialSummaryCard({
+    required BuildContext context,
+    required CollectionProvider provider,
+    required Color heroColor,
+    required String heroLabel,
+    required String dateStr,
+    required bool isToday,
+  }) {
+    final total = provider.totalCollection;
+    final cash = provider.totalCash;
+    final upi = provider.totalUpi;
+    final cheque = provider.totalCheque;
+    final netBank = provider.totalNetBanking;
+    final invoiced = provider.totalBillAmount;
+    final recoveryPct = invoiced > 0 ? ((total / invoiced) * 100).clamp(0, 100).round() : 0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Top Accent Stripe
+          Container(height: 4, color: heroColor),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        heroLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.7,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: onNavigateToCollections,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: heroColor.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${provider.totalBillsCount} ${provider.totalBillsCount == 1 ? 'Invoice' : 'Invoices'}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: heroColor,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Icon(Icons.arrow_forward_ios, size: 9, color: heroColor),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.all(20.0),
+                const SizedBox(height: 8),
+
+                // Main Metric Row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: onNavigateToCollections,
+                        child: Text(
+                          CurrencyFormatter.format(total),
+                          style: AppTheme.tabularAmount(
+                            color: AppTheme.primary,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.7,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (invoiced > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.manasLight,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.manasBorder),
+                        ),
+                        child: Text(
+                          '$recoveryPct% Collected',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.manasText,
+                          ),
+                        ),
+                      )
+                    else
+                      Text(
+                        isToday ? dateStr : DateFormat('dd MMM yyyy').format(provider.selectedDate),
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Stacked Payment Mode Ratio Bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: SizedBox(
+                    height: 6,
+                    child: total <= 0
+                        ? Container(color: AppTheme.subtleSurface)
+                        : Row(
+                            children: [
+                              if (cash > 0)
+                                Expanded(
+                                  flex: (cash * 100).round().clamp(1, 1000000),
+                                  child: Container(color: AppTheme.cashColor),
+                                ),
+                              if (upi > 0)
+                                Expanded(
+                                  flex: (upi * 100).round().clamp(1, 1000000),
+                                  child: Container(color: AppTheme.upiColor),
+                                ),
+                              if (cheque > 0)
+                                Expanded(
+                                  flex: (cheque * 100).round().clamp(1, 1000000),
+                                  child: Container(color: AppTheme.chequeColor),
+                                ),
+                              if (netBank > 0)
+                                Expanded(
+                                  flex: (netBank * 100).round().clamp(1, 1000000),
+                                  child: Container(color: AppTheme.netBankingColor),
+                                ),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // 3-Column Financial KPI Strip
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: onNavigateToCollections,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Invoiced', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                CurrencyFormatter.format(invoiced),
+                                style: AppTheme.tabularAmount(fontSize: 14, color: AppTheme.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Container(width: 1, height: 28, color: AppTheme.border),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
+                          );
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Pending Due', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                CurrencyFormatter.format(provider.totalBalanceDue),
+                                style: AppTheme.tabularAmount(
+                                  fontSize: 14,
+                                  color: provider.totalBalanceDue > 0 ? AppTheme.balanceDueColor : AppTheme.cashColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Container(width: 1, height: 28, color: AppTheme.border),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: onNavigateToRoutes,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Visited', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${provider.uniqueShopsCount}',
+                              style: AppTheme.tabularAmount(fontSize: 14, color: AppTheme.primary),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Footer 4-Column Payment Modes Strip (Integrated Inside Hero Card)
+          Container(
+            decoration: const BoxDecoration(
+              color: AppTheme.background,
+              border: Border(top: BorderSide(color: AppTheme.border)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            child: Row(
+              children: [
+                _buildInlineModeStat(
+                  label: 'Cash',
+                  amount: cash,
+                  color: AppTheme.cashColor,
+                  onTap: () => _showModeBillsSheet(context, provider, PaymentMode.cash),
+                ),
+                _buildInlineModeStat(
+                  label: 'UPI',
+                  amount: upi,
+                  color: AppTheme.upiColor,
+                  onTap: () => _showModeBillsSheet(context, provider, PaymentMode.upi),
+                ),
+                _buildInlineModeStat(
+                  label: 'Cheque',
+                  amount: cheque,
+                  color: AppTheme.chequeColor,
+                  onTap: () => _showModeBillsSheet(context, provider, PaymentMode.cheque),
+                ),
+                _buildInlineModeStat(
+                  label: 'Bank',
+                  amount: netBank,
+                  color: AppTheme.netBankingColor,
+                  onTap: () => _showModeBillsSheet(context, provider, PaymentMode.netBanking),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineModeStat({
+    required String label,
+    required double amount,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  CurrencyFormatter.format(amount),
+                  style: AppTheme.tabularAmount(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: amount > 0 ? AppTheme.primary : AppTheme.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFirmMiniSplitCard({
+    required String tag,
+    required double amount,
+    required double pendingAmount,
+    required int billsCount,
+    required Color accentColor,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(
-                          child: Text(
-                            heroLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.blueGrey.shade200,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.0,
-                            ),
+                        Text(
+                          tag,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                            color: accentColor,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        InkWell(
-                          onTap: onNavigateToCollections,
-                          borderRadius: BorderRadius.circular(4),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${provider.totalBillsCount} ${provider.totalBillsCount == 1 ? 'Invoice' : 'Invoices'}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.arrow_forward_ios, size: 9, color: Colors.white70),
-                              ],
-                            ),
-                          ),
+                        Text(
+                          '$billsCount ${billsCount == 1 ? 'bill' : 'bills'}',
+                          style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    InkWell(
-                      onTap: onNavigateToCollections,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              CurrencyFormatter.format(provider.totalCollection),
-                              style: AppTheme.tabularAmount(
-                                color: Colors.white,
-                                fontSize: 30,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.6,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6.0),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Ledger',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.8),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.white.withValues(alpha: 0.8)),
-                                ],
-                              ),
-                            ),
-                          ],
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            CurrencyFormatter.format(amount),
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTheme.tabularAmount(fontSize: 14, color: AppTheme.primary),
+                          ),
                         ),
-                      ),
+                        if (pendingAmount > 0)
+                          Text(
+                            'Due ${CurrencyFormatter.format(pendingAmount)}',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.balanceDueColor,
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 14),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-                    // Financial metrics row: Total Invoiced vs Pending Balance vs Visited
+  Widget _buildToolRow({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    String? trailingValue,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primary,
+                ),
+              ),
+            ),
+            if (trailingValue != null) ...[
+              Text(
+                trailingValue,
+                style: AppTheme.tabularAmount(fontSize: 13, fontWeight: FontWeight.w700, color: color),
+              ),
+              const SizedBox(width: 6),
+            ],
+            const Icon(Icons.chevron_right_rounded, size: 18, color: AppTheme.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentReceiptsCard(BuildContext context, List<dynamic> collections, Color heroColor) {
+    if (collections.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.subtleSurface,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.receipt_outlined, size: 18, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'No receipts recorded for this date yet',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final recent = List.of(collections)..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+    final visible = recent.take(3).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < visible.length; i++) ...[
+            if (i > 0) const Divider(height: 1),
+            InkWell(
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => CollectionDetailsDialog(collection: visible[i]),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                child: Row(
+                  children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: AppTheme.manasLight,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Row(
+                      child: const Icon(Icons.check_circle_outline_rounded, size: 16, color: AppTheme.manasPrimary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: InkWell(
-                              onTap: onNavigateToCollections,
-                              borderRadius: BorderRadius.circular(4),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        'Invoiced',
-                                        style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(width: 2),
-                                      const Icon(Icons.arrow_forward_ios, size: 8, color: Colors.white70),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      CurrencyFormatter.format(provider.totalBillAmount),
-                                      style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                          Text(
+                            visible[i].shopName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primary),
                           ),
-                          Container(width: 1, height: 26, margin: const EdgeInsets.symmetric(horizontal: 6), color: Colors.white.withValues(alpha: 0.2)),
-                          Expanded(
-                            child: InkWell(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const PendingBillsListScreen(),
-                                  ),
-                                );
-                              },
-                              borderRadius: BorderRadius.circular(4),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          'Pending Due',
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 2),
-                                      const Icon(Icons.arrow_forward_ios, size: 9, color: Colors.white70),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      CurrencyFormatter.format(provider.totalBalanceDue),
-                                      style: TextStyle(
-                                        color: provider.totalBalanceDue > 0 ? const Color(0xFFFCA5A5) : Colors.greenAccent,
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Container(width: 1, height: 26, margin: const EdgeInsets.symmetric(horizontal: 6), color: Colors.white.withValues(alpha: 0.2)),
-                          Expanded(
-                            child: InkWell(
-                              onTap: onNavigateToRoutes,
-                              borderRadius: BorderRadius.circular(4),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        'Visited',
-                                        style: TextStyle(color: Colors.blueGrey.shade300, fontSize: 11, fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(width: 2),
-                                      const Icon(Icons.arrow_forward_ios, size: 8, color: Colors.white70),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${provider.uniqueShopsCount}',
-                                    style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700),
-                                  ),
-                                ],
-                              ),
-                            ),
+                          Text(
+                            'Bill #${visible[i].billNumber} • ${visible[i].paymentMode.displayName}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                           ),
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-
-
-
-              // Executive Operations CTA: Book Store Orders (single-line, zero subheadings)
-              Material(
-                color: AppTheme.purvaPrimary,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () {
-                    if (onNavigateToOrders != null) {
-                      onNavigateToOrders!();
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
-                      );
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.store_mall_directory_rounded, color: Colors.white, size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'Book Store Orders',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.1,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            'Orders',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 14),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Sleek, Minimal Payment Modes Overview Container
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.pie_chart_outline_rounded, size: 16, color: Color(0xFF475569)),
-                            SizedBox(width: 6),
-                            Text(
-                              'PAYMENT MODES',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.6,
-                                color: Color(0xFF475569),
-                              ),
-                            ),
-                          ],
-                        ),
-                        InkWell(
-                          onTap: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
-                          borderRadius: BorderRadius.circular(6),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.qr_code_2_rounded, size: 14, color: AppTheme.primary),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Scan QR',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.primary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                    const SizedBox(height: 10),
-
-                    // Minimal 4-Mode Compact Tiles (Cash, UPI, Cheque, Net Banking)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildMinimalModePill(
-                            label: 'Cash',
-                            amount: provider.totalCash,
-                            icon: Icons.payments_outlined,
-                            accentColor: AppTheme.cashColor,
-                            billsCount: todayCollections.where((c) => c.paymentMode == PaymentMode.cash).length,
-                            onTap: () => _showModeBillsSheet(context, provider, PaymentMode.cash),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildMinimalModePill(
-                            label: 'UPI',
-                            amount: provider.totalUpi,
-                            icon: Icons.qr_code_2_rounded,
-                            accentColor: AppTheme.upiColor,
-                            billsCount: todayCollections.where((c) => c.paymentMode == PaymentMode.upi).length,
-                            onTap: () => _showModeBillsSheet(context, provider, PaymentMode.upi),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildMinimalModePill(
-                            label: 'Cheque',
-                            amount: provider.totalCheque,
-                            icon: Icons.fact_check_outlined,
-                            accentColor: AppTheme.chequeColor,
-                            billsCount: todayCollections.where((c) => c.paymentMode == PaymentMode.cheque).length,
-                            onTap: () => _showModeBillsSheet(context, provider, PaymentMode.cheque),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildMinimalModePill(
-                            label: 'Net Banking',
-                            amount: provider.totalNetBanking,
-                            icon: Icons.account_balance_outlined,
-                            accentColor: AppTheme.netBankingColor,
-                            billsCount: todayCollections.where((c) => c.paymentMode == PaymentMode.netBanking).length,
-                            onTap: () => _showModeBillsSheet(context, provider, PaymentMode.netBanking),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    Text(
+                      CurrencyFormatter.format(visible[i].collectedAmount),
+                      style: AppTheme.tabularAmount(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppTheme.manasPrimary),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Primary Field Operations Section (Zero Subheadings)
-              CleanSectionHeader(
-                title: 'Quick Actions',
-                trailing: TextButton.icon(
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: const Icon(Icons.add_photo_alternate_outlined, size: 15, color: AppTheme.purvaPrimary),
-                  label: const Text(
-                    'Upload Bill',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.purvaPrimary),
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AddPendingBillScreen()),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              // Primary Collection & Pending Bills
-              Row(
-                children: [
-                  Expanded(
-                    child: CleanActionTile(
-                      title: 'Pending Bills',
-                      icon: Icons.receipt_long_outlined,
-                      badge: '${provider.pendingBills.where((b) => !b.isPaid).length} Active',
-                      color: const Color(0xFF0284C7),
-                      filled: true,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: CleanActionTile(
-                      title: 'Collection',
-                      icon: Icons.payments_outlined,
-                      badge: 'Record',
-                      color: AppTheme.manasPrimary,
-                      filled: true,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const MakeCollectionScreen()),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              // Operations 2-Column Tiles (Single-Line Labels)
-              Row(
-                children: [
-                  Expanded(
-                    child: CleanActionTile(
-                      title: 'Statement',
-                      icon: Icons.assessment_outlined,
-                      color: const Color(0xFF4F46E5),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const StatementScreen()),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: CleanActionTile(
-                      title: 'Cash Counter',
-                      badge: CurrencyFormatter.format(provider.totalCash),
-                      icon: Icons.payments_rounded,
-                      color: const Color(0xFF059669),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CashHandoverScreen(
-                              initialDate: provider.selectedDate,
-                              initialBusiness: provider.filterBusiness,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: CleanActionTile(
-                      title: 'Book Orders',
-                      icon: Icons.store_mall_directory_rounded,
-                      color: AppTheme.purvaPrimary,
-                      onTap: () {
-                        if (onNavigateToOrders != null) {
-                          onNavigateToOrders!();
-                        } else {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: CleanActionTile(
-                      title: 'All Orders',
-                      badge: '${provider.salesOrders.length}',
-                      icon: Icons.receipt_long_rounded,
-                      color: AppTheme.purvaPrimary,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const AllOrdersScreen()),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              if (canAssign || canTally) ...[
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    if (canAssign)
-                      Expanded(
-                        child: CleanActionTile(
-                          title: 'Assign Routes',
-                          icon: Icons.alt_route_rounded,
-                          color: AppTheme.manasPrimary,
-                          onTap: () {
-                            _showAssignRouteDialog(context);
-                          },
-                        ),
-                      ),
-                    if (canAssign && canTally) const SizedBox(width: 10),
-                    if (canTally)
-                      Expanded(
-                        child: CleanActionTile(
-                          title: 'Tally Hub',
-                          icon: Icons.swap_horiz_rounded,
-                          color: const Color(0xFF0284C7),
-                          onTap: () {
-                            TallySyncDialog.show(context);
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -2022,92 +1882,6 @@ class HomeDashboardScreen extends StatelessWidget {
               child: const Text('Save Routes', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMinimalModePill({
-    required String label,
-    required double amount,
-    required IconData icon,
-    required Color accentColor,
-    required int billsCount,
-    VoidCallback? onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Center(
-                  child: Icon(icon, size: 15, color: accentColor),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.blueGrey.shade700,
-                          ),
-                        ),
-                        if (billsCount > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: accentColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              '$billsCount',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w800,
-                                color: accentColor,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      CurrencyFormatter.format(amount),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: amount > 0 ? const Color(0xFF0F172A) : Colors.blueGrey.shade400,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
