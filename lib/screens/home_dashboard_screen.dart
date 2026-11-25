@@ -3,8 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../utils/theme.dart';
-import '../utils/quick_alert.dart';
-import '../models/user_model.dart';
+import '../widgets/assign_routes_dialog.dart';
 import '../providers/collection_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/payment_mode.dart';
@@ -328,6 +327,7 @@ class HomeDashboardScreen extends StatelessWidget {
     final currentUser = auth.currentUser;
     final canAssign = currentUser?.canAssignRoutes == true;
     final canTally = currentUser?.canAccessTally == true;
+    final canOrders = currentUser?.canAccessOrders == true;
 
     if (provider.isLoading) {
       return const Scaffold(
@@ -421,11 +421,13 @@ class HomeDashboardScreen extends StatelessWidget {
                               border: Border.all(color: AppTheme.manasBorder),
                             ),
                             child: Text(
-                              (context.watch<AuthProvider>().currentUser?.isSuperAdmin == true)
+                              (currentUser?.isSuperAdmin == true)
                                   ? 'SUPER ADMIN'
-                                  : (context.watch<AuthProvider>().currentUser?.isOffice == true
+                                  : (currentUser?.isOffice == true
                                       ? 'OFFICE'
-                                      : 'SALES & COLL'),
+                                      : (currentUser?.isCollection == true
+                                          ? 'COLLECTION'
+                                          : 'SALES & COLL')),
                               style: const TextStyle(
                                 fontSize: 8.5,
                                 fontWeight: FontWeight.w800,
@@ -496,7 +498,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
                 );
               } else if (val == 'assign_driver_routes') {
-                _showAssignRouteDialog(context);
+                AssignRoutesDialog.show(context);
               } else if (val == 'bank_info') {
                 FirmDetailsHelper.showQuickShareModal(
                   context,
@@ -540,28 +542,28 @@ class HomeDashboardScreen extends StatelessWidget {
               }
             },
             itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'book_orders',
-                child: Row(
-                  children: [
-                    Icon(Icons.store_mall_directory_rounded, size: 18, color: Color(0xFF1E3A8A)),
-                    SizedBox(width: 10),
-                    Text('Book Store Orders'),
-                  ],
+              if (context.read<AuthProvider>().currentUser?.canAccessOrders == true) ...[
+                const PopupMenuItem(
+                  value: 'book_orders',
+                  child: Row(
+                    children: [
+                      Icon(Icons.store_mall_directory_rounded, size: 18, color: Color(0xFF1E3A8A)),
+                      SizedBox(width: 10),
+                      Text('Book Orders'),
+                    ],
+                  ),
                 ),
-              ),
-              if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true ||
-                  context.read<AuthProvider>().currentUser?.isOffice == true)
                 const PopupMenuItem(
                   value: 'all_orders',
                   child: Row(
                     children: [
                       Icon(Icons.receipt_long_rounded, size: 18, color: Color(0xFF1E3A8A)),
                       SizedBox(width: 10),
-                      Text('Booked Orders Master'),
+                      Text('All Booked Orders'),
                     ],
                   ),
                 ),
+              ],
               if (context.read<AuthProvider>().currentUser?.isSuperAdmin == true) ...[
                 const PopupMenuItem(
                   value: 'live_map',
@@ -1003,13 +1005,54 @@ class HomeDashboardScreen extends StatelessWidget {
                             );
                           },
                         ),
+                        if (canOrders) ...[
+                          const Divider(height: 1),
+                          _buildToolRow(
+                            title: 'Book Orders',
+                            icon: Icons.shopping_bag_outlined,
+                            color: AppTheme.purvaPrimary,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          _buildToolRow(
+                            title: 'All Booked Orders',
+                            icon: Icons.receipt_long_outlined,
+                            color: AppTheme.purvaPrimary,
+                            trailingValue: '${provider.salesOrders.length}',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const AllOrdersScreen()),
+                              );
+                            },
+                          ),
+                        ],
+                        if (currentUser?.isSuperAdmin == true) ...[
+                          const Divider(height: 1),
+                          _buildToolRow(
+                            title: 'Live Staff Tracking',
+                            icon: Icons.share_location_outlined,
+                            color: const Color(0xFF2563EB),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+                              );
+                            },
+                          ),
+                        ],
                         if (canAssign) ...[
                           const Divider(height: 1),
                           _buildToolRow(
                             title: 'Assign Routes',
                             icon: Icons.alt_route_rounded,
-                            color: AppTheme.purvaPrimary,
-                            onTap: () => _showAssignRouteDialog(context),
+                            color: AppTheme.manasPrimary,
+                            onTap: () => AssignRoutesDialog.show(context),
                           ),
                         ],
                         if (canTally) ...[
@@ -1648,261 +1691,6 @@ class HomeDashboardScreen extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-
-  void _showAssignRouteDialog(BuildContext context) {
-    final auth = context.read<AuthProvider>();
-    final currentUser = auth.currentUser;
-    if (currentUser == null || !currentUser.canAssignRoutes) return;
-
-    final provider = context.read<CollectionProvider>();
-    final allRoutes = provider.allRoutes;
-
-    final drivers = auth.users.where((u) => u.isDriver).toList();
-    final orderStaff = auth.users.where((u) => u.isOrder).toList();
-    final salesmen = auth.users.where((u) => u.isSalesman).toList();
-    final collectionStaff = auth.users.where((u) => u.role == UserRole.salesman || u.role == UserRole.office).toList();
-    final vehicles = provider.vehicles.isNotEmpty ? provider.vehicles : ['MH 14 EM 4724', 'MH 14 GH 1122'];
-
-    String roleOption = 'driver'; // 'driver', 'order', 'sales', 'collection'
-    String selectedVehicle = vehicles.first;
-    UserModel? selectedUser = drivers.isNotEmpty ? drivers.first : (orderStaff.isNotEmpty ? orderStaff.first : (salesmen.isNotEmpty ? salesmen.first : null));
-    List<String> selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
-
-    showDialog(
-      context: context,
-      builder: (dlgCtx) => StatefulBuilder(
-        builder: (ctx, setDlgState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0D9488).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.alt_route_rounded, color: Color(0xFF0D9488), size: 22),
-              ),
-              const SizedBox(width: 10),
-              const Text('Assign Route', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. Role Dropdown
-                  DropdownButtonFormField<String>(
-                    initialValue: roleOption,
-                    decoration: InputDecoration(
-                      labelText: 'Role',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'driver', child: Text('Driver')),
-                      DropdownMenuItem(value: 'order', child: Text('Order Man')),
-                      DropdownMenuItem(value: 'sales', child: Text('Sales')),
-                      DropdownMenuItem(value: 'collection', child: Text('Collection')),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) {
-                        setDlgState(() {
-                          roleOption = val;
-                          if (roleOption == 'driver') {
-                            selectedUser = drivers.isNotEmpty ? drivers.first : null;
-                          } else if (roleOption == 'order') {
-                            selectedUser = orderStaff.isNotEmpty ? orderStaff.first : null;
-                          } else if (roleOption == 'sales') {
-                            selectedUser = salesmen.isNotEmpty ? salesmen.first : null;
-                          } else {
-                            selectedUser = collectionStaff.isNotEmpty ? collectionStaff.first : (salesmen.isNotEmpty ? salesmen.first : null);
-                          }
-                          selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 2. Cascading Selectors
-                  if (roleOption == 'driver') ...[
-                    // Vehicle Selector
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedVehicle,
-                      decoration: InputDecoration(
-                        labelText: 'Vehicle',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      items: vehicles.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                      onChanged: (v) {
-                        if (v != null) setDlgState(() => selectedVehicle = v);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    // Driver Selector
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedUser?.id,
-                      decoration: InputDecoration(
-                        labelText: 'Driver Name',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      items: drivers.map((d) => DropdownMenuItem(value: d.id, child: Text(d.name))).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDlgState(() {
-                            selectedUser = drivers.firstWhere((d) => d.id == val);
-                            selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                  ] else if (roleOption == 'order') ...[
-                    // Order Man Selector
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedUser?.id,
-                      decoration: InputDecoration(
-                        labelText: 'Order Man Name',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      items: orderStaff.map((o) => DropdownMenuItem(value: o.id, child: Text(o.name))).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDlgState(() {
-                            selectedUser = orderStaff.firstWhere((o) => o.id == val);
-                            selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                  ] else if (roleOption == 'sales') ...[
-                    // Salesman Selector
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedUser?.id,
-                      decoration: InputDecoration(
-                        labelText: 'Salesman Name',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      items: salesmen.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDlgState(() {
-                            selectedUser = salesmen.firstWhere((s) => s.id == val);
-                            selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                  ] else ...[
-                    // Collection Staff Selector
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedUser?.id,
-                      decoration: InputDecoration(
-                        labelText: 'Collection Staff Name',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      items: collectionStaff.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDlgState(() {
-                            selectedUser = collectionStaff.firstWhere((s) => s.id == val);
-                            selectedRoutes = List<String>.from(selectedUser?.assignedRouteIds ?? []);
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  // 3. Assign Route Checkboxes
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Routes (${selectedRoutes.length}/${allRoutes.length})',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      TextButton(
-                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                        onPressed: () {
-                          setDlgState(() {
-                            if (selectedRoutes.length == allRoutes.length) {
-                              selectedRoutes.clear();
-                            } else {
-                              selectedRoutes = allRoutes.map((r) => r.id).toList();
-                            }
-                          });
-                        },
-                        child: Text(selectedRoutes.length == allRoutes.length ? 'Clear All' : 'Select All'),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 8),
-                  if (allRoutes.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Text('No routes created yet.'),
-                    )
-                  else
-                    ...allRoutes.map((route) {
-                      final isChecked = selectedRoutes.contains(route.id);
-                      final outletCount = provider.shops.where((s) => s.routeId == route.id).length;
-                      return CheckboxListTile(
-                        dense: true,
-                        value: isChecked,
-                        activeColor: const Color(0xFF0D9488),
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(route.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                        subtitle: Text('$outletCount outlets'),
-                        onChanged: (val) {
-                          setDlgState(() {
-                            if (val == true) {
-                              selectedRoutes.add(route.id);
-                            } else {
-                              selectedRoutes.remove(route.id);
-                            }
-                          });
-                        },
-                      );
-                    }),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dlgCtx), child: const Text('Cancel')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0D9488),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () async {
-                Navigator.pop(dlgCtx);
-                if (selectedUser != null) {
-                  final updated = selectedUser!.copyWith(assignedRouteIds: selectedRoutes);
-                  await auth.saveUser(updated);
-                  provider.setCurrentUser(auth.currentUser);
-                  if (context.mounted) {
-                    QuickAlert.success(context, 'Assigned ${selectedRoutes.length} routes to ${selectedUser!.name}!');
-                  }
-                }
-              },
-              child: const Text('Save Routes', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
       ),
     );
   }

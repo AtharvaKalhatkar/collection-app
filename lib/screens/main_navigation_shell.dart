@@ -91,64 +91,48 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
     final screens = <Widget>[
       HomeDashboardScreen(
-        onNavigateToRoutes: () => _navigateToTab(isSuperAdmin ? 2 : 3),
+        onNavigateToRoutes: () => _navigateToTab(2),
         onNavigateToCollections: () => _navigateToTab(1),
-        onNavigateToOrders: isSuperAdmin
+        onNavigateToOrders: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+        ),
+        onNavigateToProfile: () => _navigateToTab(3),
+        onNavigateToTracking: isSuperAdmin
             ? () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                  MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
                 )
-            : () => _navigateToTab(2),
-        onNavigateToProfile: () => _navigateToTab(4),
-        onNavigateToTracking: isSuperAdmin ? () => _navigateToTab(3) : null,
+            : null,
       ),
       CollectionsListScreen(
         onBackToOverview: () => _navigateToTab(0),
       ),
-      if (!isSuperAdmin)
-        OrderDashboardScreen(
-          isEmbedded: true,
-          onBackToOverview: () => _navigateToTab(0),
-        ),
       RoutesShopsScreen(
         onBackToOverview: () => _navigateToTab(0),
       ),
-      if (isSuperAdmin)
-        const LiveStaffLocationsScreen(),
       ProfileScreen(
         onBackToOverview: () => _navigateToTab(0),
       ),
     ];
 
-    final destinations = <NavigationDestination>[
-      const NavigationDestination(
+    const destinations = <NavigationDestination>[
+      NavigationDestination(
         icon: Icon(Icons.analytics_outlined),
         selectedIcon: Icon(Icons.analytics, color: AppTheme.primary),
         label: 'Overview',
       ),
-      const NavigationDestination(
+      NavigationDestination(
         icon: Icon(Icons.receipt_long_outlined),
         selectedIcon: Icon(Icons.receipt_long, color: AppTheme.primary),
         label: 'Ledger',
       ),
-      if (!isSuperAdmin)
-        const NavigationDestination(
-          icon: Icon(Icons.store_mall_directory_outlined),
-          selectedIcon: Icon(Icons.store_mall_directory, color: AppTheme.primary),
-          label: 'Orders',
-        ),
-      const NavigationDestination(
+      NavigationDestination(
         icon: Icon(Icons.storefront_outlined),
         selectedIcon: Icon(Icons.storefront, color: AppTheme.primary),
         label: 'Outlets',
       ),
-      if (isSuperAdmin)
-        const NavigationDestination(
-          icon: Icon(Icons.share_location_outlined),
-          selectedIcon: Icon(Icons.share_location, color: AppTheme.primary),
-          label: 'Tracking',
-        ),
-      const NavigationDestination(
+      NavigationDestination(
         icon: Icon(Icons.person_outline),
         selectedIcon: Icon(Icons.person, color: AppTheme.primary),
         label: 'Profile',

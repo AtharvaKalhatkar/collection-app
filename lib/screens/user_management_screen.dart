@@ -361,9 +361,19 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                           value: UserRole.salesman,
                           child: Row(
                             children: [
-                              Icon(Icons.payments_outlined, size: 17, color: Color(0xFFD97706)),
+                              Icon(Icons.two_wheeler_outlined, size: 17, color: Color(0xFFD97706)),
                               SizedBox(width: 8),
                               Text('Sales & Collection'),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: UserRole.collection,
+                          child: Row(
+                            children: [
+                              Icon(Icons.payments_outlined, size: 17, color: Color(0xFF059669)),
+                              SizedBox(width: 8),
+                              Text('Collection'),
                             ],
                           ),
                         ),
@@ -383,7 +393,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                             children: [
                               Icon(Icons.shopping_bag_outlined, size: 17, color: Color(0xFF7C3AED)),
                               SizedBox(width: 8),
-                              Text('Order Booking'),
+                              Text('Sales / Order Booking'),
                             ],
                           ),
                         ),
@@ -448,8 +458,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                               selectedRole == UserRole.driver
                                   ? 'Driver will ONLY see pending delivery bills and shops for selected routes.'
                                   : selectedRole == UserRole.order
-                                      ? 'Order man will ONLY see assigned route outlets and book orders on map.'
-                                      : 'Salesman will ONLY see assigned route outlets, pending bills & collections.',
+                                      ? 'Sales login will ONLY see assigned route outlets and book orders on map.'
+                                      : selectedRole == UserRole.collection
+                                          ? 'Collection login will ONLY see assigned route pending bills, outlets & collections.'
+                                          : 'Staff will ONLY see assigned route outlets, pending bills, orders & collections.',
                               style: const TextStyle(fontSize: 11, color: Color(0xFF166534)),
                             ),
                             const SizedBox(height: 8),
@@ -816,9 +828,11 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                       const SizedBox(width: 6),
                       _buildRoleFilterChip('Admin', UserRole.superAdmin, Icons.admin_panel_settings_outlined),
                       const SizedBox(width: 6),
-                      _buildRoleFilterChip('Sales', UserRole.salesman, Icons.payments_outlined),
+                      _buildRoleFilterChip('Sales & Coll', UserRole.salesman, Icons.two_wheeler_outlined),
                       const SizedBox(width: 6),
-                      _buildRoleFilterChip('Order', UserRole.order, Icons.shopping_bag_outlined),
+                      _buildRoleFilterChip('Collection', UserRole.collection, Icons.payments_outlined),
+                      const SizedBox(width: 6),
+                      _buildRoleFilterChip('Sales', UserRole.order, Icons.shopping_bag_outlined),
                       const SizedBox(width: 6),
                       _buildRoleFilterChip('Driver', UserRole.driver, Icons.local_shipping_outlined),
                       const SizedBox(width: 6),
@@ -877,6 +891,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                         case UserRole.salesman:
                           badgeColor = const Color(0xFFD97706);
                           roleIcon = Icons.two_wheeler_rounded;
+                          break;
+                        case UserRole.collection:
+                          badgeColor = const Color(0xFF059669);
+                          roleIcon = Icons.payments_rounded;
                           break;
                         case UserRole.driver:
                           badgeColor = const Color(0xFF0284C7);

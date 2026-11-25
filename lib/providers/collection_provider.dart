@@ -219,10 +219,16 @@ class CollectionProvider extends ChangeNotifier {
 
   void setCurrentUser(UserModel? user) {
     _currentUser = user;
+    _filteredCollectionsCache = null;
     if (user != null) {
       _salesmanName = user.name;
       _salesmanPhone = user.phone;
       _salesmanRole = user.roleDisplayName;
+      if (_shouldFilterByAssignedRoutes &&
+          _filterRouteId != null &&
+          !user.assignedRouteIds.contains(_filterRouteId)) {
+        _filterRouteId = null;
+      }
     }
     notifyListeners();
   }
@@ -1302,8 +1308,9 @@ class CollectionProvider extends ChangeNotifier {
       // Staff filter & user isolation scoping
       if (staffOverride != null && staffOverride.isNotEmpty && staffOverride != 'All') {
         if (!_matchesStaff(c.salesmanName, staffOverride)) return false;
-      } else if (_currentUser != null && (_currentUser!.isSalesman || _currentUser!.isDriver)) {
-        // Salesman or Driver only sees their own collections
+      } else if (_currentUser != null &&
+          (_currentUser!.isSalesman || _currentUser!.isCollection || _currentUser!.isDriver)) {
+        // Field staff (Salesman, Collection, Driver) only sees their own collections
         final isOwn = _matchesStaff(c.salesmanName, _currentUser!.name) ||
             _matchesStaff(c.salesmanName, _currentUser!.phone);
         if (!isOwn) return false;

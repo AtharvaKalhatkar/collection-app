@@ -2,6 +2,7 @@ enum UserRole {
   superAdmin,
   office,
   salesman,
+  collection,
   driver,
   order,
 }
@@ -45,16 +46,19 @@ class UserModel {
         return 'Office Staff';
       case UserRole.salesman:
         return 'Sales & Collection';
+      case UserRole.collection:
+        return 'Collection';
       case UserRole.driver:
         return 'Delivery Driver';
       case UserRole.order:
-        return 'Order Booking';
+        return 'Sales / Order Booking';
     }
   }
 
   bool get isSuperAdmin => role == UserRole.superAdmin;
   bool get isOffice => role == UserRole.office;
   bool get isSalesman => role == UserRole.salesman;
+  bool get isCollection => role == UserRole.collection;
   bool get isDriver => role == UserRole.driver;
   bool get isOrder => role == UserRole.order;
 
@@ -66,15 +70,16 @@ class UserModel {
 
   String get plainName => cleanPlainName(name);
 
-  /// Only Super Admin and Akash have permission to assign routes to other staff
-  bool get canAssignRoutes {
-    if (isSuperAdmin) return true;
-    final clean = normalizePhone(phone);
-    if (clean == '9921977636' || clean == '9309862465') return true;
-    final lower = plainName.toLowerCase().trim();
-    if (lower == 'akash' || lower.startsWith('akash ')) return true;
-    return false;
-  }
+  /// Super Admin, Collection, Sales & Collection, and Sales (Order) logins can assign routes.
+  /// Office Staff and Delivery Driver cannot assign routes.
+  bool get canAssignRoutes =>
+      isSuperAdmin || isSalesman || isCollection || isOrder;
+
+  /// Order Booking & Booked Orders visibility:
+  /// Enabled for Super Admin, Office Staff, Sales & Collection, and Sales (Order).
+  /// Hidden for dedicated Collection-only and Driver logins.
+  bool get canAccessOrders =>
+      isSuperAdmin || isOffice || isSalesman || isOrder;
 
   /// Only Super Admin and Office Staff have permission to access Tally integration Hub
   bool get canAccessTally => isSuperAdmin || isOffice;
@@ -190,6 +195,8 @@ class UserModel {
       parsedRole = UserRole.superAdmin;
     } else if (roleStr == 'office') {
       parsedRole = UserRole.office;
+    } else if (roleStr == 'collection') {
+      parsedRole = UserRole.collection;
     } else if (roleStr == 'driver') {
       parsedRole = UserRole.driver;
     } else if (roleStr == 'order' || roleStr == 'order_man' || roleStr == 'orderman' || roleStr.contains('order')) {

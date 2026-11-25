@@ -12,6 +12,8 @@ import 'cash_handover_screen.dart';
 import 'user_management_screen.dart';
 import 'live_staff_locations_screen.dart';
 import 'order_dashboard_screen.dart';
+import 'all_orders_screen.dart';
+import '../widgets/assign_routes_dialog.dart';
 import '../services/bill_ocr_service.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -933,30 +935,77 @@ class ProfileScreen extends StatelessWidget {
             const Divider(height: 1),
           ],
 
-          // Book Store Orders
-          Material(
-            color: Colors.transparent,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.purvaLight,
-                  borderRadius: BorderRadius.circular(8),
+          // Book Store Orders & All Booked Orders (Super Admin, Office, Sales & Collection, Sales)
+          if (currentUser == null || currentUser.canAccessOrders) ...[
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.purvaLight,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.shopping_bag_outlined, color: AppTheme.purvaPrimary, size: 20),
                 ),
-                child: const Icon(Icons.store_mall_directory_outlined, color: AppTheme.purvaPrimary, size: 20),
+                title: const Text('Book Orders', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
+                  );
+                },
               ),
-              title: const Text('Book Store Orders', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const OrderDashboardScreen()),
-                );
-              },
             ),
-          ),
-          const Divider(height: 1),
+            const Divider(height: 1),
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.purvaLight,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.receipt_long_outlined, color: AppTheme.purvaPrimary, size: 20),
+                ),
+                title: const Text('All Booked Orders', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AllOrdersScreen()),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+
+          // Assign Routes (Super Admin, Collection, Sales & Collection, Sales)
+          if (currentUser?.canAssignRoutes == true) ...[
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.manasLight,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.alt_route_rounded, color: AppTheme.manasPrimary, size: 20),
+                ),
+                title: const Text('Assign Routes', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
+                onTap: () => AssignRoutesDialog.show(context),
+              ),
+            ),
+            const Divider(height: 1),
+          ],
 
           // 2. Collection Statement & Ledger
           Material(

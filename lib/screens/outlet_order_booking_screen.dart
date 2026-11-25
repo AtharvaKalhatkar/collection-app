@@ -11,6 +11,7 @@ import '../providers/collection_provider.dart';
 import '../services/godown_billing_pdf_service.dart';
 import '../services/order_catalog_service.dart';
 import '../utils/currency_formatter.dart';
+import '../utils/image_compress_helper.dart';
 import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
 
@@ -45,6 +46,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
 
   final TextEditingController _notesController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -275,21 +277,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                   height: 250,
                   width: double.infinity,
                   color: const Color(0xFFF1F5F9),
-                  child: product.photoUrl != null && product.photoUrl!.isNotEmpty
-                      ? Image.network(
-                          product.photoUrl!,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => const Icon(
-                            Icons.inventory_2_outlined,
-                            size: 80,
-                            color: Color(0xFF94A3B8),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.inventory_2_outlined,
-                          size: 80,
-                          color: Color(0xFF94A3B8),
-                        ),
+                  child: _buildProductImage(product, iconSize: 80, fit: BoxFit.contain),
                 ),
               ),
               const SizedBox(height: 12),
@@ -309,7 +297,27 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
     );
   }
 
+  Widget _buildProductImage(CatalogProduct product, {double iconSize = 26, BoxFit fit = BoxFit.cover}) {
+    final base64Bytes = ImageCompressHelper.safeBase64Decode(product.photoBase64);
+    if (base64Bytes != null) {
+      return Image.memory(
+        base64Bytes,
+        fit: fit,
+        errorBuilder: (_, _, _) => Icon(Icons.inventory_2_outlined, size: iconSize, color: const Color(0xFF94A3B8)),
+      );
+    }
+    if (product.photoUrl != null && product.photoUrl!.isNotEmpty) {
+      return Image.network(
+        product.photoUrl!,
+        fit: fit,
+        errorBuilder: (_, _, _) => Icon(Icons.inventory_2_outlined, size: iconSize, color: const Color(0xFF94A3B8)),
+      );
+    }
+    return Icon(Icons.inventory_2_outlined, size: iconSize, color: const Color(0xFF94A3B8));
+  }
+
   Future<void> _submitOrder() async {
+    if (_isSubmitting) return;
     if (_cart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -320,124 +328,132 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
       return;
     }
 
-    final auth = context.read<AuthProvider>();
-    final provider = context.read<CollectionProvider>();
-    final user = auth.currentUser;
-    final salesmanName = user != null ? user.plainName : 'Staff';
+    setState(() => _isSubmitting = true);
 
-    final isEditing = widget.existingOrder != null;
-    final orderNum = isEditing
-        ? widget.existingOrder!.orderNumber
-        : 'ORD-${DateFormat('yyMMdd').format(widget.selectedDate)}-${1000 + Random().nextInt(9000)}';
-    final orderId = isEditing
-        ? widget.existingOrder!.id
-        : 'ord-${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      final auth = context.read<AuthProvider>();
+      final provider = context.read<CollectionProvider>();
+      final user = auth.currentUser;
+      final salesmanName = user != null ? user.plainName : 'Staff';
 
-    final order = SalesOrderModel(
-      id: orderId,
-      orderNumber: orderNum,
-      firm: _selectedFirm,
-      routeId: widget.shop.routeId,
-      routeName: widget.shop.routeName,
-      shopId: widget.shop.id,
-      shopName: widget.shop.name,
-      shopMobile: widget.shop.mobileNumber,
-      salesmanName: isEditing ? widget.existingOrder!.salesmanName : salesmanName,
-      orderDate: isEditing ? widget.existingOrder!.orderDate : widget.selectedDate,
-      items: _cart.values.toList(),
-      totalAmount: _totalAmount,
-      totalQuantity: _totalAllUnits,
-      notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
-      status: 'Booked',
-    );
+      final isEditing = widget.existingOrder != null;
+      final orderNum = isEditing
+          ? widget.existingOrder!.orderNumber
+          : 'ORD-${DateFormat('yyMMdd').format(widget.selectedDate)}-${1000 + Random().nextInt(9000)}';
+      final orderId = isEditing
+          ? widget.existingOrder!.id
+          : 'ord-${DateTime.now().millisecondsSinceEpoch}';
 
-    await provider.addSalesOrder(order);
+      final order = SalesOrderModel(
+        id: orderId,
+        orderNumber: orderNum,
+        firm: _selectedFirm,
+        routeId: widget.shop.routeId,
+        routeName: widget.shop.routeName,
+        shopId: widget.shop.id,
+        shopName: widget.shop.name,
+        shopMobile: widget.shop.mobileNumber,
+        salesmanName: isEditing ? widget.existingOrder!.salesmanName : salesmanName,
+        orderDate: isEditing ? widget.existingOrder!.orderDate : widget.selectedDate,
+        items: _cart.values.toList(),
+        totalAmount: _totalAmount,
+        totalQuantity: _totalAllUnits,
+        notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+        status: isEditing ? widget.existingOrder!.status : 'Booked',
+      );
 
-    if (!mounted) return;
+      await provider.addSalesOrder(order);
 
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 28),
-            const SizedBox(width: 8),
-            Text(isEditing ? 'Order Updated!' : 'Order Booked!', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Order #$orderNum', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(height: 4),
-            Text('Outlet: ${widget.shop.name}', style: const TextStyle(fontSize: 13, color: Color(0xFF334155))),
-            Text('Total Amount: ${CurrencyFormatter.format(_totalAmount)}',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-            Text('Items: ${_cart.length} lines • $_totalCases CS, $_totalUnits UT',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.picture_as_pdf_rounded, size: 16, color: Color(0xFFDC2626)),
-                    label: const Text('Godown Slip'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      side: const BorderSide(color: Color(0xFFDC2626)),
-                      foregroundColor: const Color(0xFFDC2626),
-                    ),
-                    onPressed: () {
-                      GodownBillingPdfService.previewOrSharePdf(
-                        context,
-                        orders: [order],
-                        salesmanName: order.salesmanName,
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
-                    label: const Text('WhatsApp'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                    onPressed: () => _shareOrderWhatsApp(order),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () {
-              Navigator.pop(dialogCtx);
-              Navigator.pop(context, true); // return to retailer list
-            },
-            child: const Text('Done / Back to Outlets', style: TextStyle(color: Colors.white)),
+      if (!mounted) return;
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 28),
+              const SizedBox(width: 8),
+              Text(isEditing ? 'Order Updated!' : 'Order Booked!', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
           ),
-        ],
-      ),
-    );
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Order #$orderNum', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              const SizedBox(height: 4),
+              Text('Outlet: ${widget.shop.name}', style: const TextStyle(fontSize: 13, color: Color(0xFF334155))),
+              Text('Total Amount: ${CurrencyFormatter.format(_totalAmount)}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              Text('Items: ${_cart.length} lines • $_totalCases CS, $_totalUnits UT',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.picture_as_pdf_rounded, size: 16, color: Color(0xFFDC2626)),
+                      label: const Text('Godown Slip'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        side: const BorderSide(color: Color(0xFFDC2626)),
+                        foregroundColor: const Color(0xFFDC2626),
+                      ),
+                      onPressed: () {
+                        GodownBillingPdfService.previewOrSharePdf(
+                          context,
+                          orders: [order],
+                          salesmanName: order.salesmanName,
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
+                      label: const Text('WhatsApp'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onPressed: () => _shareOrderWhatsApp(order),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                Navigator.pop(context, true); // return to retailer list
+              },
+              child: const Text('Done / Back to Outlets', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   Future<void> _shareOrderWhatsApp(SalesOrderModel order) async {
     final buffer = StringBuffer();
-    buffer.writeln('📦 *NEW SALES ORDER - PURVA ENTERPRISES*');
+    buffer.writeln('*NEW SALES ORDER - ${order.firm.toUpperCase()}*');
     buffer.writeln('--------------------------------');
     buffer.writeln('Order #: ${order.orderNumber}');
     buffer.writeln('Date: ${DateFormat('dd MMM yyyy').format(order.orderDate)}');
@@ -511,29 +527,33 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
               indicatorWeight: 2.5,
               labelColor: AppTheme.purvaPrimary,
               unselectedLabelColor: AppTheme.textSecondary,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 6),
               tabs: [
                 const Tab(text: 'Order'),
                 const Tab(text: 'Outlet Info'),
                 Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Submit Order'),
-                      if (_cart.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: const BoxDecoration(
-                            color: AppTheme.balanceDueColor,
-                            shape: BoxShape.circle,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Submit Order'),
+                        if (_cart.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: const BoxDecoration(
+                              color: AppTheme.balanceDueColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${_cart.length}',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
                           ),
-                          child: Text(
-                            '${_cart.length}',
-                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                          ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -549,27 +569,12 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           _buildSubmitOrderTab(),
         ],
       ),
-      floatingActionButton: _tabController.index == 0 && _cart.isNotEmpty
-          ? FloatingActionButton.extended(
-              backgroundColor: const Color(0xFF16A34A),
-              foregroundColor: Colors.white,
-              onPressed: () => _tabController.animateTo(2),
-              icon: const Icon(Icons.shopping_cart_checkout_rounded),
-              label: Text('${_cart.length} in Cart • ₹${_totalAmount.toStringAsFixed(0)}'),
-            )
-          : null,
       bottomNavigationBar: _tabController.index == 0
           ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: const BoxDecoration(
                 color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, -3),
-                  ),
-                ],
+                border: Border(top: BorderSide(color: AppTheme.border)),
               ),
               child: SafeArea(
                 child: Row(
@@ -579,26 +584,17 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                'CS: $_totalCases',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF334155)),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'UT: $_totalUnits',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF334155)),
-                              ),
-                            ],
+                          Text(
+                            'CS: $_totalCases  •  UT: $_totalUnits  •  ${_cart.length} lines',
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.textSecondary),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'Total: ${CurrencyFormatter.format(_totalAmount)}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
+                            style: AppTheme.tabularAmount(
+                              fontWeight: FontWeight.w800,
                               fontSize: 16,
-                              color: Color(0xFF0F172A),
+                              color: AppTheme.primary,
                             ),
                           ),
                         ],
@@ -606,17 +602,20 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1D4ED8),
+                        backgroundColor: _cart.isNotEmpty ? AppTheme.purvaPrimary : AppTheme.textSecondary,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                       onPressed: () => _tabController.animateTo(2),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Text('Next / Review', style: TextStyle(fontWeight: FontWeight.bold)),
-                          SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_rounded, size: 16),
+                          Text(
+                            _cart.isEmpty ? 'Review' : 'Review (${_cart.length})',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_forward_rounded, size: 16),
                         ],
                       ),
                     ),
@@ -932,12 +931,13 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
         Expanded(
           child: products.isEmpty
               ? Center(
-                  child: Padding(
+                  child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.inventory_2_outlined, size: 64, color: Color(0xFFCBD5E1)),
+                        const Icon(Icons.inventory_2_outlined, size: 56, color: Color(0xFFCBD5E1)),
                         const SizedBox(height: 12),
                         Text(
                           'No products found in $_selectedCompany > $_selectedCategory',
@@ -1042,19 +1042,10 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(color: Colors.grey.shade300),
                                   ),
-                                  child: product.photoUrl != null && product.photoUrl!.isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: Image.network(
-                                            product.photoUrl!,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) => const Icon(
-                                              Icons.inventory_2_outlined,
-                                              color: Color(0xFF94A3B8),
-                                            ),
-                                          ),
-                                        )
-                                      : const Icon(Icons.inventory_2_outlined, color: Color(0xFF94A3B8)),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: _buildProductImage(product, iconSize: 24, fit: BoxFit.cover),
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -1326,20 +1317,24 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
   Widget _buildSubmitOrderTab() {
     if (_cart.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.shopping_cart_outlined, size: 64, color: Color(0xFFCBD5E1)),
-            const SizedBox(height: 12),
-            const Text('Your cart is empty', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF475569))),
-            const SizedBox(height: 6),
-            const Text('Add products from the Order tab to submit.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => _tabController.animateTo(0),
-              child: const Text('Go to Products'),
-            ),
-          ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.shopping_cart_outlined, size: 56, color: Color(0xFFCBD5E1)),
+              const SizedBox(height: 12),
+              const Text('Your cart is empty', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF475569))),
+              const SizedBox(height: 6),
+              const Text('Add products from the Order tab to submit.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => _tabController.animateTo(0),
+                child: const Text('Go to Products'),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1400,12 +1395,28 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                     ),
                     const SizedBox(height: 6),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('UT Price: ₹${item.rate.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                        Text('CS: ${item.cases}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        Text('UT: ${item.units}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        Text('Subtotal: ₹${item.subtotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                        Expanded(
+                          child: Text(
+                            '₹${item.rate.toStringAsFixed(2)}/UT  •  ${item.cases} CS  •  ${item.units} UT',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '₹${item.subtotal.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -1458,13 +1469,19 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1D4ED8),
+                        backgroundColor: AppTheme.purvaPrimary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      onPressed: _submitOrder,
-                      child: const Text('Submit Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      onPressed: _isSubmitting ? null : _submitOrder,
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Text('Submit Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                   ],
                 ),

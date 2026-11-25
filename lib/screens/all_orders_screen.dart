@@ -30,6 +30,7 @@ class AllOrdersScreen extends StatefulWidget {
 
 class _AllOrdersScreenState extends State<AllOrdersScreen> {
   late DateTime _selectedDate;
+  String _selectedFirm = 'ALL';
   String _selectedStaff = 'ALL';
   String _selectedRouteId = 'ALL';
   String _searchQuery = '';
@@ -91,7 +92,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
 
   Future<void> _shareOnWhatsApp(SalesOrderModel order) async {
     final buffer = StringBuffer();
-    buffer.writeln('*PURVA ENTERPRISES - STORE ORDER*');
+    buffer.writeln('*${order.firm.toUpperCase()} - STORE ORDER*');
     buffer.writeln('--------------------------------');
     buffer.writeln('Order No: ${order.orderNumber}');
     buffer.writeln('Store: ${order.shopName}');
@@ -180,9 +181,13 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     final isToday = _isSameDay(_selectedDate, DateTime.now());
 
     // All orders matching selected date
-    final dateOrders = provider.salesOrders
+    var dateOrders = provider.salesOrders
         .where((o) => _isSameDay(o.orderDate, _selectedDate))
         .toList();
+
+    if (_selectedFirm != 'ALL') {
+      dateOrders = dateOrders.where((o) => o.firm == _selectedFirm).toList();
+    }
 
     // Collect distinct staff names who have orders or are order/sales users
     final Set<String> staffSet = {};
@@ -193,7 +198,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     }
     // Also add known staff from auth users
     for (final u in auth.users) {
-      if (u.isSalesman || u.isOrder || u.isSuperAdmin) {
+      if (u.canAccessOrders) {
         staffSet.add(u.plainName);
       }
     }
@@ -250,6 +255,7 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                 onPressed: () => TallySyncDialog.show(
                   context,
                   initialTabIndex: 0,
+                  initialFirm: _selectedFirm == 'ALL' ? null : _selectedFirm,
                 ),
               ),
             IconButton(
@@ -321,6 +327,27 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                   onPressed: () => _stepDate(1),
                 ),
               ],
+            ),
+          ),
+
+          // Firm Segmented Pill (All | Purva | Manas)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: AppTheme.subtleSurface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Row(
+                children: [
+                  _buildFirmFilterBtn('All Firms', 'ALL', AppTheme.primary),
+                  _buildFirmFilterBtn('Purva', 'Purva Enterprises', AppTheme.purvaPrimary),
+                  _buildFirmFilterBtn('Manas', 'Manas Sales', AppTheme.manasPrimary),
+                ],
+              ),
             ),
           ),
 
@@ -494,37 +521,27 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
             ),
           ),
 
-          // 4. Summary Strip
+          // 4. Clean White Executive Summary Strip
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.25),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              border: Border.all(color: AppTheme.border),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildSummaryCol('Orders', '${filteredOrders.length}'),
                 _buildSummaryDivider(),
-                _buildSummaryCol('Total Cases', '$totalCases CS'),
+                _buildSummaryCol('Cases', '$totalCases CS'),
                 _buildSummaryDivider(),
-                _buildSummaryCol('Loose Units', '$totalUnits UT'),
+                _buildSummaryCol('Units', '$totalUnits UT'),
                 _buildSummaryDivider(),
                 _buildSummaryCol('Weight', '${totalWeight.toStringAsFixed(1)} kg'),
                 _buildSummaryDivider(),
-                _buildSummaryCol('Total Value', CurrencyFormatter.format(totalAmount), isBoldVal: true),
+                _buildSummaryCol('Value', CurrencyFormatter.format(totalAmount), isBoldVal: true),
               ],
             ),
           ),
@@ -570,20 +587,49 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     );
   }
 
+  Widget _buildFirmFilterBtn(String label, String firmKey, Color activeColor) {
+    final isSelected = _selectedFirm == firmKey;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _selectedFirm = firmKey),
+        borderRadius: BorderRadius.circular(7),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? activeColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: isSelected ? Colors.white : AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSummaryCol(String label, String value, {bool isBoldVal = false}) {
     return Column(
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: Color(0xFFBFDBFE), fontWeight: FontWeight.w500),
+          style: const TextStyle(fontSize: 10.5, color: AppTheme.textSecondary, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 2),
         Text(
           value,
-          style: TextStyle(
+          style: AppTheme.tabularAmount(
             fontSize: isBoldVal ? 13 : 12.5,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            color: isBoldVal ? AppTheme.purvaPrimary : AppTheme.primary,
           ),
         ),
       ],
@@ -594,13 +640,19 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     return Container(
       width: 1,
       height: 24,
-      color: Colors.white.withValues(alpha: 0.2),
+      color: AppTheme.border,
     );
   }
 
   Widget _buildOrderCard(SalesOrderModel order) {
     final staffColor = _getStaffColor(order.salesmanName);
     final staffIcon = _getStaffIcon(order.salesmanName);
+    final isPurva = order.firm == 'Purva Enterprises';
+    final firmColor = isPurva ? AppTheme.purvaPrimary : AppTheme.manasPrimary;
+    final canUpdateStatus = context.read<AuthProvider>().currentUser?.canAccessTally == true;
+    final statusColor = order.status == 'Billed' || order.status == 'Delivered'
+        ? AppTheme.manasPrimary
+        : (order.status == 'Cancelled' ? AppTheme.balanceDueColor : AppTheme.purvaPrimary);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -631,9 +683,29 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: canUpdateStatus
+                  ? () => _showStatusPicker(order)
+                  : null,
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  order.status,
+                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: statusColor),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
             Text(
               CurrencyFormatter.format(order.totalAmount),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF16A34A)),
+              style: AppTheme.tabularAmount(fontWeight: FontWeight.w800, fontSize: 13.5, color: const Color(0xFF16A34A)),
             ),
           ],
         ),
@@ -641,6 +713,18 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
           padding: const EdgeInsets.only(top: 4.0),
           child: Row(
             children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: firmColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  isPurva ? 'PURVA' : 'MANAS',
+                  style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: firmColor),
+                ),
+              ),
+              const SizedBox(width: 5),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
@@ -792,6 +876,50 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _showStatusPicker(SalesOrderModel order) {
+    const statuses = ['Booked', 'Dispatched', 'Billed', 'Delivered', 'Cancelled'];
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Order Status • ${order.orderNumber}',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppTheme.primary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              for (final st in statuses)
+                ListTile(
+                  leading: Icon(
+                    order.status == st ? Icons.radio_button_checked : Icons.radio_button_off,
+                    color: order.status == st ? AppTheme.purvaPrimary : AppTheme.textSecondary,
+                  ),
+                  title: Text(st, style: TextStyle(fontWeight: order.status == st ? FontWeight.w700 : FontWeight.w500)),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await context.read<CollectionProvider>().updateSalesOrderStatus(order.id, st);
+                  },
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -382,8 +382,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   roleIcon = Icons.shopping_bag_outlined;
                                   chipColor = const Color(0xFF7C3AED);
                                 } else if (u.isSalesman) {
-                                  roleIcon = Icons.payments_outlined;
+                                  roleIcon = Icons.two_wheeler_outlined;
                                   chipColor = const Color(0xFFD97706);
+                                } else if (u.isCollection) {
+                                  roleIcon = Icons.payments_outlined;
+                                  chipColor = const Color(0xFF059669);
                                 } else {
                                   roleIcon = Icons.person_outline;
                                   chipColor = AppTheme.secondary;

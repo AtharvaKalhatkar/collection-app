@@ -15,6 +15,7 @@ import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
 import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
+import '../widgets/assign_routes_dialog.dart';
 import 'outlet_order_booking_screen.dart';
 import 'all_orders_screen.dart';
 
@@ -258,9 +259,9 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
     final provider = context.watch<CollectionProvider>();
     final user = auth.currentUser;
 
-    // Filter available routes for this user
+    // Filter available routes for this user whenever specific routes are assigned
     List<RouteModel> availableRoutes = provider.allRoutes;
-    if (user != null && !user.isSuperAdmin && !user.isOffice && user.assignedRouteIds.isNotEmpty) {
+    if (user != null && !user.isSuperAdmin && user.assignedRouteIds.isNotEmpty) {
       availableRoutes = provider.allRoutes
           .where((r) => user.assignedRouteIds.contains(r.id))
           .toList();
@@ -284,10 +285,11 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
         .where((s) => s.routeId == _selectedRouteId)
         .toList();
 
-    // Today's orders for this date
+    // Today's orders for this date (newest first so lookup matches latest order)
     final allDateOrders = provider.salesOrders
         .where((o) => _isSameDay(o.orderDate, _selectedDate))
-        .toList();
+        .toList()
+      ..sort((a, b) => b.orderDate.compareTo(a.orderDate));
 
     // Separate orders by staff: if non-admin/office, show only this user's orders in Orders tab
     final userDateOrders = (user != null && !user.isSuperAdmin && !user.isOffice)
@@ -352,6 +354,22 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
           ],
         ),
         actions: [
+          if (user?.canAssignRoutes == true)
+            IconButton(
+              icon: const Icon(Icons.alt_route_rounded, color: AppTheme.manasPrimary),
+              tooltip: 'Assign Routes',
+              onPressed: () => AssignRoutesDialog.show(context),
+            ),
+          IconButton(
+            icon: const Icon(Icons.list_alt_rounded, color: AppTheme.primary),
+            tooltip: 'All Booked Orders',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.add_box_outlined, color: AppTheme.purvaPrimary),
             tooltip: 'Add Product to Catalog',
@@ -1120,39 +1138,38 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             ],
           ),
         ),
-        if (context.watch<AuthProvider>().currentUser?.isOrder != true)
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: InkWell(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
-                );
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.filter_list_rounded, size: 16, color: Color(0xFF1E40AF)),
-                    SizedBox(width: 6),
-                    Text(
-                      'Filter Orders by Staff (Akash, Atharva, Order 1) →',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)),
-                    ),
-                  ],
-                ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
+              );
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFBFDBFE)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.filter_list_rounded, size: 16, color: Color(0xFF1E40AF)),
+                  SizedBox(width: 6),
+                  Text(
+                    'View All Booked Orders (By Staff)',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)),
+                  ),
+                ],
               ),
             ),
           ),
+        ),
         const Divider(height: 1),
 
         Expanded(
@@ -1294,7 +1311,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                               padding: const EdgeInsets.symmetric(vertical: 8),
                             ),
                             onPressed: () async {
-                              final text = '📦 *Order #${order.orderNumber}* for *${order.shopName}*\nTotal: ₹${order.totalAmount} (${order.totalCases} CS, ${order.totalLooseUnits} UT)';
+                              final text = '*Order #${order.orderNumber}* (${order.firm}) for *${order.shopName}*\nTotal: ₹${order.totalAmount} (${order.totalCases} CS, ${order.totalLooseUnits} UT)';
                               final url = Uri.parse('https://api.whatsapp.com/send?text=${Uri.encodeComponent(text)}');
                               try {
                                 await launchUrl(url, mode: LaunchMode.externalApplication);
