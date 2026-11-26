@@ -649,58 +649,87 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                       // UPI Quick Card
                       if (selectedMode == PaymentMode.upi) ...[
                         const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFBFDBFE)),
-                          ),
-                          child: Column(
-                            children: [
-                              Row(
+                        Builder(
+                          builder: (ctx) {
+                            final firmInfo = FirmDetailsHelper.getInfo(
+                              bill.businessName,
+                              bankHint: selectedBank,
+                            );
+                            final isManasCurrent = !isPurva && firmInfo.accountNumber == FirmDetailsHelper.manasCurrent.accountNumber;
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFBFDBFE)),
+                              ),
+                              child: Column(
                                 children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Image.memory(
-                                      isPurva ? QrData.purvaBytes : QrData.manasBytes,
-                                      width: 44,
-                                      height: 44,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.qr_code, size: 44),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '${isPurva ? "Purva" : "Manas"} UPI QR',
-                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                                  Row(
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: isManasCurrent
+                                            ? Image.asset(
+                                                'assets/images/qr_manas_sales.png',
+                                                width: 44,
+                                                height: 44,
+                                                fit: BoxFit.cover,
+                                              )
+                                            : Image.memory(
+                                                isPurva ? QrData.purvaBytes : QrData.manasBytes,
+                                                width: 44,
+                                                height: 44,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) => const Icon(Icons.qr_code, size: 44),
+                                              ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '${firmInfo.shortName} UPI QR (${firmInfo.accountType})',
+                                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                                            ),
+                                            Text(
+                                              'A/c No: ${firmInfo.accountNumber}',
+                                              style: const TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w800,
+                                                fontFamily: 'monospace',
+                                                color: Color(0xFF0F172A),
+                                              ),
+                                            ),
+                                            Text(
+                                              firmInfo.upiId,
+                                              style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
+                                            ),
+                                          ],
                                         ),
-                                        Text(
-                                          isPurva ? '8459671694@okbizaxis' : '9309862465@okbizaxis',
-                                          style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade700),
+                                      ),
+                                      ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppTheme.primary,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primary,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    icon: const Icon(Icons.fullscreen, size: 16),
-                                    onPressed: () => PaymentQrDialog.show(context, initialFirm: bill.businessName),
-                                    label: const Text('Show QR', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                        icon: const Icon(Icons.fullscreen, size: 16),
+                                        onPressed: () => PaymentQrDialog.show(
+                                          context,
+                                          initialFirm: bill.businessName,
+                                          initialBankHint: selectedBank,
+                                        ),
+                                        label: const Text('Show QR', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
                       ],
 
@@ -709,7 +738,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                         const SizedBox(height: 12),
                         Builder(
                           builder: (ctx) {
-                            final firmInfo = FirmDetailsHelper.getInfo(bill.businessName);
+                            final firmInfo = FirmDetailsHelper.getInfo(
+                              bill.businessName,
+                              bankHint: selectedBank,
+                            );
                             return Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
@@ -735,7 +767,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Bank: ${firmInfo.bankName} • A/c: ${firmInfo.accountNumber}',
+                                    'Bank: ${firmInfo.bankName} (${firmInfo.branch}) • A/c: ${firmInfo.accountNumber}',
                                     style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade800),
                                   ),
                                   Text(

@@ -851,7 +851,7 @@ class HomeDashboardScreen extends StatelessWidget {
                   ],
                   const SizedBox(height: 14),
 
-                  // 4. Primary Split CTA Row (Single-Line Sharp Buttons, Zero Subheadings)
+                  // 4. Primary Split CTA Row (Pending Bills Forward, Collection Backward)
                   Row(
                     children: [
                       Expanded(
@@ -863,25 +863,41 @@ class HomeDashboardScreen extends StatelessWidget {
                             onTap: () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (_) => const MakeCollectionScreen()),
+                                MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
                               );
                             },
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                              child: const Row(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.payments_outlined, color: Colors.white, size: 19),
-                                  SizedBox(width: 8),
-                                  Flexible(
+                                  const Icon(Icons.receipt_long_outlined, color: Colors.white, size: 19),
+                                  const SizedBox(width: 7),
+                                  const Flexible(
                                     child: Text(
-                                      'Collection',
+                                      'Pending Bills',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontWeight: FontWeight.w700,
-                                        fontSize: 14.5,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.22),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '${provider.pendingBills.where((b) => !b.isPaid).length}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
                                       ),
                                     ),
                                   ),
@@ -901,45 +917,29 @@ class HomeDashboardScreen extends StatelessWidget {
                             onTap: () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (_) => const PendingBillsListScreen()),
+                                MaterialPageRoute(builder: (_) => const MakeCollectionScreen()),
                               );
                             },
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFF0284C7), width: 1.4),
+                                border: Border.all(color: heroColor, width: 1.4),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.receipt_long_outlined, color: Color(0xFF0284C7), size: 19),
-                                  const SizedBox(width: 7),
-                                  const Flexible(
+                                  Icon(Icons.payments_outlined, color: heroColor, size: 19),
+                                  const SizedBox(width: 8),
+                                  Flexible(
                                     child: Text(
-                                      'Pending Bills',
+                                      'Collection',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        color: AppTheme.primary,
+                                        color: heroColor,
                                         fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE0F2FE),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      '${provider.pendingBills.where((b) => !b.isPaid).length}',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF0369A1),
+                                        fontSize: 14.5,
                                       ),
                                     ),
                                   ),

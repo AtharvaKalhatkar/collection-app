@@ -191,7 +191,9 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
               style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
             ),
             Text(
-              'Amount: ${CurrencyFormatter.format(order.totalAmount)} • ${order.totalCases} CS, ${order.totalLooseUnits} UT (${order.items.length} lines)',
+              order.totalAmount > 0
+                  ? 'Amount: ${CurrencyFormatter.format(order.totalAmount)} • ${order.totalCases} CS, ${order.totalLooseUnits} UT (${order.items.length} lines)'
+                  : '${order.totalCases} CS, ${order.totalLooseUnits} UT • ${order.items.length} lines',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
             ),
             const SizedBox(height: 14),
@@ -1078,7 +1080,9 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             if (orderForShop != null) ...[
               const SizedBox(height: 6),
               Text(
-                'Booked: ${CurrencyFormatter.format(orderForShop.totalAmount)} (${orderForShop.totalCases} CS, ${orderForShop.totalLooseUnits} UT)',
+                orderForShop.totalAmount > 0
+                    ? 'Booked: ${CurrencyFormatter.format(orderForShop.totalAmount)} (${orderForShop.totalCases} CS, ${orderForShop.totalLooseUnits} UT)'
+                    : 'Booked: ${orderForShop.totalCases} CS, ${orderForShop.totalLooseUnits} UT (${orderForShop.items.length} items)',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Color(0xFF15803D)),
               ),
             ],
@@ -1161,7 +1165,8 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
               _buildTransactionStat('Orders', '${dateOrders.length}'),
               _buildTransactionStat('Total Cases', '$totalDayCases CS'),
               _buildTransactionStat('Total Units', '$totalDayUnits UT'),
-              _buildTransactionStat('Total Amount', CurrencyFormatter.format(totalDayAmount)),
+              if (totalDayAmount > 0)
+                _buildTransactionStat('Total Amount', CurrencyFormatter.format(totalDayAmount)),
             ],
           ),
         ),
@@ -1282,8 +1287,10 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                               child: Text(it.productName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                             ),
                             Text('CS: ${it.cases}  UT: ${it.units}', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                            const SizedBox(width: 10),
-                            Text('₹${it.subtotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            if (it.subtotal > 0) ...[
+                              const SizedBox(width: 10),
+                              Text('₹${it.subtotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ],
                           ],
                         ),
                       );
@@ -1300,10 +1307,11 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                           'Total: ${order.totalCases} CS, ${order.totalLooseUnits} UT',
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
                         ),
-                        Text(
-                          CurrencyFormatter.format(order.totalAmount),
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                        ),
+                        if (order.totalAmount > 0)
+                          Text(
+                            CurrencyFormatter.format(order.totalAmount),
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -1344,9 +1352,17 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                                 ..writeln('Store: ${order.shopName} (${order.routeName})');
                               for (int i = 0; i < order.items.length; i++) {
                                 final it = order.items[i];
-                                buf.writeln('${i + 1}. ${it.productName} - ${it.cases} CS, ${it.units} UT (${CurrencyFormatter.format(it.subtotal)})');
+                                if (it.subtotal > 0) {
+                                  buf.writeln('${i + 1}. ${it.productName} - ${it.cases} CS, ${it.units} UT (${CurrencyFormatter.format(it.subtotal)})');
+                                } else {
+                                  buf.writeln('${i + 1}. ${it.productName} - ${it.cases} CS, ${it.units} UT');
+                                }
                               }
-                              buf.writeln('*Total: ${CurrencyFormatter.format(order.totalAmount)}* (${order.totalCases} CS, ${order.totalLooseUnits} UT)');
+                              buf.writeln(
+                                order.totalAmount > 0
+                                    ? '*Total: ${CurrencyFormatter.format(order.totalAmount)}* (${order.totalCases} CS, ${order.totalLooseUnits} UT)'
+                                    : '*Total: ${order.totalCases} CS, ${order.totalLooseUnits} UT (${order.items.length} items)*',
+                              );
                               if (order.notes != null && order.notes!.isNotEmpty) {
                                 buf.writeln('Notes: ${order.notes}');
                               }

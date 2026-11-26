@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/collection_provider.dart';
+import '../utils/firm_details.dart';
 import '../utils/theme.dart';
 import 'payment_qr_dialog.dart';
 
@@ -16,19 +17,14 @@ class FirmInfoDialog extends StatelessWidget {
   }
 
   void _copyFirmDetails(BuildContext context) {
-    const text = '''
-PURVA ENTERPRISES
-• Companies: Wipro, Fena, Funfood, Imami
-• Banks:
-  - Union Bank of India (UPI, Net Banking, Cheque)
-  - RSBL (Net Banking, Cheque)
+    final text = '''
+${FirmDetailsHelper.purva.formattedShareText}
 
-MANAS SALES
-• Companies: Racket, Imami, Dabar, Cadbury, Gowardhan
-• Banks:
-  - Central Bank of India (UPI, Net Banking, Cheque)
-''';
-    Clipboard.setData(const ClipboardData(text: text));
+${FirmDetailsHelper.manasCurrent.formattedShareText}
+
+${FirmDetailsHelper.manasCc.formattedShareText}
+'''.trim();
+    Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Row(
@@ -236,15 +232,12 @@ MANAS SALES
                     ),
                     const SizedBox(height: 4),
                     _buildBankRow(
-                      bank: 'Union Bank of India',
+                      bank: 'Union Bank of India (${FirmDetailsHelper.purva.branch})',
+                      accountNo: FirmDetailsHelper.purva.accountNumber,
+                      accountType: FirmDetailsHelper.purva.accountType,
+                      ifscCode: FirmDetailsHelper.purva.ifscCode,
                       modes: 'UPI • Net Banking • Cheque',
                       color: AppTheme.purvaPrimary,
-                    ),
-                    const SizedBox(height: 4),
-                    _buildBankRow(
-                      bank: 'RSBL',
-                      modes: 'Net Banking • Cheque',
-                      color: Colors.blueGrey.shade700,
                     ),
                   ],
                 ),
@@ -359,8 +352,20 @@ MANAS SALES
                     ),
                     const SizedBox(height: 4),
                     _buildBankRow(
-                      bank: 'Central Bank of India',
-                      modes: 'UPI • Net Banking • Cheque',
+                      bank: 'Central Bank of India (${FirmDetailsHelper.manasCurrent.branch})',
+                      accountNo: FirmDetailsHelper.manasCurrent.accountNumber,
+                      accountType: FirmDetailsHelper.manasCurrent.accountType,
+                      ifscCode: FirmDetailsHelper.manasCurrent.ifscCode,
+                      modes: 'QR 1 • UPI • NEFT',
+                      color: AppTheme.manasPrimary,
+                    ),
+                    const SizedBox(height: 6),
+                    _buildBankRow(
+                      bank: 'Central Bank of India (${FirmDetailsHelper.manasCc.branch})',
+                      accountNo: FirmDetailsHelper.manasCc.accountNumber,
+                      accountType: FirmDetailsHelper.manasCc.accountType,
+                      ifscCode: FirmDetailsHelper.manasCc.ifscCode,
+                      modes: 'QR 2 • UPI • NEFT',
                       color: AppTheme.manasPrimary,
                     ),
                   ],
@@ -406,32 +411,72 @@ MANAS SALES
 
   static Widget _buildBankRow({
     required String bank,
+    required String accountNo,
+    required String accountType,
+    required String ifscCode,
     required String modes,
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade300),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(Icons.account_balance, size: 15, color: color),
-              const SizedBox(width: 8),
-              Text(
-                bank,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF0F172A)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  bank,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF0F172A)),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  accountType,
+                  style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w800),
+                ),
               ),
             ],
           ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'A/c: $accountNo',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'monospace',
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              Text(
+                'IFSC: $ifscCode',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.blueGrey.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
           Text(
             modes,
-            style: TextStyle(fontSize: 10.5, color: Colors.blueGrey.shade600, fontWeight: FontWeight.w500),
+            style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade600, fontWeight: FontWeight.w500),
           ),
         ],
       ),

@@ -13,6 +13,7 @@ import '../providers/collection_provider.dart';
 import '../services/godown_billing_pdf_service.dart';
 import '../services/order_catalog_service.dart';
 import '../utils/currency_formatter.dart';
+import '../utils/image_compress_helper.dart';
 import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
 import '../utils/marathi_search_helper.dart';
@@ -350,8 +351,10 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${product.packing} • Rate: ${CurrencyFormatter.format(product.rate)}',
-                  style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13)),
+              Text(
+                '${product.packing} • 1 CS = ${product.unitsPerCase} UT${product.rate > 0 ? ' • Rate: ${CurrencyFormatter.format(product.rate)}' : ''}',
+                style: TextStyle(color: Colors.blueGrey.shade600, fontSize: 13),
+              ),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -581,7 +584,9 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                                           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                                         ),
                                         Text(
-                                          '${item.company} • ${item.packing} • ${CurrencyFormatter.format(item.rate)} / ${item.unit}',
+                                          item.rate > 0
+                                              ? '${item.company} • ${item.packing} • ${CurrencyFormatter.format(item.rate)} / ${item.unit}'
+                                              : '${item.company} • ${item.subcategory} • ${item.unit}',
                                           style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade600),
                                         ),
                                       ],
@@ -858,11 +863,17 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     for (int i = 0; i < order.items.length; i++) {
       final it = order.items[i];
       buffer.writeln('${i + 1}. *${it.productName}* (${it.packing})');
-      buffer.writeln('   👉 Qty: *${it.quantity} ${it.unit}* @ ${CurrencyFormatter.format(it.rate)} = ${CurrencyFormatter.format(it.subtotal)}');
+      if (it.rate > 0) {
+        buffer.writeln('   👉 Qty: *${it.quantity} ${it.unit}* @ ${CurrencyFormatter.format(it.rate)} = ${CurrencyFormatter.format(it.subtotal)}');
+      } else {
+        buffer.writeln('   👉 Qty: *${it.quantity} ${it.unit}*');
+      }
     }
     buffer.writeln('----------------------------------------');
     buffer.writeln('*TOTAL UNITS:* ${order.totalQuantity}');
-    buffer.writeln('*EST. INVOICE AMOUNT:* ${CurrencyFormatter.format(order.totalAmount)}');
+    if (order.totalAmount > 0) {
+      buffer.writeln('*EST. INVOICE AMOUNT:* ${CurrencyFormatter.format(order.totalAmount)}');
+    }
     if (order.notes != null && order.notes!.isNotEmpty) {
       buffer.writeln('📝 Special Instructions: *${order.notes}*');
     }
@@ -1233,7 +1244,9 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                                 return DropdownMenuItem<String>(
                                   value: p.id,
                                   child: Text(
-                                    '${p.name} (${p.packing}) - ${CurrencyFormatter.format(p.rate)}',
+                                    p.rate > 0
+                                        ? '${p.name} (${p.packing}) - ${CurrencyFormatter.format(p.rate)}'
+                                        : '${p.name} (${p.defaultUnit} • 1 CS = ${p.unitsPerCase})',
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 13),
                                   ),
@@ -1499,6 +1512,9 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
 
   // Individual Product Card with Unit and Stepper
   Widget _buildProductCard(CatalogProduct product, int qty, String currentUnit) {
+    final photoBytes = ImageCompressHelper.safeBase64Decode(product.photoBase64);
+    final hasPhoto = photoBytes != null || (product.photoUrl != null && product.photoUrl!.isNotEmpty);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -1516,6 +1532,24 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              if (hasPhoto) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    color: const Color(0xFFF8FAFC),
+                    child: photoBytes != null
+                        ? Image.memory(photoBytes, fit: BoxFit.cover)
+                        : Image.network(
+                            product.photoUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(Icons.inventory_2_outlined, size: 22, color: Colors.blueGrey),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               // Product Info
               Expanded(
                 child: Column(
@@ -1527,27 +1561,32 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${product.company} • ${product.category} • ${product.packing}',
+                      '${product.company} • ${product.category} (${product.subcategory}) • 1 CS = ${product.unitsPerCase} ${product.defaultUnit}',
                       style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          CurrencyFormatter.format(product.rate),
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF10B981)),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'MRP ${CurrencyFormatter.format(product.mrp)}',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: Colors.blueGrey.shade400,
-                            decoration: TextDecoration.lineThrough,
-                          ),
-                        ),
-                      ],
-                    ),
+                    if (product.rate > 0 || product.mrp > 0) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (product.rate > 0)
+                            Text(
+                              CurrencyFormatter.format(product.rate),
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF10B981)),
+                            ),
+                          if (product.mrp > 0) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              'MRP ${CurrencyFormatter.format(product.mrp)}',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.blueGrey.shade400,
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

@@ -166,7 +166,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
             ),
             const SizedBox(height: 4),
             Text(
-              '1 CS = ${product.unitsPerCase} UT • Rate: ₹${product.rate.toStringAsFixed(2)}',
+              '1 CS = ${product.unitsPerCase} UT (${product.defaultUnit})${product.rate > 0 ? ' • Rate: ₹${product.rate.toStringAsFixed(2)}' : ''}',
               style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
             ),
             const SizedBox(height: 14),
@@ -284,9 +284,13 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Unit Price: ₹${product.rate.toStringAsFixed(2)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFEA580C))),
-                  Text('1 CS = ${product.unitsPerCase} UT',
+                  if (product.rate > 0)
+                    Text('Unit Price: ₹${product.rate.toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFEA580C)))
+                  else
+                    Text('${product.company} • ${product.category}',
+                        style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF64748B), fontSize: 12)),
+                  Text('1 CS = ${product.unitsPerCase} ${product.defaultUnit}',
                       style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
                 ],
               ),
@@ -385,8 +389,9 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
               Text('Order #$orderNum', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 4),
               Text('Outlet: ${widget.shop.name}', style: const TextStyle(fontSize: 13, color: Color(0xFF334155))),
-              Text('Total Amount: ${CurrencyFormatter.format(_totalAmount)}',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              if (_totalAmount > 0)
+                Text('Total Amount: ${CurrencyFormatter.format(_totalAmount)}',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
               Text('Items: ${_cart.length} lines • $_totalCases CS, $_totalUnits UT',
                   style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
               const SizedBox(height: 16),
@@ -465,12 +470,18 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
     for (int i = 0; i < order.items.length; i++) {
       final it = order.items[i];
       buffer.writeln('${i + 1}. *${it.productName}*');
-      buffer.writeln('   CS: ${it.cases} | UT: ${it.units} | Rate: ₹${it.rate.toStringAsFixed(2)} | Subtotal: ₹${it.subtotal.toStringAsFixed(2)}');
+      if (it.rate > 0) {
+        buffer.writeln('   CS: ${it.cases} | UT: ${it.units} | Rate: ₹${it.rate.toStringAsFixed(2)} | Subtotal: ₹${it.subtotal.toStringAsFixed(2)}');
+      } else {
+        buffer.writeln('   CS: ${it.cases} | UT: ${it.units} (${it.totalUnits} ${it.unit})');
+      }
     }
     buffer.writeln('--------------------------------');
     buffer.writeln('Total Lines: ${order.items.length}');
-    buffer.writeln('Total Cases: ${order.totalCases} CS');
-    buffer.writeln('*TOTAL AMOUNT: ${CurrencyFormatter.format(order.totalAmount)}*');
+    buffer.writeln('Total Cases: ${order.totalCases} CS | Units: ${order.totalLooseUnits} UT');
+    if (order.totalAmount > 0) {
+      buffer.writeln('*TOTAL AMOUNT: ${CurrencyFormatter.format(order.totalAmount)}*');
+    }
     if (order.notes != null && order.notes!.isNotEmpty) {
       buffer.writeln('Notes: ${order.notes}');
     }
@@ -946,7 +957,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'Tap below to add products with Unit Price & Case conversion.',
+                          'Tap below to add products with category, unit & case details.',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                         ),
@@ -1066,18 +1077,20 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                                     const SizedBox(height: 3),
                                     Row(
                                       children: [
-                                        Text(
-                                          'Unit Price ₹${product.rate.toStringAsFixed(2)}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                            color: Color(0xFFEA580C),
+                                        if (product.rate > 0) ...[
+                                          Text(
+                                            'Unit Price ₹${product.rate.toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                              color: Color(0xFFEA580C),
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 10),
+                                          const SizedBox(width: 10),
+                                        ],
                                         Text(
-                                          '1 CS = ${product.unitsPerCase} UT',
-                                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                          '1 CS = ${product.unitsPerCase} UT • ${product.defaultUnit}',
+                                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
                                         ),
                                       ],
                                     ),
@@ -1345,11 +1358,13 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        CurrencyFormatter.format(ord.totalAmount),
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                      ),
-                      const SizedBox(width: 6),
+                      if (ord.totalAmount > 0) ...[
+                        Text(
+                          CurrencyFormatter.format(ord.totalAmount),
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       TextButton(
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1410,18 +1425,18 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
 
     return Column(
       children: [
-        // Top Summary Strip matching screenshot 4f53b724-87f9-4617-a5b2-83ae87fc3630.jpeg
+        // Top Summary Strip
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           color: const Color(0xFFFEF9C3),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildSummaryPill('Amount', '₹${_totalAmount.toStringAsFixed(2)}'),
+              if (_totalAmount > 0) _buildSummaryPill('Amount', '₹${_totalAmount.toStringAsFixed(2)}'),
               _buildSummaryPill('Lines', '${_cart.length}'),
               _buildSummaryPill('Case/Bags', '$_totalCases'),
               _buildSummaryPill('Unit', '$_totalUnits'),
-              _buildSummaryPill('Kg', _totalKg.toStringAsFixed(1)),
+              if (_totalKg > 0) _buildSummaryPill('Kg', _totalKg.toStringAsFixed(1)) else _buildSummaryPill('Total Pcs', '$_totalAllUnits'),
             ],
           ),
         ),
@@ -1473,7 +1488,9 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                       children: [
                         Expanded(
                           child: Text(
-                            '₹${item.rate.toStringAsFixed(2)}/UT  •  ${item.cases} CS  •  ${item.units} UT',
+                            item.rate > 0
+                                ? '₹${item.rate.toStringAsFixed(2)}/UT  •  ${item.cases} CS  •  ${item.units} UT'
+                                : '${item.cases} CS  •  ${item.units} UT  (1 CS = ${item.unitsPerCase} ${item.unit})',
                             style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFF64748B),
@@ -1485,7 +1502,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          '₹${item.subtotal.toStringAsFixed(2)}',
+                          item.subtotal > 0 ? '₹${item.subtotal.toStringAsFixed(2)}' : '${item.totalUnits} ${item.unit}',
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -1534,10 +1551,15 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('TOTAL AMOUNT:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
                           Text(
-                            '₹${_totalAmount.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                            _totalAmount > 0 ? 'TOTAL AMOUNT:' : 'TOTAL ORDER:',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                          ),
+                          Text(
+                            _totalAmount > 0
+                                ? '₹${_totalAmount.toStringAsFixed(2)}'
+                                : '$_totalCases CS, $_totalUnits UT',
+                            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                           ),
                         ],
                       ),
@@ -1585,7 +1607,9 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '₹${item.rate.toStringAsFixed(2)}/UT  •  1 CS = ${item.unitsPerCase} UT',
+              item.rate > 0
+                  ? '₹${item.rate.toStringAsFixed(2)}/UT  •  1 CS = ${item.unitsPerCase} UT'
+                  : '1 CS = ${item.unitsPerCase} ${item.unit}',
               style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 12),

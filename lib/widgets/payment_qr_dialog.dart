@@ -1,17 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../utils/theme.dart';
 import '../utils/firm_details.dart';
 import '../utils/qr_data.dart';
 
 class PaymentQrDialog extends StatefulWidget {
   final String? initialFirm;
+  final int initialManasQrIndex;
+  final String? initialBankHint;
 
-  const PaymentQrDialog({super.key, this.initialFirm});
+  const PaymentQrDialog({
+    super.key,
+    this.initialFirm,
+    this.initialManasQrIndex = 1,
+    this.initialBankHint,
+  });
 
-  static Future<void> show(BuildContext context, {String? initialFirm}) {
+  static Future<void> show(
+    BuildContext context, {
+    String? initialFirm,
+    int initialManasQrIndex = 1,
+    String? initialBankHint,
+  }) {
     return showDialog(
       context: context,
-      builder: (_) => PaymentQrDialog(initialFirm: initialFirm),
+      builder: (_) => PaymentQrDialog(
+        initialFirm: initialFirm,
+        initialManasQrIndex: initialManasQrIndex,
+        initialBankHint: initialBankHint,
+      ),
     );
   }
 
@@ -21,17 +38,31 @@ class PaymentQrDialog extends StatefulWidget {
 
 class _PaymentQrDialogState extends State<PaymentQrDialog> {
   late bool _isPurva;
-  int _manasQrIndex = 1; // 1 = QR 1, 2 = QR 2
+  late int _manasQrIndex; // 1 = Current A/c QR (Central Bank), 2 = CC A/c QR (Google Pay)
 
   @override
   void initState() {
     super.initState();
-    _isPurva = widget.initialFirm == null || widget.initialFirm == 'Purva Enterprises' || widget.initialFirm == 'Purva';
+    _isPurva = widget.initialFirm == null ||
+        widget.initialFirm == 'Purva Enterprises' ||
+        widget.initialFirm == 'Purva';
+    final hint = (widget.initialBankHint ?? '').toLowerCase();
+    if (hint.contains('cc') || hint.contains('5251719817')) {
+      _manasQrIndex = 2;
+    } else if (hint.contains('current') || hint.contains('3881437263')) {
+      _manasQrIndex = 1;
+    } else {
+      _manasQrIndex = widget.initialManasQrIndex.clamp(1, 2);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final firmInfo = _isPurva ? FirmDetailsHelper.purva : FirmDetailsHelper.manas;
+    final firmInfo = _isPurva
+        ? FirmDetailsHelper.purva
+        : (_manasQrIndex == 1
+            ? FirmDetailsHelper.manasCurrent
+            : FirmDetailsHelper.manasCc);
     final firmName = firmInfo.firmName;
     final assetPath = _isPurva
         ? 'assets/images/qr_purva.png'
@@ -171,21 +202,22 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                     ),
                     const SizedBox(height: 14),
 
-                    // QR Switcher: Clean QR 1 and QR 2
+                    // QR Switcher: Current A/c QR 1 and CC A/c QR 2
                     if (!_isPurva) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 8,
+                        runSpacing: 6,
                         children: [
                           ChoiceChip(
-                            label: const Text('QR 1', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            label: const Text('Current A/c (QR 1)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                             selected: _manasQrIndex == 1,
                             selectedColor: AppTheme.manasPrimary.withValues(alpha: 0.15),
                             checkmarkColor: AppTheme.manasPrimary,
                             onSelected: (_) => setState(() => _manasQrIndex = 1),
                           ),
-                          const SizedBox(width: 8),
                           ChoiceChip(
-                            label: const Text('QR 2', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                            label: const Text('CC A/c (QR 2)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                             selected: _manasQrIndex == 2,
                             selectedColor: AppTheme.manasPrimary.withValues(alpha: 0.15),
                             checkmarkColor: AppTheme.manasPrimary,
@@ -215,13 +247,13 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                             ? Image.memory(
                                 _isPurva ? QrData.purvaBytes : QrData.manasBytes,
                                 width: 250,
-                                height: 330,
+                                height: 300,
                                 fit: BoxFit.contain,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Image.asset(
                                     assetPath,
                                     width: 250,
-                                    height: 330,
+                                    height: 300,
                                     fit: BoxFit.contain,
                                   );
                                 },
@@ -229,12 +261,90 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                             : Image.asset(
                                 assetPath,
                                 width: 250,
-                                height: 330,
+                                height: 300,
                                 fit: BoxFit.contain,
                               ),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+
+                    // Respected Bank & Account Number Box directly under QR Code
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: firmLightColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: firmPrimaryColor.withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: firmPrimaryColor,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  firmInfo.accountType,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: SelectableText(
+                                  'A/c No: ${firmInfo.accountNumber}',
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w900,
+                                    fontFamily: 'monospace',
+                                    color: firmPrimaryColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(6),
+                                onTap: () async {
+                                  await Clipboard.setData(ClipboardData(text: firmInfo.accountNumber));
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Copied A/c No: ${firmInfo.accountNumber}'),
+                                        duration: const Duration(seconds: 2),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Icon(Icons.copy_rounded, size: 15, color: firmPrimaryColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${firmInfo.bankName}, ${firmInfo.branch} • IFSC: ${firmInfo.ifscCode}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blueGrey.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
 
                     const Text(
                       'Scan using Google Pay, PhonePe, Paytm or any UPI App',

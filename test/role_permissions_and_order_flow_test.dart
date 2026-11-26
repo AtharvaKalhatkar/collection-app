@@ -15,7 +15,10 @@ import 'package:daily_collection_app/providers/collection_provider.dart';
 import 'package:daily_collection_app/screens/all_orders_screen.dart';
 import 'package:daily_collection_app/screens/driver_dashboard_screen.dart';
 import 'package:daily_collection_app/screens/outlet_order_booking_screen.dart';
+import 'package:daily_collection_app/services/order_catalog_service.dart';
+import 'package:daily_collection_app/widgets/add_product_dialog.dart';
 import 'package:daily_collection_app/widgets/assign_routes_dialog.dart';
+import 'package:daily_collection_app/widgets/payment_qr_dialog.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -584,6 +587,103 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('G R Mart'), findsOneWidget);
       expect(find.text('Modern Mart'), findsNothing);
+    });
+
+    testWidgets('PaymentQrDialog displays respected account numbers under Purva, Manas QR 1 (Current), and Manas QR 2 (CC)',
+        (tester) async {
+      tester.view.physicalSize = const Size(500, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: PaymentQrDialog())));
+      await tester.pumpAndSettle();
+
+      // Purva QR shows 115925080000004 & Union Bank of India Chakan
+      expect(find.textContaining('115925080000004'), findsOneWidget);
+      expect(find.textContaining('UBIN0570575'), findsOneWidget);
+
+      // Switch to Manas Sales -> QR 1 (Current A/c 3881437263)
+      await tester.tap(find.text('MANAS SALES'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('3881437263'), findsOneWidget);
+      expect(find.textContaining('CBIN0284624'), findsOneWidget);
+
+      // Switch to Manas QR 2 -> CC A/c 5251719817
+      await tester.tap(find.text('CC A/c (QR 2)'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('5251719817'), findsOneWidget);
+      expect(find.textContaining('CBIN0284624'), findsOneWidget);
+    });
+
+    testWidgets('Overview dashboard places Pending Bills forward (left) of Collection',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(const DailyCollectionApp());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Akash'));
+      await tester.pump();
+      await tester.tap(find.text('Log In to Dashboard'));
+      await tester.pumpAndSettle();
+
+      final pendingLeft = tester.getTopLeft(find.text('Pending Bills').first).dx;
+      final collectionLeft = tester.getTopLeft(find.text('Collection').first).dx;
+      expect(pendingLeft, lessThan(collectionLeft));
+    });
+
+    testWidgets('AddProductDialog uses Company/Category/Subcategory selectors, Packaging Unit, Units/Case, Photo without MRP/Rate/Weight',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'app_sample_data_initialized_v1': true});
+      OrderCatalogService.setCustomProducts([]);
+      final collection = CollectionProvider();
+      await collection.initialize();
+
+      tester.view.physicalSize = const Size(600, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: collection,
+          child: const MaterialApp(home: Scaffold(body: AddProductDialog())),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No Trade Rate, MRP, or Weight fields
+      expect(find.textContaining('Trade Rate'), findsNothing);
+      expect(find.textContaining('MRP (₹)'), findsNothing);
+      expect(find.textContaining('Weight (Kg/Case)'), findsNothing);
+
+      // Selectors & Photo buttons exist
+      expect(find.text('4. Subcategory'), findsOneWidget);
+      expect(find.text('+ New Subcategory'), findsOneWidget);
+      expect(find.text('6. Packaging Unit'), findsOneWidget);
+      expect(find.text('Units Per Case (CS)'), findsOneWidget);
+      expect(find.text('Camera'), findsOneWidget);
+      expect(find.text('Gallery'), findsOneWidget);
+
+      // Enter product name & save without MRP/Rate
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'e.g. Santoor White 100g (MRP 40)'),
+        'Santoor Soap MRP 10',
+      );
+      await tester.tap(find.text('Save Product'));
+      await tester.pumpAndSettle();
+
+      final saved = collection.customProducts.where((p) => p.name == 'Santoor Soap MRP 10').toList();
+      expect(saved.length, 1);
+      expect(saved.first.rate, 0.0);
+      expect(saved.first.mrp, 0.0);
+      expect(saved.first.weightKg, 0.0);
+      expect(saved.first.unitsPerCase, 24);
     });
   });
 }

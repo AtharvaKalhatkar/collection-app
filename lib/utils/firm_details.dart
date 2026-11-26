@@ -62,7 +62,22 @@ class FirmDetailsHelper {
     lightColor: AppTheme.purvaLight,
   );
 
-  static const manas = FirmBankInfo(
+  static const manasCurrent = FirmBankInfo(
+    firmName: 'MANAS SALES',
+    shortName: 'Manas',
+    bankName: 'Central Bank of India',
+    branch: 'Rajgurunagar',
+    accountNumber: '3881437263',
+    accountType: 'Current A/c',
+    ifscCode: 'CBIN0284624',
+    upiId: '20261103000188-qrp@cbin',
+    mobileNumber: '+91 93098 62465',
+    companies: ['Racket', 'Imami', 'Dabar', 'Cadbury', 'Gowardhan'],
+    primaryColor: AppTheme.manasPrimary,
+    lightColor: AppTheme.manasLight,
+  );
+
+  static const manasCc = FirmBankInfo(
     firmName: 'MANAS SALES',
     shortName: 'Manas',
     bankName: 'Central Bank of India',
@@ -77,9 +92,23 @@ class FirmDetailsHelper {
     lightColor: AppTheme.manasLight,
   );
 
-  static FirmBankInfo getInfo(String firmName) {
+  // Backwards-compatible default getter for Manas Sales
+  static const FirmBankInfo manas = manasCc;
+
+  static List<FirmBankInfo> getAccountsForFirm(String firmName) {
     if (firmName.toLowerCase().contains('manas')) {
-      return manas;
+      return const [manasCurrent, manasCc];
+    }
+    return const [purva];
+  }
+
+  static FirmBankInfo getInfo(String firmName, {String? bankHint}) {
+    if (firmName.toLowerCase().contains('manas')) {
+      final hint = (bankHint ?? '').toLowerCase();
+      if (hint.contains('current') || hint.contains('3881437263')) {
+        return manasCurrent;
+      }
+      return manasCc;
     }
     return purva;
   }
@@ -137,6 +166,7 @@ class FirmDetailsHelper {
   static void showQuickShareModal(
     BuildContext context, {
     String? defaultFirm,
+    String? defaultBankHint,
     String? recipientMobile,
     String? recipientName,
   }) {
@@ -146,6 +176,7 @@ class FirmDetailsHelper {
       backgroundColor: Colors.transparent,
       builder: (ctx) => _QuickSharePaymentSheet(
         defaultFirm: defaultFirm,
+        defaultBankHint: defaultBankHint,
         recipientMobile: recipientMobile,
         recipientName: recipientName,
       ),
@@ -155,11 +186,13 @@ class FirmDetailsHelper {
 
 class _QuickSharePaymentSheet extends StatefulWidget {
   final String? defaultFirm;
+  final String? defaultBankHint;
   final String? recipientMobile;
   final String? recipientName;
 
   const _QuickSharePaymentSheet({
     this.defaultFirm,
+    this.defaultBankHint,
     this.recipientMobile,
     this.recipientName,
   });
@@ -170,17 +203,23 @@ class _QuickSharePaymentSheet extends StatefulWidget {
 
 class _QuickSharePaymentSheetState extends State<_QuickSharePaymentSheet> {
   late bool _isPurva;
+  late bool _isManasCurrent;
 
   @override
   void initState() {
     super.initState();
     _isPurva = widget.defaultFirm == null ||
         !widget.defaultFirm!.toLowerCase().contains('manas');
+    final hint = (widget.defaultBankHint ?? '').toLowerCase();
+    // Default Manas account to Current A/c unless CC was explicitly hinted
+    _isManasCurrent = !(hint.contains('cc') || hint.contains('5251719817'));
   }
 
   @override
   Widget build(BuildContext context) {
-    final firm = _isPurva ? FirmDetailsHelper.purva : FirmDetailsHelper.manas;
+    final firm = _isPurva
+        ? FirmDetailsHelper.purva
+        : (_isManasCurrent ? FirmDetailsHelper.manasCurrent : FirmDetailsHelper.manasCc);
 
     return Container(
       decoration: const BoxDecoration(
@@ -297,7 +336,46 @@ class _QuickSharePaymentSheetState extends State<_QuickSharePaymentSheet> {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          // Manas Account Selector (Current A/c vs CC A/c)
+          if (!_isPurva) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Center(
+                      child: Text(
+                        'Current A/c • 3881437263',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    selected: _isManasCurrent,
+                    selectedColor: AppTheme.manasPrimary.withValues(alpha: 0.16),
+                    checkmarkColor: AppTheme.manasPrimary,
+                    onSelected: (_) => setState(() => _isManasCurrent = true),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Center(
+                      child: Text(
+                        'CC A/c • 5251719817',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    selected: !_isManasCurrent,
+                    selectedColor: AppTheme.manasPrimary.withValues(alpha: 0.16),
+                    checkmarkColor: AppTheme.manasPrimary,
+                    onSelected: (_) => setState(() => _isManasCurrent = false),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 14),
 
           // Bank Info Preview Card
           Container(
@@ -339,6 +417,7 @@ class _QuickSharePaymentSheetState extends State<_QuickSharePaymentSheet> {
                 _buildInfoRow('Branch', firm.branch),
                 _buildInfoRow('Account No', firm.accountNumber, isBold: true),
                 _buildInfoRow('IFSC Code', firm.ifscCode, isBold: true),
+                _buildInfoRow('UPI ID', firm.upiId),
               ],
             ),
           ),

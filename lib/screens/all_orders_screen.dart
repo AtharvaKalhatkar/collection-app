@@ -106,13 +106,21 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
     for (int i = 0; i < order.items.length; i++) {
       final it = order.items[i];
       buffer.writeln('${i + 1}. ${it.productName} [${it.subcategory}]');
-      buffer.writeln('   Qty: ${it.cases} CS + ${it.units} UT @ ₹${it.rate.toStringAsFixed(2)} = ${CurrencyFormatter.format(it.subtotal)}');
+      if (it.rate > 0) {
+        buffer.writeln('   Qty: ${it.cases} CS + ${it.units} UT @ ₹${it.rate.toStringAsFixed(2)} = ${CurrencyFormatter.format(it.subtotal)}');
+      } else {
+        buffer.writeln('   Qty: ${it.cases} CS + ${it.units} UT (${it.totalUnits} ${it.unit})');
+      }
     }
     buffer.writeln('--------------------------------');
     buffer.writeln('*Total CS:* ${order.totalCases} Cases');
     buffer.writeln('*Total UT:* ${order.totalLooseUnits} Loose');
-    buffer.writeln('*Total Weight:* ${order.totalWeightKg.toStringAsFixed(2)} kg');
-    buffer.writeln('*GRAND TOTAL: ${CurrencyFormatter.format(order.totalAmount)}*');
+    if (order.totalWeightKg > 0) {
+      buffer.writeln('*Total Weight:* ${order.totalWeightKg.toStringAsFixed(2)} kg');
+    }
+    if (order.totalAmount > 0) {
+      buffer.writeln('*GRAND TOTAL: ${CurrencyFormatter.format(order.totalAmount)}*');
+    }
     if (order.notes != null && order.notes!.isNotEmpty) {
       buffer.writeln('Notes: ${order.notes}');
     }
@@ -638,10 +646,14 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                 _buildSummaryCol('Cases', '$totalCases CS'),
                 _buildSummaryDivider(),
                 _buildSummaryCol('Units', '$totalUnits UT'),
-                _buildSummaryDivider(),
-                _buildSummaryCol('Weight', '${totalWeight.toStringAsFixed(1)} kg'),
-                _buildSummaryDivider(),
-                _buildSummaryCol('Value', CurrencyFormatter.format(totalAmount), isBoldVal: true),
+                if (totalWeight > 0) ...[
+                  _buildSummaryDivider(),
+                  _buildSummaryCol('Weight', '${totalWeight.toStringAsFixed(1)} kg'),
+                ],
+                if (totalAmount > 0) ...[
+                  _buildSummaryDivider(),
+                  _buildSummaryCol('Value', CurrencyFormatter.format(totalAmount), isBoldVal: true),
+                ],
               ],
             ),
           ),
@@ -805,8 +817,10 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
             ),
             const SizedBox(width: 6),
             Text(
-              CurrencyFormatter.format(order.totalAmount),
-              style: AppTheme.tabularAmount(fontWeight: FontWeight.w800, fontSize: 13.5, color: const Color(0xFF16A34A)),
+              order.totalAmount > 0
+                  ? CurrencyFormatter.format(order.totalAmount)
+                  : '${order.totalCases} CS, ${order.totalLooseUnits} UT',
+              style: AppTheme.tabularAmount(fontWeight: FontWeight.w800, fontSize: 13, color: const Color(0xFF16A34A)),
             ),
           ],
         ),
@@ -873,7 +887,9 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
               ),
               const Spacer(),
               Text(
-                '${order.totalCases} CS + ${order.totalLooseUnits} UT (${order.totalWeightKg.toStringAsFixed(1)} kg)',
+                order.totalWeightKg > 0
+                    ? '${order.totalCases} CS + ${order.totalLooseUnits} UT (${order.totalWeightKg.toStringAsFixed(1)} kg)'
+                    : '${order.totalCases} CS + ${order.totalLooseUnits} UT',
                 style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
               ),
             ],
@@ -905,11 +921,13 @@ class _AllOrdersScreenState extends State<AllOrdersScreen> {
                     '${it.cases} CS + ${it.units} UT',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
                   ),
-                  const SizedBox(width: 14),
-                  Text(
-                    CurrencyFormatter.format(it.subtotal),
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
-                  ),
+                  if (it.subtotal > 0) ...[
+                    const SizedBox(width: 14),
+                    Text(
+                      CurrencyFormatter.format(it.subtotal),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                    ),
+                  ],
                 ],
               ),
             ),

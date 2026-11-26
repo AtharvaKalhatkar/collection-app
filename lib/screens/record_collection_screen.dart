@@ -1424,7 +1424,8 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                         const SizedBox(height: 12),
                         Builder(
                           builder: (ctx) {
-                            final firmInfo = FirmDetailsHelper.getInfo(_selectedBusiness);
+                            final accounts = FirmDetailsHelper.getAccountsForFirm(_selectedBusiness);
+                            final primaryInfo = accounts.first;
                             final shop = _selectedShopId != null ? provider.getShopById(_selectedShopId!) : null;
                             final isNetBanking = _selectedMode == PaymentMode.netBanking;
 
@@ -1439,6 +1440,7 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.all(6),
@@ -1459,18 +1461,26 @@ class _RecordCollectionScreenState extends State<RecordCollectionScreen> {
                                           children: [
                                             Text(
                                               isNetBanking
-                                                  ? '${firmInfo.shortName} Bank Details (NEFT/RTGS)'
-                                                  : '${firmInfo.shortName} UPI ID: ${firmInfo.upiId}',
+                                                  ? '${primaryInfo.shortName} Bank Details (NEFT/RTGS)'
+                                                  : '${primaryInfo.shortName} UPI & Bank Accounts',
                                               style: TextStyle(
                                                 fontSize: 13,
                                                 fontWeight: FontWeight.bold,
                                                 color: isNetBanking ? const Color(0xFF166534) : const Color(0xFF1E3A8A),
                                               ),
                                             ),
-                                            Text(
-                                              'Bank: ${firmInfo.bankName} • A/c: ${firmInfo.accountNumber} • IFSC: ${firmInfo.ifscCode}',
-                                              style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade700),
-                                            ),
+                                            const SizedBox(height: 2),
+                                            for (final acc in accounts) ...[
+                                              Text(
+                                                '${acc.accountType}: A/c ${acc.accountNumber} • IFSC: ${acc.ifscCode}',
+                                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.blueGrey.shade800),
+                                              ),
+                                              Text(
+                                                '${acc.bankName} (${acc.branch}) • UPI: ${acc.upiId}',
+                                                style: TextStyle(fontSize: 10.5, color: Colors.blueGrey.shade700),
+                                              ),
+                                              if (acc != accounts.last) const SizedBox(height: 4),
+                                            ],
                                           ],
                                         ),
                                       ),

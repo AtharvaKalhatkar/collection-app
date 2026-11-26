@@ -12,7 +12,7 @@ class OrderCatalogService {
 
   static const List<String> defaultCompanies = ['Fena', 'Wipro', 'Purva Enterprises', 'Manas Sales'];
   static const List<String> defaultCategories = ['HC', 'PC', 'FC'];
-  static const List<String> defaultSubcategories = ['NSB', 'NSP'];
+  static const List<String> defaultSubcategories = ['NSB', 'NSP', 'General'];
 
   static const List<String> availableUnits = ['Pcs', 'Outer', 'Box', 'Nodes'];
 

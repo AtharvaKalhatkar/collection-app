@@ -266,16 +266,32 @@ void main() {
       final purva = FirmDetailsHelper.getInfo('Purva Enterprises');
       expect(purva.firmName, 'PURVA ENTERPRISES');
       expect(purva.bankName, 'Union Bank of India');
+      expect(purva.branch, 'Chakan');
       expect(purva.accountNumber, '115925080000004');
+      expect(purva.accountType, 'C C');
       expect(purva.ifscCode, 'UBIN0570575');
       expect(purva.formattedShareText.contains('115925080000004'), isTrue);
       expect(purva.formattedShareText.contains('UBIN0570575'), isTrue);
       expect(purva.formattedShareText.contains('8459671694@okbizaxis'), isTrue);
 
+      final manasAccounts = FirmDetailsHelper.getAccountsForFirm('Manas Sales');
+      expect(manasAccounts.length, 2);
+
+      final manasCurrent = FirmDetailsHelper.getInfo('Manas Sales', bankHint: 'Current Bank');
+      expect(manasCurrent.firmName, 'MANAS SALES');
+      expect(manasCurrent.bankName, 'Central Bank of India');
+      expect(manasCurrent.branch, 'Rajgurunagar');
+      expect(manasCurrent.accountNumber, '3881437263');
+      expect(manasCurrent.accountType, 'Current A/c');
+      expect(manasCurrent.ifscCode, 'CBIN0284624');
+      expect(manasCurrent.upiId, '20261103000188-qrp@cbin');
+
       final manas = FirmDetailsHelper.getInfo('Manas Sales');
       expect(manas.firmName, 'MANAS SALES');
       expect(manas.bankName, 'Central Bank of India');
+      expect(manas.branch, 'Rajgurunagar');
       expect(manas.accountNumber, '5251719817');
+      expect(manas.accountType, 'CC A/c');
       expect(manas.ifscCode, 'CBIN0284624');
       expect(manas.formattedShareText.contains('5251719817'), isTrue);
       expect(manas.formattedShareText.contains('CBIN0284624'), isTrue);
