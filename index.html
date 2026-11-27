@@ -43,15 +43,15 @@
     #pwa-install-banner {
       display: none;
       position: fixed;
-      bottom: 24px;
-      left: 16px;
-      right: 16px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 78px);
+      left: 12px;
+      right: 12px;
       max-width: 420px;
       margin: 0 auto;
       background: #0F172A;
       border: 1px solid #334155;
       color: #FFFFFF;
-      padding: 12px 14px;
+      padding: 10px 12px;
       border-radius: 12px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.4);
       z-index: 9999999;
@@ -168,6 +168,11 @@
         const banner = document.getElementById('pwa-install-banner');
         if (banner) {
           banner.style.display = 'flex';
+          setTimeout(() => {
+            if (banner.style.display !== 'none') {
+              banner.style.display = 'none';
+            }
+          }, 10000);
         }
       }
     });
