@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,6 +15,8 @@ import '../utils/currency_formatter.dart';
 import '../utils/image_compress_helper.dart';
 import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
+
+const Color _bookingBlue = Color(0xFF15429E);
 
 class OutletOrderBookingScreen extends StatefulWidget {
   final ShopModel shop;
@@ -40,9 +43,12 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
   String _selectedCategory = 'All Category';
   String _selectedSubcategory = 'All Subcategory';
   String _searchQuery = '';
+  bool _showSearchBar = false;
 
   // ProductId -> OrderItem
   final Map<String, OrderItem> _cart = {};
+  final Map<String, TextEditingController> _csControllers = {};
+  final Map<String, TextEditingController> _utControllers = {};
 
   final TextEditingController _notesController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
@@ -93,12 +99,53 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
     }
   }
 
+  TextEditingController _getCsController(String productId, int val) {
+    final existing = _csControllers[productId];
+    if (existing != null) return existing;
+    final ctrl = TextEditingController(text: val > 0 ? '$val' : '');
+    _csControllers[productId] = ctrl;
+    return ctrl;
+  }
+
+  TextEditingController _getUtController(String productId, int val) {
+    final existing = _utControllers[productId];
+    if (existing != null) return existing;
+    final ctrl = TextEditingController(text: val > 0 ? '$val' : '');
+    _utControllers[productId] = ctrl;
+    return ctrl;
+  }
+
+  void _syncControllersForProduct(String productId, int cases, int units) {
+    final csCtrl = _csControllers[productId];
+    final csStr = cases > 0 ? '$cases' : '';
+    if (csCtrl != null && csCtrl.text != csStr) {
+      csCtrl.value = TextEditingValue(
+        text: csStr,
+        selection: TextSelection.collapsed(offset: csStr.length),
+      );
+    }
+    final utCtrl = _utControllers[productId];
+    final utStr = units > 0 ? '$units' : '';
+    if (utCtrl != null && utCtrl.text != utStr) {
+      utCtrl.value = TextEditingValue(
+        text: utStr,
+        selection: TextSelection.collapsed(offset: utStr.length),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _notesController.dispose();
     _searchController.dispose();
+    for (final c in _csControllers.values) {
+      c.dispose();
+    }
+    for (final c in _utControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -108,7 +155,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
   double get _totalKg => _cart.values.fold(0.0, (sum, i) => sum + i.totalWeightKg);
   double get _totalAmount => _cart.values.fold(0.0, (sum, i) => sum + i.subtotal);
 
-  void _updateCartItem(CatalogProduct product, {int? cases, int? units}) {
+  void _updateCartItem(CatalogProduct product, {int? cases, int? units, bool syncInputs = false}) {
     setState(() {
       final existing = _cart[product.id];
       final currentCases = cases ?? existing?.cases ?? 0;
@@ -135,95 +182,10 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           photoBase64: product.photoBase64,
         );
       }
+      if (syncInputs) {
+        _syncControllersForProduct(product.id, currentCases, currentUnits);
+      }
     });
-  }
-
-  void _showQuantityDialog(CatalogProduct product, {required bool isCase, required int currentValue}) {
-    final controller = TextEditingController(text: currentValue > 0 ? '$currentValue' : '');
-    showDialog(
-      context: context,
-      builder: (dlgCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(isCase ? Icons.inventory_2_outlined : Icons.pin_outlined, color: const Color(0xFF1E40AF)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Enter ${isCase ? "Cases (CS)" : "Units (UT)"}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              product.name,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF0F172A)),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '1 CS = ${product.unitsPerCase} UT (${product.defaultUnit})${product.rate > 0 ? ' • Rate: ₹${product.rate.toStringAsFixed(2)}' : ''}',
-              style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: isCase ? 'Number of Cases' : 'Number of Units',
-                hintText: 'e.g. 10',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              children: [1, 2, 5, 10, 20, 50].map((stepVal) {
-                return ActionChip(
-                  label: Text('+$stepVal'),
-                  onPressed: () {
-                    final curr = int.tryParse(controller.text.trim()) ?? 0;
-                    controller.text = '${curr + stepVal}';
-                  },
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dlgCtx);
-              if (isCase) {
-                _updateCartItem(product, cases: 0);
-              } else {
-                _updateCartItem(product, units: 0);
-              }
-            },
-            child: const Text('Clear', style: TextStyle(color: Colors.red)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E40AF)),
-            onPressed: () {
-              final val = int.tryParse(controller.text.trim()) ?? 0;
-              Navigator.pop(dlgCtx);
-              if (isCase) {
-                _updateCartItem(product, cases: val >= 0 ? val : 0);
-              } else {
-                _updateCartItem(product, units: val >= 0 ? val : 0);
-              }
-            },
-            child: const Text('Set Quantity', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _openAddProduct() async {
@@ -233,6 +195,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
         initialFirm: _selectedFirm,
         initialCompany: _selectedCompany != 'All Companies' ? _selectedCompany : null,
         initialCategory: _selectedCategory != 'All Category' ? _selectedCategory : null,
+        initialSubcategory: _selectedSubcategory != 'All Subcategory' ? _selectedSubcategory : null,
       ),
     );
     if (added != null) {
@@ -245,60 +208,233 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
     }
   }
 
-  void _showImageZoom(CatalogProduct product) {
-    showDialog(
+  /// Dedicated Product Photo Detail View with Prev/Next Switcher & Live CS/UT Inputs
+  /// (Matching Reference Image 2: 8d7e1bfb-2992-4462-b6c2-a07be248da48.jpeg)
+  void _showProductDetailSheet(List<CatalogProduct> productList, int initialIndex) {
+    int currentIndex = initialIndex;
+    final currentProd = productList[currentIndex];
+    final csModalCtrl = TextEditingController(
+      text: (_cart[currentProd.id]?.cases ?? 0) > 0 ? '${_cart[currentProd.id]!.cases}' : '',
+    );
+    final utModalCtrl = TextEditingController(
+      text: (_cart[currentProd.id]?.units ?? 0) > 0 ? '${_cart[currentProd.id]!.units}' : '',
+    );
+
+    void loadProd(CatalogProduct p) {
+      final existing = _cart[p.id];
+      csModalCtrl.text = (existing?.cases ?? 0) > 0 ? '${existing!.cases}' : '';
+      utModalCtrl.text = (existing?.units ?? 0) > 0 ? '${existing!.units}' : '';
+    }
+
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      product.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dlgCtx, setModalState) {
+          final prod = productList[currentIndex];
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(dlgCtx).viewInsets.bottom),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  height: 250,
-                  width: double.infinity,
-                  color: const Color(0xFFF1F5F9),
-                  child: _buildProductImage(product, iconSize: 80, fit: BoxFit.contain),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Header with circular prev arrow, product name, and next arrow
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: currentIndex > 0
+                              ? () {
+                                  setModalState(() {
+                                    currentIndex--;
+                                    loadProd(productList[currentIndex]);
+                                  });
+                                }
+                              : () => Navigator.pop(ctx),
+                          borderRadius: BorderRadius.circular(18),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: const Icon(Icons.chevron_left_rounded, size: 20, color: Color(0xFF334155)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            prod.name,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        if (currentIndex < productList.length - 1)
+                          InkWell(
+                            onTap: () {
+                              setModalState(() {
+                                currentIndex++;
+                                loadProd(productList[currentIndex]);
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(18),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: const Icon(Icons.chevron_right_rounded, size: 20, color: Color(0xFF334155)),
+                            ),
+                          )
+                        else
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Large Centered Photo Card
+                    Container(
+                      height: 230,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: _buildProductImage(prod, iconSize: 72, fit: BoxFit.contain),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Unit Price Pill (if > 0) + Pack Specs
+                    Row(
+                      children: [
+                        if (prod.rate > 0) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF7ED),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFFDBA74)),
+                            ),
+                            child: Text(
+                              'Unit Price ${prod.rate.toStringAsFixed(2)}',
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFFC2410C)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        Expanded(
+                          child: Text(
+                            '${prod.company} • ${prod.category} (${prod.subcategory}) • 1 CS = ${prod.unitsPerCase} ${prod.defaultUnit}',
+                            style: const TextStyle(color: Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Side-by-side Live CS & UT Inputs (Matching Image 2)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'CS (${prod.unitsPerCase} UT)',
+                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 4),
+                              TextField(
+                                controller: csModalCtrl,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                decoration: InputDecoration(
+                                  hintText: '0',
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onChanged: (val) {
+                                  final newCs = (int.tryParse(val.trim()) ?? 0).clamp(0, 99999);
+                                  final curUt = int.tryParse(utModalCtrl.text.trim()) ?? 0;
+                                  _updateCartItem(prod, cases: newCs, units: curUt, syncInputs: true);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'UT (1 ${prod.defaultUnit})',
+                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 4),
+                              TextField(
+                                controller: utModalCtrl,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                decoration: InputDecoration(
+                                  hintText: '0',
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onChanged: (val) {
+                                  final newUt = (int.tryParse(val.trim()) ?? 0).clamp(0, 99999);
+                                  final curCs = int.tryParse(csModalCtrl.text.trim()) ?? 0;
+                                  _updateCartItem(prod, cases: curCs, units: newUt, syncInputs: true);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _bookingBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (product.rate > 0)
-                    Text('Unit Price: ₹${product.rate.toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFEA580C)))
-                  else
-                    Text('${product.company} • ${product.category}',
-                        style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF64748B), fontSize: 12)),
-                  Text('1 CS = ${product.unitsPerCase} ${product.defaultUnit}',
-                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-                ],
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
-    );
+    ).then((_) {
+      csModalCtrl.dispose();
+      utModalCtrl.dispose();
+    });
   }
 
   Widget _buildProductImage(CatalogProduct product, {double iconSize = 26, BoxFit fit = BoxFit.cover}) {
@@ -437,12 +573,12 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           actions: [
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
+                backgroundColor: _bookingBlue,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               onPressed: () {
                 Navigator.pop(dialogCtx);
-                Navigator.pop(context, true); // return to retailer list
+                Navigator.pop(context, true);
               },
               child: const Text('Done / Back to Outlets', style: TextStyle(color: Colors.white)),
             ),
@@ -494,50 +630,66 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<CollectionProvider>();
+
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.primary,
+        backgroundColor: _bookingBlue,
+        foregroundColor: Colors.white,
         elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.shop.name,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5, color: AppTheme.primary),
+              widget.shop.name.toUpperCase(),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white),
+              overflow: TextOverflow.ellipsis,
             ),
             Text(
-              '${widget.shop.routeName} • ${DateFormat('dd MMM').format(widget.selectedDate)}',
-              style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+              '${widget.shop.routeName.toUpperCase()} • $_selectedFirm',
+              style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.85)),
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
         actions: [
+          if (_tabController.index == 0)
+            IconButton(
+              icon: Icon(_showSearchBar ? Icons.search_off_rounded : Icons.search_rounded),
+              tooltip: 'Search SKU',
+              onPressed: () {
+                setState(() {
+                  _showSearchBar = !_showSearchBar;
+                  if (!_showSearchBar) {
+                    _searchController.clear();
+                    _searchQuery = '';
+                  }
+                });
+              },
+            ),
           IconButton(
-            icon: const Icon(Icons.add_box_outlined, color: AppTheme.purvaPrimary),
+            icon: const Icon(Icons.add_box_outlined),
             tooltip: 'Add Product to Catalog',
             onPressed: _openAddProduct,
           ),
           IconButton(
-            icon: const Icon(Icons.shopping_cart_outlined, color: AppTheme.primary),
-            tooltip: 'View Cart',
-            onPressed: () => _tabController.animateTo(2),
+            icon: const Icon(Icons.sync_rounded),
+            tooltip: 'Sync Catalog',
+            onPressed: () => provider.syncAllWithCloud(notify: true),
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(46),
+          preferredSize: const Size.fromHeight(44),
           child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: AppTheme.border)),
-            ),
+            color: Colors.white,
             child: TabBar(
               controller: _tabController,
-              indicatorColor: AppTheme.purvaPrimary,
+              indicatorColor: _bookingBlue,
               indicatorWeight: 2.5,
-              labelColor: AppTheme.purvaPrimary,
-              unselectedLabelColor: AppTheme.textSecondary,
+              labelColor: _bookingBlue,
+              unselectedLabelColor: const Color(0xFF64748B),
+              labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               labelPadding: const EdgeInsets.symmetric(horizontal: 6),
               tabs: [
                 const Tab(text: 'Order'),
@@ -580,57 +732,81 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           _buildSubmitOrderTab(),
         ],
       ),
-      bottomNavigationBar: _tabController.index == 0
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: AppTheme.border)),
+      // Green Floating Cart Button matching Bizom Reference Images 4, 6, 7
+      floatingActionButton: _tabController.index == 0
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Badge(
+                isLabelVisible: _cart.isNotEmpty,
+                backgroundColor: const Color(0xFFDC2626),
+                label: Text('${_cart.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                child: FloatingActionButton(
+                  backgroundColor: const Color(0xFF16A34A),
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  tooltip: 'Review & Submit Order',
+                  onPressed: () => _tabController.animateTo(2),
+                  child: const Icon(Icons.shopping_cart_rounded, size: 24),
+                ),
               ),
-              child: SafeArea(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'CS: $_totalCases  •  UT: $_totalUnits  •  ${_cart.length} lines',
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppTheme.textSecondary),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Total: ${CurrencyFormatter.format(_totalAmount)}',
-                            style: AppTheme.tabularAmount(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                              color: AppTheme.primary,
+            )
+          : null,
+      bottomNavigationBar: _tabController.index == 0
+          ? InkWell(
+              onTap: () => _tabController.animateTo(2),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                ),
+                child: SafeArea(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      RichText(
+                        text: TextSpan(
+                          style: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
+                          children: [
+                            const TextSpan(text: 'CS: '),
+                            TextSpan(
+                              text: '$_totalCases',
+                              style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                             ),
+                          ],
+                        ),
+                      ),
+                      RichText(
+                        text: TextSpan(
+                          style: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
+                          children: [
+                            const TextSpan(text: 'UT: '),
+                            TextSpan(
+                              text: '$_totalUnits',
+                              style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 54), // Keep clear of Green Cart FAB
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
+                            children: [
+                              TextSpan(text: _totalAmount > 0 ? 'Total: ' : 'Lines: '),
+                              TextSpan(
+                                text: _totalAmount > 0
+                                    ? _totalAmount.toStringAsFixed(0)
+                                    : '${_cart.length}',
+                                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _cart.isNotEmpty ? AppTheme.purvaPrimary : AppTheme.textSecondary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () => _tabController.animateTo(2),
-                      child: Row(
-                        children: [
-                          Text(
-                            _cart.isEmpty ? 'Review' : 'Review (${_cart.length})',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.arrow_forward_rounded, size: 16),
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             )
@@ -671,7 +847,6 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
 
     return Column(
       children: [
-        // Editing Mode Banner
         if (widget.existingOrder != null)
           Container(
             width: double.infinity,
@@ -679,25 +854,25 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
             color: const Color(0xFFEFF6FF),
             child: Row(
               children: [
-                const Icon(Icons.edit_note_rounded, size: 18, color: Color(0xFF1D4ED8)),
+                const Icon(Icons.edit_note_rounded, size: 17, color: _bookingBlue),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Editing Existing Order: ${widget.existingOrder!.orderNumber}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8)),
+                    'Editing Order: ${widget.existingOrder!.orderNumber}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _bookingBlue),
                   ),
                 ),
                 Text(
                   DateFormat('dd MMM').format(widget.existingOrder!.orderDate),
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569)),
                 ),
               ],
             ),
           ),
 
-        // Top Filter Controls matching Bizom UI
+        // Slim Compact Filter Header (Matching Images 4, 6, 7)
         Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
           decoration: BoxDecoration(
             color: Colors.white,
             border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
@@ -705,164 +880,64 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Distributing Firm Selector (Purva vs Manas)
+              // Collapsible Search Bar (triggered by AppBar magnifying glass)
+              if (_showSearchBar || _searchQuery.isNotEmpty) ...[
+                Container(
+                  height: 38,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    autofocus: _showSearchBar && _searchQuery.isEmpty,
+                    decoration: InputDecoration(
+                      hintText: 'Search SKU / Product name...',
+                      hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                      prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 16),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onChanged: (val) => setState(() => _searchQuery = val),
+                  ),
+                ),
+              ],
+
+              // Row 1: Firm Pills (Purva | Manas) + Company Dropdown on ONE compact line
               Row(
                 children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        setState(() {
-                          _selectedFirm = OrderCatalogService.purva;
-                          _selectedCompany = 'All Companies';
-                          _selectedCategory = 'All Category';
-                          _selectedSubcategory = 'All Subcategory';
-                        });
-                      },
+                  Container(
+                    height: 36,
+                    padding: const EdgeInsets.all(2.5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        decoration: BoxDecoration(
-                          color: _selectedFirm == OrderCatalogService.purva ? const Color(0xFF1E40AF) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _selectedFirm == OrderCatalogService.purva ? const Color(0xFF1E40AF) : const Color(0xFFCBD5E1),
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'PURVA ENTERPRISES',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: _selectedFirm == OrderCatalogService.purva ? Colors.white : const Color(0xFF475569),
-                            ),
-                          ),
-                        ),
-                      ),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildCompactFirmBtn('Purva', OrderCatalogService.purva, _bookingBlue),
+                        const SizedBox(width: 2),
+                        _buildCompactFirmBtn('Manas', OrderCatalogService.manas, const Color(0xFF0F766E)),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        setState(() {
-                          _selectedFirm = OrderCatalogService.manas;
-                          _selectedCompany = 'All Companies';
-                          _selectedCategory = 'All Category';
-                          _selectedSubcategory = 'All Subcategory';
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        decoration: BoxDecoration(
-                          color: _selectedFirm == OrderCatalogService.manas ? const Color(0xFF0F766E) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _selectedFirm == OrderCatalogService.manas ? const Color(0xFF0F766E) : const Color(0xFFCBD5E1),
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'MANAS SALES',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: _selectedFirm == OrderCatalogService.manas ? Colors.white : const Color(0xFF475569),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              // Search SKU
-              Container(
-                height: 38,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search SKU / Product name...',
-                    hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
-                    prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 16),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  onChanged: (val) => setState(() => _searchQuery = val),
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // Dropdown 1: Company
-              Container(
-                height: 38,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFCBD5E1)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: validCompany,
-                    isExpanded: true,
-                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF1E40AF)),
-                    items: companies.map((c) {
-                      return DropdownMenuItem<String>(
-                        value: c,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.business_rounded, size: 15, color: Color(0xFF64748B)),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                c,
-                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() {
-                          _selectedCompany = val;
-                          _selectedCategory = 'All Category';
-                          _selectedSubcategory = 'All Subcategory';
-                        });
-                      }
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // Dropdown Row 2: Category & Subcategory side by side (Matching Bizom Screenshot!)
-              Row(
-                children: [
-                  // Category Dropdown
-                  Expanded(
                     child: Container(
-                      height: 38,
+                      height: 36,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
@@ -871,14 +946,14 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
-                          value: validCategory,
+                          value: validCompany,
                           isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF1E40AF)),
-                          items: categories.map((cat) {
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: _bookingBlue, size: 18),
+                          items: companies.map((c) {
                             return DropdownMenuItem<String>(
-                              value: cat,
+                              value: c,
                               child: Text(
-                                cat,
+                                c,
                                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -887,7 +962,8 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                           onChanged: (val) {
                             if (val != null) {
                               setState(() {
-                                _selectedCategory = val;
+                                _selectedCompany = val;
+                                _selectedCategory = 'All Category';
                                 _selectedSubcategory = 'All Subcategory';
                               });
                             }
@@ -896,40 +972,95 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                ],
+              ),
+              const SizedBox(height: 8),
 
-                  // Subcategory Dropdown
+              // Row 2: Labeled Category & Subcategory Side-by-Side (Exact match to Image 4 & 6)
+              Row(
+                children: [
                   Expanded(
-                    child: Container(
-                      height: 38,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFCBD5E1)),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: validSubcategory,
-                          isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF1E40AF)),
-                          items: subcategories.map((sub) {
-                            return DropdownMenuItem<String>(
-                              value: sub,
-                              child: Text(
-                                sub,
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _selectedSubcategory = val);
-                            }
-                          },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Category', style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 3),
+                        Container(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: validCategory,
+                              isExpanded: true,
+                              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF475569), size: 18),
+                              items: categories.map((cat) {
+                                return DropdownMenuItem<String>(
+                                  value: cat,
+                                  child: Text(
+                                    cat,
+                                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() {
+                                    _selectedCategory = val;
+                                    _selectedSubcategory = 'All Subcategory';
+                                  });
+                                }
+                              },
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Subcategory', style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 3),
+                        Container(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: validSubcategory,
+                              isExpanded: true,
+                              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF475569), size: 18),
+                              items: subcategories.map((sub) {
+                                return DropdownMenuItem<String>(
+                                  value: sub,
+                                  child: Text(
+                                    sub,
+                                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() => _selectedSubcategory = val);
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -967,7 +1098,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                           icon: const Icon(Icons.add, size: 18, color: Colors.white),
                           label: const Text('Add Product to Catalog', style: TextStyle(color: Colors.white)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
+                            backgroundColor: _bookingBlue,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
                         ),
@@ -976,14 +1107,17 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 80),
                   itemCount: products.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 10),
+                  separatorBuilder: (context, index) => const SizedBox(height: 8),
                   itemBuilder: (ctx, index) {
                     final product = products[index];
                     final cartItem = _cart[product.id];
                     final casesVal = cartItem?.cases ?? 0;
                     final unitsVal = cartItem?.units ?? 0;
+
+                    final csCtrl = _getCsController(product.id, casesVal);
+                    final utCtrl = _getUtController(product.id, unitsVal);
 
                     // Check last order for this SKU in shop history
                     int lastOrderCases = 0;
@@ -999,41 +1133,29 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                       if (lastOrderCases > 0 || lastOrderUnits > 0) break;
                     }
 
+                    final hasQty = casesVal > 0 || unitsVal > 0;
+
                     return Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: (casesVal > 0 || unitsVal > 0)
-                              ? const Color(0xFF2563EB)
-                              : Colors.grey.shade200,
-                          width: (casesVal > 0 || unitsVal > 0) ? 1.5 : 1.0,
+                          color: hasQty ? _bookingBlue : const Color(0xFFE2E8F0),
+                          width: hasQty ? 1.5 : 1.0,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Top Row: Last Order Tag (LO: X CS)
                           if (lastOrderCases > 0 || lastOrderUnits > 0)
                             Align(
                               alignment: Alignment.topRight,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 2),
                                 child: Text(
                                   'LO: ${lastOrderCases > 0 ? "$lastOrderCases CS" : ""}${lastOrderUnits > 0 ? " $lastOrderUnits UT" : ""}',
-                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
                                 ),
                               ),
                             ),
@@ -1041,184 +1163,169 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Left: Product Photo Thumbnail
+                              // Left Thumbnail (Tap -> Image 2 Product Detail Modal)
                               InkWell(
-                                onTap: () => _showImageZoom(product),
+                                onTap: () => _showProductDetailSheet(products, index),
                                 borderRadius: BorderRadius.circular(8),
                                 child: Container(
-                                  width: 68,
-                                  height: 68,
+                                  width: 66,
+                                  height: 66,
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFF8FAFC),
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.grey.shade300),
+                                    border: Border.all(color: Colors.grey.shade200),
                                   ),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
-                                    child: _buildProductImage(product, iconSize: 24, fit: BoxFit.cover),
+                                    child: _buildProductImage(product, iconSize: 28, fit: BoxFit.cover),
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 12),
 
-                              // Right: Details & CS/UT Inputs
+                              // Right: Name, Optional Price Pill, Direct CS & UT TextFields (Image 4 & 7)
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      product.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                        color: Color(0xFF0F172A),
+                                    InkWell(
+                                      onTap: () => _showProductDetailSheet(products, index),
+                                      child: Text(
+                                        product.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13.5,
+                                          color: Color(0xFF0F172A),
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 3),
+                                    const SizedBox(height: 5),
+
                                     Row(
                                       children: [
                                         if (product.rate > 0) ...[
-                                          Text(
-                                            'Unit Price ₹${product.rate.toStringAsFixed(2)}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12,
-                                              color: Color(0xFFEA580C),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFFF7ED),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: const Color(0xFFFDBA74)),
+                                            ),
+                                            child: Text(
+                                              'Unit Price ${product.rate.toStringAsFixed(2)}',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 11,
+                                                color: Color(0xFFC2410C),
+                                              ),
                                             ),
                                           ),
-                                          const SizedBox(width: 10),
+                                          const SizedBox(width: 8),
                                         ],
-                                        Text(
-                                          '1 CS = ${product.unitsPerCase} UT • ${product.defaultUnit}',
-                                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                        Expanded(
+                                          child: Text(
+                                            '${product.category} (${product.subcategory}) • 1 CS = ${product.unitsPerCase} ${product.defaultUnit}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                          ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 10),
+                                    const SizedBox(height: 8),
 
-                                    // Quantity Input Row: Direct Number Entry & Steppers
+                                    // Direct Numeric Input Boxes (Matching Reference Images 4, 6, 7)
                                     Row(
                                       children: [
-                                        // CS Input
                                         Expanded(
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFF8FAFC),
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(
-                                                color: casesVal > 0 ? const Color(0xFF2563EB) : Colors.grey.shade300,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'CS (${product.unitsPerCase} UT)',
+                                                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
                                               ),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.center,
-                                              children: [
-                                                Text(
-                                                  'CS (${product.unitsPerCase} UT)',
-                                                  style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.bold),
+                                              const SizedBox(height: 3),
+                                              SizedBox(
+                                                height: 38,
+                                                child: TextField(
+                                                  controller: csCtrl,
+                                                  keyboardType: TextInputType.number,
+                                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: Color(0xFF0F172A)),
+                                                  decoration: InputDecoration(
+                                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                                    filled: true,
+                                                    fillColor: casesVal > 0 ? const Color(0xFFEFF6FF) : Colors.white,
+                                                    border: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                                    ),
+                                                    enabledBorder: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      borderSide: BorderSide(
+                                                        color: casesVal > 0 ? _bookingBlue : const Color(0xFFCBD5E1),
+                                                        width: casesVal > 0 ? 1.4 : 1.0,
+                                                      ),
+                                                    ),
+                                                    focusedBorder: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      borderSide: const BorderSide(color: _bookingBlue, width: 1.6),
+                                                    ),
+                                                  ),
+                                                  onChanged: (val) {
+                                                    final parsedCs = (int.tryParse(val.trim()) ?? 0).clamp(0, 99999);
+                                                    _updateCartItem(product, cases: parsedCs);
+                                                  },
                                                 ),
-                                                const SizedBox(height: 2),
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    InkWell(
-                                                      onTap: casesVal > 0 ? () => _updateCartItem(product, cases: casesVal - 1) : null,
-                                                      child: Padding(
-                                                        padding: const EdgeInsets.all(2),
-                                                        child: Icon(Icons.remove_circle_outline, size: 18, color: casesVal > 0 ? const Color(0xFFEF4444) : Colors.grey.shade400),
-                                                      ),
-                                                    ),
-                                                    Expanded(
-                                                      child: InkWell(
-                                                        onTap: () => _showQuantityDialog(product, isCase: true, currentValue: casesVal),
-                                                        child: Container(
-                                                          padding: const EdgeInsets.symmetric(vertical: 2),
-                                                          decoration: BoxDecoration(
-                                                            color: Colors.white,
-                                                            borderRadius: BorderRadius.circular(4),
-                                                            border: Border.all(color: Colors.grey.shade300),
-                                                          ),
-                                                          child: Text(
-                                                            '$casesVal',
-                                                            textAlign: TextAlign.center,
-                                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    InkWell(
-                                                      onTap: () => _updateCartItem(product, cases: casesVal + 1),
-                                                      child: const Padding(
-                                                        padding: EdgeInsets.all(2),
-                                                        child: Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF2563EB)),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(width: 6),
-
-                                        // UT Input
+                                        const SizedBox(width: 8),
                                         Expanded(
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFF8FAFC),
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(
-                                                color: unitsVal > 0 ? const Color(0xFF2563EB) : Colors.grey.shade300,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'UT (1 ${product.defaultUnit})',
+                                                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
                                               ),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.center,
-                                              children: [
-                                                const Text(
-                                                  'UT (1 PC)',
-                                                  style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.bold),
+                                              const SizedBox(height: 3),
+                                              SizedBox(
+                                                height: 38,
+                                                child: TextField(
+                                                  controller: utCtrl,
+                                                  keyboardType: TextInputType.number,
+                                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: Color(0xFF0F172A)),
+                                                  decoration: InputDecoration(
+                                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                                    filled: true,
+                                                    fillColor: unitsVal > 0 ? const Color(0xFFEFF6FF) : Colors.white,
+                                                    border: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                                    ),
+                                                    enabledBorder: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      borderSide: BorderSide(
+                                                        color: unitsVal > 0 ? _bookingBlue : const Color(0xFFCBD5E1),
+                                                        width: unitsVal > 0 ? 1.4 : 1.0,
+                                                      ),
+                                                    ),
+                                                    focusedBorder: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      borderSide: const BorderSide(color: _bookingBlue, width: 1.6),
+                                                    ),
+                                                  ),
+                                                  onChanged: (val) {
+                                                    final parsedUt = (int.tryParse(val.trim()) ?? 0).clamp(0, 99999);
+                                                    _updateCartItem(product, units: parsedUt);
+                                                  },
                                                 ),
-                                                const SizedBox(height: 2),
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    InkWell(
-                                                      onTap: unitsVal > 0 ? () => _updateCartItem(product, units: unitsVal - 1) : null,
-                                                      child: Padding(
-                                                        padding: const EdgeInsets.all(2),
-                                                        child: Icon(Icons.remove_circle_outline, size: 18, color: unitsVal > 0 ? const Color(0xFFEF4444) : Colors.grey.shade400),
-                                                      ),
-                                                    ),
-                                                    Expanded(
-                                                      child: InkWell(
-                                                        onTap: () => _showQuantityDialog(product, isCase: false, currentValue: unitsVal),
-                                                        child: Container(
-                                                          padding: const EdgeInsets.symmetric(vertical: 2),
-                                                          decoration: BoxDecoration(
-                                                            color: Colors.white,
-                                                            borderRadius: BorderRadius.circular(4),
-                                                            border: Border.all(color: Colors.grey.shade300),
-                                                          ),
-                                                          child: Text(
-                                                            '$unitsVal',
-                                                            textAlign: TextAlign.center,
-                                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    InkWell(
-                                                      onTap: () => _updateCartItem(product, units: unitsVal + 1),
-                                                      child: const Padding(
-                                                        padding: EdgeInsets.all(2),
-                                                        child: Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF2563EB)),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
@@ -1238,12 +1345,43 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
     );
   }
 
+  Widget _buildCompactFirmBtn(String label, String firmKey, Color activeColor) {
+    final isSelected = _selectedFirm == firmKey;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedFirm = firmKey;
+          _selectedCompany = 'All Companies';
+          _selectedCategory = 'All Category';
+          _selectedSubcategory = 'All Subcategory';
+        });
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? activeColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: isSelected ? Colors.white : const Color(0xFF475569),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildOutletInfoTab() {
     final provider = context.watch<CollectionProvider>();
     final history = provider.getPreviousOrdersForShop(widget.shop.id);
+    final pendingDue = provider.getTotalBalanceForShop(widget.shop.id);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1251,56 +1389,51 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.grey.shade200),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.shop.name,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  widget.shop.name.toUpperCase(),
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                 ),
                 const SizedBox(height: 4),
                 Text('Owner: ${widget.shop.ownerName ?? 'Not set'}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
                 Text('Address: ${widget.shop.address}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
                 Text('Mobile: ${widget.shop.mobileNumber}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-                const SizedBox(height: 8),
-                Builder(
-                  builder: (context) {
-                    final pendingDue = provider.getTotalBalanceForShop(widget.shop.id);
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: pendingDue > 0 ? const Color(0xFFFEF2F2) : AppTheme.manasLight,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: pendingDue > 0
-                              ? AppTheme.balanceDueColor.withValues(alpha: 0.3)
-                              : AppTheme.manasBorder,
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: pendingDue > 0 ? const Color(0xFFFEF2F2) : AppTheme.manasLight,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: pendingDue > 0
+                          ? AppTheme.balanceDueColor.withValues(alpha: 0.3)
+                          : AppTheme.manasBorder,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 15,
+                        color: pendingDue > 0 ? AppTheme.balanceDueColor : AppTheme.manasPrimary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Pending Due: ${CurrencyFormatter.format(pendingDue)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: pendingDue > 0 ? AppTheme.balanceDueColor : AppTheme.manasPrimary,
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.account_balance_wallet_outlined,
-                            size: 15,
-                            color: pendingDue > 0 ? AppTheme.balanceDueColor : AppTheme.manasPrimary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Pending Due: ${CurrencyFormatter.format(pendingDue)}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: pendingDue > 0 ? AppTheme.balanceDueColor : AppTheme.manasPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Row(
@@ -1317,8 +1450,22 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton.icon(
+                        icon: const Icon(Icons.chat_outlined, size: 16, color: Color(0xFF16A34A)),
+                        label: const Text('WhatsApp', style: TextStyle(color: Color(0xFF16A34A))),
+                        onPressed: widget.shop.mobileNumber.isNotEmpty
+                            ? () {
+                                final clean = widget.shop.mobileNumber.replaceAll(RegExp(r'[^0-9]'), '');
+                                final phone = clean.length == 10 ? '91$clean' : clean;
+                                launchUrl(Uri.parse('https://wa.me/$phone'), mode: LaunchMode.externalApplication);
+                              }
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
                         icon: const Icon(Icons.navigation_rounded, size: 16),
-                        label: const Text('Navigate'),
+                        label: const Text('Map'),
                         onPressed: widget.shop.mapsUrl != null
                             ? () => launchUrl(Uri.parse(widget.shop.mapsUrl!), mode: LaunchMode.externalApplication)
                             : null,
@@ -1376,6 +1523,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                             _selectedFirm = ord.firm;
                             for (final item in ord.items) {
                               _cart[item.productId] = item.copyWith();
+                              _syncControllersForProduct(item.productId, item.cases, item.units);
                             }
                             _tabController.animateTo(2);
                           });
@@ -1398,6 +1546,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
     );
   }
 
+  /// Tabular Submit Order Tab (Matching Reference Image 5: cafe1eca-26f4-4b9d-ba4c-28458ea05fb9.jpeg)
   Widget _buildSubmitOrderTab() {
     if (_cart.isEmpty) {
       return Center(
@@ -1414,6 +1563,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
               const Text('Add products from the Order tab to submit.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
               const SizedBox(height: 16),
               ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: _bookingBlue, foregroundColor: Colors.white),
                 onPressed: () => _tabController.animateTo(0),
                 child: const Text('Go to Products'),
               ),
@@ -1423,104 +1573,152 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
       );
     }
 
+    final hasAmount = _totalAmount > 0;
+    final hasKg = _totalKg > 0;
+
     return Column(
       children: [
-        // Top Summary Strip
+        // Top Cream/Yellow Summary Strip (Exact match to Image 5)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          color: const Color(0xFFFEF9C3),
+          color: const Color(0xFFFEFCE8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              if (_totalAmount > 0) _buildSummaryPill('Amount', '₹${_totalAmount.toStringAsFixed(2)}'),
+              if (hasAmount) _buildSummaryPill('Amount', _totalAmount.toStringAsFixed(2)),
               _buildSummaryPill('Lines', '${_cart.length}'),
               _buildSummaryPill('Case/Bags', '$_totalCases'),
               _buildSummaryPill('Unit', '$_totalUnits'),
-              if (_totalKg > 0) _buildSummaryPill('Kg', _totalKg.toStringAsFixed(1)) else _buildSummaryPill('Total Pcs', '$_totalAllUnits'),
+              if (hasKg)
+                _buildSummaryPill('Kg', _totalKg.toStringAsFixed(2))
+              else
+                _buildSummaryPill('Total Pcs', '$_totalAllUnits'),
             ],
           ),
         ),
+        const Divider(height: 1),
 
-        // Items Breakdown
+        // Tabular Items Breakdown Cards
         Expanded(
           child: ListView.separated(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             itemCount: _cart.values.length,
             separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (ctx, index) {
               final item = _cart.values.elementAt(index);
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item.productName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF1E40AF)),
-                          tooltip: 'Edit CS / UT',
-                          onPressed: () => _showOrderItemEditDialog(item),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                          tooltip: 'Remove item',
-                          onPressed: () {
-                            setState(() {
-                              _cart.remove(item.productId);
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item.rate > 0
-                                ? '₹${item.rate.toStringAsFixed(2)}/UT  •  ${item.cases} CS  •  ${item.units} UT'
-                                : '${item.cases} CS  •  ${item.units} UT  (1 CS = ${item.unitsPerCase} ${item.unit})',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                              fontWeight: FontWeight.w500,
+              final itemHasRate = item.rate > 0;
+
+              return InkWell(
+                onTap: () => _showOrderItemEditDialog(item),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Bold Product Name + Red Trash Icon
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.productName,
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0F172A)),
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          item.subtotal > 0 ? '₹${item.subtotal.toStringAsFixed(2)}' : '${item.totalUnits} ${item.unit}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18, color: _bookingBlue),
+                            tooltip: 'Edit CS / UT',
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _showOrderItemEditDialog(item),
                           ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Color(0xFFDC2626)),
+                            tooltip: 'Remove item',
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(),
+                            onPressed: () {
+                              setState(() {
+                                _cart.remove(item.productId);
+                                _syncControllersForProduct(item.productId, 0, 0);
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Clean Aligned Table Grid (Matching Image 5)
+                      Row(
+                        children: [
+                          if (itemHasRate)
+                            Expanded(
+                              flex: 3,
+                              child: _buildTableCell('UT Price', item.rate.toStringAsFixed(2), align: TextAlign.left),
+                            )
+                          else
+                            Expanded(
+                              flex: 3,
+                              child: _buildTableCell('Pack / Unit', '1 CS = ${item.unitsPerCase} ${item.unit}', align: TextAlign.left),
+                            ),
+                          Expanded(
+                            flex: 2,
+                            child: _buildTableCell('CS', '${item.cases}', align: TextAlign.center, isBoldVal: true),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: _buildTableCell('UT', '${item.units}', align: TextAlign.center, isBoldVal: true),
+                          ),
+                          if (item.totalWeightKg > 0)
+                            Expanded(
+                              flex: 2,
+                              child: _buildTableCell('Kg', item.totalWeightKg.toStringAsFixed(2), align: TextAlign.right),
+                            )
+                          else
+                            Expanded(
+                              flex: 2,
+                              child: _buildTableCell('Total', '${item.totalUnits}', align: TextAlign.right),
+                            ),
+                          if (item.subtotal > 0)
+                            Expanded(
+                              flex: 2,
+                              child: _buildTableCell('Amount', item.subtotal.toStringAsFixed(2), align: TextAlign.right, isBoldVal: true),
+                            ),
+                        ],
+                      ),
+
+                      if (item.subtotal > 0) ...[
+                        const SizedBox(height: 8),
+                        const Divider(height: 1),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Total', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+                            Text(
+                              item.subtotal.toStringAsFixed(2),
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                            ),
+                          ],
                         ),
                       ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
           ),
         ),
 
-        // Bottom Notes & Submit button
+        // Bottom Notes & Submit Footer (Matching Image 5 Green Left Label + Blue Action Button)
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
           decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [
@@ -1553,22 +1751,22 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                         children: [
                           Text(
                             _totalAmount > 0 ? 'TOTAL AMOUNT:' : 'TOTAL ORDER:',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
                           ),
                           Text(
                             _totalAmount > 0
-                                ? '₹${_totalAmount.toStringAsFixed(2)}'
+                                ? CurrencyFormatter.format(_totalAmount)
                                 : '$_totalCases CS, $_totalUnits UT',
-                            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
                           ),
                         ],
                       ),
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.purvaPrimary,
+                        backgroundColor: _bookingBlue,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                       onPressed: _isSubmitting ? null : _submitOrder,
@@ -1584,6 +1782,30 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                 ),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTableCell(String header, String value, {TextAlign align = TextAlign.left, bool isBoldVal = false}) {
+    final crossAlign = align == TextAlign.right
+        ? CrossAxisAlignment.end
+        : (align == TextAlign.center ? CrossAxisAlignment.center : CrossAxisAlignment.start);
+    return Column(
+      crossAxisAlignment: crossAlign,
+      children: [
+        Text(
+          header,
+          style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: isBoldVal ? FontWeight.w800 : FontWeight.w600,
+            color: const Color(0xFF0F172A),
           ),
         ),
       ],
@@ -1619,6 +1841,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                   child: TextField(
                     controller: csCtrl,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: const InputDecoration(labelText: 'Cases (CS)'),
                   ),
                 ),
@@ -1627,6 +1850,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                   child: TextField(
                     controller: utCtrl,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: const InputDecoration(labelText: 'Units (UT)'),
                   ),
                 ),
@@ -1638,11 +1862,15 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(dlgCtx);
-              setState(() => _cart.remove(item.productId));
+              setState(() {
+                _cart.remove(item.productId);
+                _syncControllersForProduct(item.productId, 0, 0);
+              });
             },
             child: const Text('Remove', style: TextStyle(color: AppTheme.balanceDueColor)),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _bookingBlue, foregroundColor: Colors.white),
             onPressed: () {
               final newCs = (int.tryParse(csCtrl.text.trim()) ?? 0).clamp(0, 99999);
               final newUt = (int.tryParse(utCtrl.text.trim()) ?? 0).clamp(0, 99999);
@@ -1658,6 +1886,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                     quantity: (newCs * upc) + newUt,
                   );
                 }
+                _syncControllersForProduct(item.productId, newCs, newUt);
               });
             },
             child: const Text('Update'),
@@ -1673,9 +1902,9 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
   Widget _buildSummaryPill(String label, String value) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF713F12))),
+        Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
         const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF713F12))),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0F172A))),
       ],
     );
   }

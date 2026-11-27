@@ -14,6 +14,7 @@ import 'package:daily_collection_app/providers/auth_provider.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
 import 'package:daily_collection_app/screens/all_orders_screen.dart';
 import 'package:daily_collection_app/screens/driver_dashboard_screen.dart';
+import 'package:daily_collection_app/screens/order_dashboard_screen.dart';
 import 'package:daily_collection_app/screens/outlet_order_booking_screen.dart';
 import 'package:daily_collection_app/services/order_catalog_service.dart';
 import 'package:daily_collection_app/widgets/add_product_dialog.dart';
@@ -684,6 +685,105 @@ void main() {
       expect(saved.first.mrp, 0.0);
       expect(saved.first.weightKg, 0.0);
       expect(saved.first.unitsPerCase, 24);
+    });
+
+    testWidgets('Redesigned OrderDashboardScreen and OutletOrderBookingScreen support Outlet Info, direct CS/UT entry, and tabular Submit Order',
+        (tester) async {
+      final route = RouteModel(id: 'r_raj', name: 'Rajgurunagar-1');
+      final shop = ShopModel(
+        id: 'shop_shakti',
+        name: 'Shiv Shakti Traders',
+        address: 'Rajgurunagar',
+        routeId: route.id,
+        routeName: route.name,
+        mobileNumber: '9822001122',
+        ownerName: 'Mahesh',
+      );
+      const product = CatalogProduct(
+        id: 'prod_nip',
+        name: 'NIPMB-115GX4(11.04KG)Rs.30 -GREEN',
+        category: 'HC',
+        subcategory: 'NSB',
+        company: 'Wipro',
+        firm: 'Purva Enterprises',
+        defaultUnit: 'Pcs',
+        unitsPerCase: 24,
+        rate: 0.0,
+      );
+      final salesman = UserModel(
+        id: 'u_order',
+        phone: '8888888888',
+        name: 'Order Man',
+        role: UserRole.order,
+        password: 'p',
+        assignedRouteIds: [route.id],
+      );
+
+      SharedPreferences.setMockInitialValues({
+        'app_sample_data_initialized_v1': true,
+        'app_users_cache_v1': jsonEncode([salesman.toJson()]),
+        'current_logged_in_user_id_v1': salesman.id,
+        'app_routes_v1': [jsonEncode(route.toJson())],
+        'app_shops_v1': [jsonEncode(shop.toJson())],
+        'app_custom_products_v1': [jsonEncode(product.toJson())],
+      });
+
+      final auth = AuthProvider();
+      final collection = CollectionProvider();
+      await auth.initialize();
+      await collection.initialize();
+
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider.value(value: collection),
+          ],
+          child: const MaterialApp(home: OrderDashboardScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Retailer dashboard renders header, Today strip, tabs, and Outlet card
+      expect(find.text('RETAILER'), findsOneWidget);
+      expect(find.text('Today'), findsOneWidget);
+      expect(find.text('Pending (1)'), findsOneWidget);
+      expect(find.text('SHIV SHAKTI TRADERS'), findsOneWidget);
+      expect(find.textContaining('Last Visited:'), findsOneWidget);
+
+      // Tap Info (i) icon -> opens Outlet Info screen
+      await tester.tap(find.byIcon(Icons.info_outline_rounded));
+      await tester.pumpAndSettle();
+      expect(find.text('Outlet Info'), findsOneWidget);
+      expect(find.text('Navigate'), findsOneWidget);
+      expect(find.text('Update GPS'), findsOneWidget);
+
+      // Tap Book Order -> opens OutletOrderBookingScreen with direct CS/UT inputs
+      await tester.tap(find.text('Book Order'));
+      await tester.pumpAndSettle();
+      expect(find.text('Category'), findsOneWidget);
+      expect(find.text('Subcategory'), findsOneWidget);
+      expect(find.text('NIPMB-115GX4(11.04KG)Rs.30 -GREEN'), findsOneWidget);
+
+      // Enter 2 in direct CS TextField
+      final csField = find.byType(TextField).first;
+      await tester.enterText(csField, '2');
+      await tester.pumpAndSettle();
+
+      // Go to Submit Order via Floating Cart FAB
+      await tester.tap(find.byIcon(Icons.shopping_cart_rounded));
+      await tester.pumpAndSettle();
+
+      // Tabular Submit Order summary shows Lines, Case/Bags, Unit, and TOTAL ORDER
+      expect(find.text('Lines'), findsOneWidget);
+      expect(find.text('Case/Bags'), findsOneWidget);
+      expect(find.text('TOTAL ORDER:'), findsOneWidget);
+      expect(find.text('2 CS, 0 UT'), findsOneWidget);
     });
   });
 }
