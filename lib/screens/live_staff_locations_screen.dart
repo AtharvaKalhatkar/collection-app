@@ -19,6 +19,7 @@ import '../utils/currency_formatter.dart';
 import '../utils/quick_alert.dart';
 import '../utils/theme.dart';
 import '../utils/timeline_segment_builder.dart';
+import '../widgets/clean_ui.dart';
 
 class LiveStaffLocationsScreen extends StatefulWidget {
   final String? initialStaffName;
@@ -44,7 +45,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   late final MapController _mapController;
 
   DateTime _selectedDate = DateTime.now();
-  String _selectedStaffFilter = 'all';
+  String? _selectedStaffName;
   String _liveRoleFilter = 'all';
   int _timelineSubTabIndex = 0; // 0: Day, 1: Trips, 2: Places
   bool _isRefreshing = false;
@@ -117,6 +118,16 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     return 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
   }
 
+  List<UserModel> _fieldStaffUsers(AuthProvider auth) {
+    return auth.users
+        .where((u) =>
+            u.id != 'config_gemini_api' &&
+            !u.isSuperAdmin &&
+            !u.isOffice &&
+            (u.isSalesman || u.isDriver || u.isOrder || u.isCollection))
+        .toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -127,7 +138,12 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
       initialIndex: widget.initialTabIndex.clamp(0, 2),
     );
     if (widget.initialStaffName != null && widget.initialStaffName!.isNotEmpty) {
-      _selectedStaffFilter = widget.initialStaffName!;
+      _selectedStaffName = widget.initialStaffName!;
+    } else {
+      final staff = _fieldStaffUsers(context.read<AuthProvider>());
+      if (staff.isNotEmpty) {
+        _selectedStaffName = staff.first.name;
+      }
     }
     _loadTimeline();
     if (!SupabaseService().isTestMode) {
@@ -212,29 +228,50 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     return DateFormat('EEE, d MMM yyyy').format(d);
   }
 
+  bool _isDeskAdminEntry(LocationTimelineEntry e) {
+    final role = e.staffRole.toLowerCase();
+    final name = e.staffName.toLowerCase();
+    return e.userId == 'user_super_admin' ||
+        role == 'superadmin' ||
+        role == 'super_admin' ||
+        role == 'office' ||
+        name.contains('super admin');
+  }
+
   Future<void> _loadTimeline({bool showSpinner = true}) async {
+    final staffList = _fieldStaffUsers(context.read<AuthProvider>());
+    final activeStaffName = _selectedStaffName ?? (staffList.isNotEmpty ? staffList.first.name : null);
+
+    if (activeStaffName == null || activeStaffName.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _timelineEntries = [];
+          _isLoadingTimeline = false;
+        });
+      }
+      return;
+    }
+
     if (showSpinner) {
       setState(() => _isLoadingTimeline = true);
     }
 
     try {
-      // 1. Fetch from Supabase cloud
+      // 1. Fetch from Supabase cloud for the selected field staff member
       final cloudEntries = await SupabaseService().fetchLocationTimeline(
         date: _selectedDate,
-        staffName: _selectedStaffFilter == 'all' ? null : _selectedStaffFilter,
+        staffName: activeStaffName,
       );
 
       // 2. Fetch from local cache
       final localEntries = await StorageService().loadLocationTimeline();
       final filteredLocal = localEntries.where((e) {
+        if (_isDeskAdminEntry(e)) return false;
         final sameDay = e.timestamp.year == _selectedDate.year &&
             e.timestamp.month == _selectedDate.month &&
             e.timestamp.day == _selectedDate.day;
         if (!sameDay) return false;
-        if (_selectedStaffFilter != 'all') {
-          return _matchesStaffFilter(e.staffName, e.userId, _selectedStaffFilter);
-        }
-        return true;
+        return _matchesStaffFilter(e.staffName, e.userId, activeStaffName);
       }).toList();
 
       if (!mounted) return;
@@ -243,9 +280,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
       // 3. Synthesize collections recorded on this date
       final dayCollections = collectionProvider
           .getFilteredCollections(forDate: _selectedDate)
-          .where((c) =>
-              _selectedStaffFilter == 'all' ||
-              _matchesStaffFilter(c.salesmanName, '', _selectedStaffFilter))
+          .where((c) => _matchesStaffFilter(c.salesmanName, '', activeStaffName))
           .toList();
 
       final synthesizedCollections = dayCollections.map((c) {
@@ -276,8 +311,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
             o.orderDate.month == _selectedDate.month &&
             o.orderDate.day == _selectedDate.day;
         if (!sameDay) return false;
-        return _selectedStaffFilter == 'all' ||
-            _matchesStaffFilter(o.salesmanName, '', _selectedStaffFilter);
+        return _matchesStaffFilter(o.salesmanName, '', activeStaffName);
       }).toList();
 
       final synthesizedOrders = dayOrders.map((o) {
@@ -308,7 +342,9 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
         mergedMap[e.id] = e;
       }
       for (final e in cloudEntries) {
-        mergedMap[e.id] = e;
+        if (!_isDeskAdminEntry(e)) {
+          mergedMap[e.id] = e;
+        }
       }
       for (final e in synthesizedCollections) {
         final exists = mergedMap.values.any((m) =>
@@ -325,13 +361,12 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
         if (!exists) mergedMap[e.id] = e;
       }
 
-      var list = mergedMap.values.toList();
-      if (_selectedStaffFilter != 'all') {
-        list = list
-            .where((e) => _matchesStaffFilter(e.staffName, e.userId, _selectedStaffFilter))
-            .toList();
-      }
-      list.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      var list = mergedMap.values
+          .where((e) =>
+              !_isDeskAdminEntry(e) &&
+              _matchesStaffFilter(e.staffName, e.userId, activeStaffName))
+          .toList()
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
       if (mounted) {
         setState(() {
@@ -359,7 +394,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     for (final e in entries) {
       if (lookups >= 15 || !mounted) break;
       if (e.latitude == 0.0 && e.longitude == 0.0) continue;
-      final cell = '${(e.latitude * 1000).round()}_${(e.longitude * 1000).round()}';
+      final cell = '${(e.latitude * 2000).round()}_${(e.longitude * 2000).round()}';
       if (!seenCells.add(cell)) continue;
       if (LocationTrackingService.getCachedPlace(e.latitude, e.longitude) != null) {
         continue;
@@ -713,14 +748,18 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    // Include ALL field roles: Sales & Collection, Order Booking, Collection, and Drivers
-    final users = auth.users
-        .where((u) =>
-            u.id != 'config_gemini_api' &&
-            !u.isSuperAdmin &&
-            !u.isOffice &&
-            (u.isSalesman || u.isDriver || u.isOrder || u.isCollection))
-        .toList();
+    final users = _fieldStaffUsers(auth);
+
+    // Ensure Timeline always points to an actual individual field staff member (never 'All Staff')
+    if (users.isNotEmpty &&
+        (_selectedStaffName == null ||
+            !users.any((u) => _matchesStaffFilter(u.name, u.id, _selectedStaffName!)))) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _selectedStaffName = users.first.name);
+        _loadTimeline();
+      });
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -771,9 +810,9 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
         controller: _tabController,
         physics: const NeverScrollableScrollPhysics(),
         children: [
-          _buildGoogleStyleTimelineTab(users),
+          ResponsiveContent(maxWidth: 860, child: _buildGoogleStyleTimelineTab(users)),
           _buildGoogleStyleMapTab(users),
-          _buildStaffDirectoryTab(users),
+          ResponsiveContent(maxWidth: 860, child: _buildStaffDirectoryTab(users)),
         ],
       ),
     );
@@ -806,106 +845,125 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
               ),
               const SizedBox(height: 10),
 
-              // Date Stepper (< Today v >) + Staff Dropdown Pill
-              Row(
-                children: [
-                  Expanded(
-                    flex: 5,
-                    child: Container(
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.chevron_left_rounded, size: 20),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32),
-                            onPressed: () => _stepDate(-1),
-                          ),
-                          Expanded(
-                            child: InkWell(
-                              onTap: _pickDate,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      _formatDateSelectorLabel(_selectedDate),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppTheme.textPrimary,
-                                      ),
+              // Date Stepper (< Today v >) + Staff Dropdown Pill (stacks cleanly on ultra-narrow phones)
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final dateStepper = Container(
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 28),
+                          onPressed: () => _stepDate(-1),
+                        ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: _pickDate,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    _formatDateSelectorLabel(_selectedDate),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.textPrimary,
                                     ),
                                   ),
-                                  const Icon(Icons.arrow_drop_down_rounded, size: 18),
-                                ],
-                              ),
+                                ),
+                                const Icon(Icons.arrow_drop_down_rounded, size: 18),
+                              ],
                             ),
                           ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.chevron_right_rounded,
-                              size: 20,
-                              color: _isToday(_selectedDate)
-                                  ? Colors.grey.shade300
-                                  : AppTheme.textPrimary,
-                            ),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32),
-                            onPressed: _isToday(_selectedDate) ? null : () => _stepDate(1),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 4,
-                    child: Container(
-                      height: 38,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedStaffFilter == 'all' ||
-                                  users.any((u) => u.name == _selectedStaffFilter)
-                              ? _selectedStaffFilter
-                              : 'all',
-                          isExpanded: true,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textPrimary,
-                          ),
-                          items: [
-                            const DropdownMenuItem(value: 'all', child: Text('All Staff')),
-                            ...users.map((u) => DropdownMenuItem(
-                                  value: u.name,
-                                  child: Text(u.plainName, overflow: TextOverflow.ellipsis),
-                                )),
-                          ],
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _selectedStaffFilter = val);
-                              _loadTimeline();
-                            }
-                          },
                         ),
-                      ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: _isToday(_selectedDate)
+                                ? Colors.grey.shade300
+                                : AppTheme.textPrimary,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 28),
+                          onPressed: _isToday(_selectedDate) ? null : () => _stepDate(1),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                  );
+
+                  final staffPicker = Container(
+                    height: 38,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: users.isEmpty
+                          ? const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'No Field Staff',
+                                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                              ),
+                            )
+                          : DropdownButton<String>(
+                              value: users.any((u) => u.name == _selectedStaffName)
+                                  ? _selectedStaffName
+                                  : users.first.name,
+                              isExpanded: true,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textPrimary,
+                              ),
+                              items: users
+                                  .map((u) => DropdownMenuItem(
+                                        value: u.name,
+                                        child: Text(u.plainName, overflow: TextOverflow.ellipsis),
+                                      ))
+                                  .toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() => _selectedStaffName = val);
+                                  _loadTimeline();
+                                }
+                              },
+                            ),
+                    ),
+                  );
+
+                  if (constraints.maxWidth < 340) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        dateStepper,
+                        const SizedBox(height: 8),
+                        staffPicker,
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(flex: 5, child: dateStepper),
+                      const SizedBox(width: 8),
+                      Expanded(flex: 4, child: staffPicker),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 10),
 
@@ -1274,24 +1332,6 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                             color: AppTheme.textSecondary,
                           ),
                         ),
-                        if (_selectedStaffFilter == 'all') ...[
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: Text(
-                              stop.staffName,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ],
@@ -1773,258 +1813,278 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
           ],
         ),
 
-        // Top Google-Maps Search Pill + Sleek Horizontal Quick Chips
-        Positioned(
-          top: 10,
-          left: 12,
-          right: 12,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Floating Rounded Search Pill
-              Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(28),
-                color: Colors.white,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search_rounded, size: 20, color: AppTheme.textSecondary),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _mapSearchCtrl,
-                          decoration: const InputDecoration(
-                            hintText: 'Search staff, outlet, or beat...',
-                            hintStyle: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            isDense: true,
+        // Non-overlapping Responsive Overlay Column (Respects notch, gesture bar, and landscape height)
+        Positioned.fill(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Top Google-Maps Search Pill + Quick Staff & Route Chips
+                  Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(28),
+                    color: Colors.white,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search_rounded, size: 20, color: AppTheme.textSecondary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _mapSearchCtrl,
+                              decoration: const InputDecoration(
+                                hintText: 'Search staff, outlet, or beat...',
+                                hintStyle: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                isDense: true,
+                              ),
+                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                              onChanged: (val) => setState(() => _shopSearchQuery = val),
+                            ),
                           ),
-                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-                          onChanged: (val) => setState(() => _shopSearchQuery = val),
-                        ),
+                          if (_shopSearchQuery.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.clear_rounded, size: 18),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () {
+                                _mapSearchCtrl.clear();
+                                setState(() => _shopSearchQuery = '');
+                              },
+                            ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            icon: Icon(
+                              Icons.tune_rounded,
+                              size: 20,
+                              color: _selectedMapRouteId != null ? _primaryBlue : AppTheme.textPrimary,
+                            ),
+                            tooltip: 'Filter Routes & Map Options',
+                            padding: const EdgeInsets.all(6),
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _openMapFilterSheet(allRoutes, allShops),
+                          ),
+                        ],
                       ),
-                      if (_shopSearchQuery.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.clear_rounded, size: 18),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          onPressed: () {
-                            _mapSearchCtrl.clear();
-                            setState(() => _shopSearchQuery = '');
-                          },
-                        ),
-                      const SizedBox(width: 6),
-                      IconButton(
-                        icon: Icon(
-                          Icons.tune_rounded,
-                          size: 20,
-                          color: _selectedMapRouteId != null ? _primaryBlue : AppTheme.textPrimary,
-                        ),
-                        tooltip: 'Filter Routes & Map Options',
-                        padding: const EdgeInsets.all(6),
-                        constraints: const BoxConstraints(),
-                        onPressed: () => _openMapFilterSheet(allRoutes, allShops),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              // Compact Scrollable Quick Staff & Route Chips
-              SizedBox(
-                height: 34,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    _mapQuickChip(
-                      label: 'All Live (${liveStaffUsers.length})',
-                      icon: Icons.groups_rounded,
-                      selected: _selectedStaffUser == null && _selectedMapRouteId == null,
-                      onTap: () {
-                        setState(() {
-                          _selectedStaffUser = null;
-                          _selectedShop = null;
-                        });
-                        _fitAllStaffOnMap(liveStaffUsers);
-                      },
                     ),
-                    ...liveStaffUsers.map((u) {
-                      final active = _selectedStaffUser?.id == u.id;
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: _mapQuickChip(
-                          label: '${u.plainName} • ${u.isOnline ? "LIVE" : u.locationTimeAgo}',
-                          dotColor: u.isOnline ? const Color(0xFF22C55E) : Colors.grey,
-                          selected: active,
+                  ),
+                  const SizedBox(height: 8),
+
+                  SizedBox(
+                    height: 34,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _mapQuickChip(
+                          label: 'All Live (${liveStaffUsers.length})',
+                          icon: Icons.groups_rounded,
+                          selected: _selectedStaffUser == null && _selectedMapRouteId == null,
                           onTap: () {
                             setState(() {
-                              _selectedStaffUser = u;
+                              _selectedStaffUser = null;
                               _selectedShop = null;
                             });
-                            _safeMoveMap(ll.LatLng(u.latitude!, u.longitude!), 15.5);
+                            _fitAllStaffOnMap(liveStaffUsers);
                           },
                         ),
-                      );
-                    }),
-                    if (_selectedMapRouteId != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: _mapQuickChip(
-                          label: 'Clear Route',
-                          icon: Icons.close_rounded,
-                          selected: true,
-                          onTap: () => setState(() {
-                            _selectedMapRouteId = null;
-                            _selectedShop = null;
-                          }),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Right-Side Google Maps Circular Control Buttons
-        Positioned(
-          right: 12,
-          bottom: (_selectedShop != null || _selectedStaffUser != null)
-              ? 185
-              : (liveStaffUsers.isNotEmpty ? 96 : 20),
-          child: Column(
-            children: [
-              FloatingActionButton.small(
-                heroTag: 'map_layer_switch',
-                backgroundColor: Colors.white,
-                foregroundColor: _mapLayer == 'satellite' ? _primaryBlue : AppTheme.textPrimary,
-                tooltip: _mapLayer == 'satellite' ? 'Switch to Road Map' : 'Switch to Satellite',
-                onPressed: () {
-                  setState(() {
-                    _mapLayer = _mapLayer == 'satellite' ? 'streets' : 'satellite';
-                  });
-                },
-                child: Icon(_mapLayer == 'satellite' ? Icons.map_rounded : Icons.layers_rounded, size: 20),
-              ),
-              const SizedBox(height: 8),
-              FloatingActionButton.small(
-                heroTag: 'map_my_gps',
-                backgroundColor: Colors.white,
-                foregroundColor: _tealAccent,
-                tooltip: 'My GPS Location',
-                onPressed: () async {
-                  final fix = await LocationService.getCurrentLocationWithStatus();
-                  if (!mounted) return;
-                  if (fix.hasLocation) {
-                    _safeMoveMap(ll.LatLng(fix.latitude!, fix.longitude!), 15.5);
-                  } else {
-                    QuickAlert.error(context, fix.errorMessage ?? 'Could not fetch GPS.');
-                  }
-                },
-                child: const Icon(Icons.my_location_rounded, size: 20),
-              ),
-              const SizedBox(height: 8),
-              FloatingActionButton.small(
-                heroTag: 'map_fit_staff',
-                backgroundColor: Colors.white,
-                foregroundColor: AppTheme.textPrimary,
-                tooltip: 'Fit All Live Staff',
-                onPressed: () => _fitAllStaffOnMap(liveStaffUsers),
-                child: const Icon(Icons.center_focus_strong_rounded, size: 20),
-              ),
-            ],
-          ),
-        ),
-
-        // Bottom Selected Outlet Detail Card OR Staff Detail Card OR Quick Staff Strip
-        if (_selectedShop != null)
-          _buildSelectedShopMapSheet(_selectedShop!)
-        else if (_selectedStaffUser != null)
-          _buildSelectedStaffMapSheet(_selectedStaffUser!)
-        else if (liveStaffUsers.isNotEmpty)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 12,
-            height: 72,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              scrollDirection: Axis.horizontal,
-              itemCount: liveStaffUsers.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (_, idx) {
-                final u = liveStaffUsers[idx];
-                return InkWell(
-                  onTap: () {
-                    setState(() {
-                      _selectedStaffUser = u;
-                      _selectedShop = null;
-                    });
-                    _safeMoveMap(ll.LatLng(u.latitude!, u.longitude!), 15.5);
-                  },
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    width: 215,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: u.isOnline
-                              ? const Color(0xFFDCFCE7)
-                              : const Color(0xFFF1F5F9),
-                          foregroundColor: u.isOnline
-                              ? const Color(0xFF15803D)
-                              : AppTheme.textSecondary,
-                          child: Icon(
-                            u.isDriver ? Icons.local_shipping_rounded : Icons.two_wheeler_rounded,
-                            size: 18,
+                        ...liveStaffUsers.map((u) {
+                          final active = _selectedStaffUser?.id == u.id;
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: _mapQuickChip(
+                              key: ValueKey('map_staff_chip_${u.id}'),
+                              label: '${u.plainName} • ${u.isOnline ? "LIVE" : u.locationTimeAgo}',
+                              dotColor: u.isOnline ? const Color(0xFF22C55E) : Colors.grey,
+                              selected: active,
+                              onTap: () {
+                                setState(() {
+                                  _selectedStaffUser = u;
+                                  _selectedShop = null;
+                                });
+                                _safeMoveMap(ll.LatLng(u.latitude!, u.longitude!), 15.5);
+                              },
+                            ),
+                          );
+                        }),
+                        if (_selectedMapRouteId != null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: _mapQuickChip(
+                              label: 'Clear Route',
+                              icon: Icons.close_rounded,
+                              selected: true,
+                              onTap: () => setState(() {
+                                _selectedMapRouteId = null;
+                                _selectedShop = null;
+                              }),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${u.plainName} • ${u.isOnline ? "LIVE" : u.locationTimeAgo}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-                              ),
-                              Text(
-                                cleanLandmark(
-                                  u.locationLandmark ?? '',
-                                  lat: u.latitude,
-                                  lng: u.longitude,
-                                  allShops: allShops,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 10.5, color: AppTheme.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
                       ],
                     ),
                   ),
-                );
-              },
+
+                  const SizedBox(height: 6),
+
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Right-side Map Controls stacked cleanly ABOVE any active bottom sheet
+                            Builder(
+                              builder: (overlayCtx) {
+                                final isCompactHeight = MediaQuery.sizeOf(overlayCtx).height < 520;
+                                final fabs = <Widget>[
+                                  FloatingActionButton.small(
+                                    heroTag: 'map_layer_switch',
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: _mapLayer == 'satellite' ? _primaryBlue : AppTheme.textPrimary,
+                                    tooltip: _mapLayer == 'satellite' ? 'Switch to Road Map' : 'Switch to Satellite',
+                                    onPressed: () {
+                                      setState(() {
+                                        _mapLayer = _mapLayer == 'satellite' ? 'streets' : 'satellite';
+                                      });
+                                    },
+                                    child: Icon(_mapLayer == 'satellite' ? Icons.map_rounded : Icons.layers_rounded, size: 20),
+                                  ),
+                                  SizedBox(width: isCompactHeight ? 8 : 0, height: isCompactHeight ? 0 : 8),
+                                  FloatingActionButton.small(
+                                    heroTag: 'map_my_gps',
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: _tealAccent,
+                                    tooltip: 'My GPS Location',
+                                    onPressed: () async {
+                                      final fix = await LocationService.getCurrentLocationWithStatus();
+                                      if (!overlayCtx.mounted) return;
+                                      if (fix.hasLocation) {
+                                        _safeMoveMap(ll.LatLng(fix.latitude!, fix.longitude!), 15.5);
+                                      } else {
+                                        QuickAlert.error(overlayCtx, fix.errorMessage ?? 'Could not fetch GPS.');
+                                      }
+                                    },
+                                    child: const Icon(Icons.my_location_rounded, size: 20),
+                                  ),
+                                  SizedBox(width: isCompactHeight ? 8 : 0, height: isCompactHeight ? 0 : 8),
+                                  FloatingActionButton.small(
+                                    heroTag: 'map_fit_staff',
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: AppTheme.textPrimary,
+                                    tooltip: 'Fit All Live Staff',
+                                    onPressed: () => _fitAllStaffOnMap(liveStaffUsers),
+                                    child: const Icon(Icons.center_focus_strong_rounded, size: 20),
+                                  ),
+                                ];
+
+                                return Align(
+                                  alignment: Alignment.bottomRight,
+                                  child: isCompactHeight
+                                      ? Row(mainAxisSize: MainAxisSize.min, children: fabs)
+                                      : Column(mainAxisSize: MainAxisSize.min, children: fabs),
+                                );
+                              },
+                            ),
+
+                            // Bottom Selected Card OR Quick Staff Strip
+                            if (_selectedShop != null) ...[
+                              const SizedBox(height: 10),
+                              _buildSelectedShopMapCard(_selectedShop!),
+                            ] else if (_selectedStaffUser != null) ...[
+                              const SizedBox(height: 10),
+                              _buildSelectedStaffMapCard(_selectedStaffUser!),
+                            ] else if (liveStaffUsers.isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                height: 72,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: liveStaffUsers.length,
+                                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                                  itemBuilder: (_, idx) {
+                                    final u = liveStaffUsers[idx];
+                                    return InkWell(
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedStaffUser = u;
+                                          _selectedShop = null;
+                                        });
+                                        _safeMoveMap(ll.LatLng(u.latitude!, u.longitude!), 15.5);
+                                      },
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: Container(
+                                        width: 215,
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(14),
+                                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 18,
+                                              backgroundColor: u.isOnline
+                                                  ? const Color(0xFFDCFCE7)
+                                                  : const Color(0xFFF1F5F9),
+                                              foregroundColor: u.isOnline
+                                                  ? const Color(0xFF15803D)
+                                                  : AppTheme.textSecondary,
+                                              child: Icon(
+                                                u.isDriver ? Icons.local_shipping_rounded : Icons.two_wheeler_rounded,
+                                                size: 18,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '${u.plainName} • ${u.isOnline ? "LIVE" : u.locationTimeAgo}',
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                                  ),
+                                                  Text(
+                                                    cleanLandmark(
+                                                      u.locationLandmark ?? '',
+                                                      lat: u.latitude,
+                                                      lng: u.longitude,
+                                                      allShops: allShops,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(fontSize: 10.5, color: AppTheme.textSecondary),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+        ),
       ],
     );
   }
@@ -2052,6 +2112,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   }
 
   Widget _mapQuickChip({
+    Key? key,
     required String label,
     IconData? icon,
     Color? dotColor,
@@ -2059,6 +2120,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     required VoidCallback onTap,
   }) {
     return Material(
+      key: key,
       elevation: 2,
       borderRadius: BorderRadius.circular(18),
       color: selected ? _primaryBlue : Colors.white,
@@ -2177,86 +2239,83 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     );
   }
 
-  Widget _buildSelectedShopMapSheet(ShopModel shop) {
-    return Positioned(
-      left: 12,
-      right: 12,
-      bottom: 12,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 4))],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    shop.name,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+  Widget _buildSelectedShopMapCard(ShopModel shop) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 4))],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  shop.name,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() => _selectedShop = null),
-                ),
-              ],
-            ),
-            Text(
-              '${shop.routeName} • ${shop.address.isNotEmpty ? shop.address : "Beat Outlet"}',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                if (shop.mobileNumber.isNotEmpty)
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF16A34A),
-                      foregroundColor: Colors.white,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    icon: const Icon(Icons.phone, size: 14),
-                    label: const Text('Call', style: TextStyle(fontSize: 11.5)),
-                    onPressed: () => _callPhone(shop.mobileNumber),
-                  ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _selectedShop = null),
+              ),
+            ],
+          ),
+          Text(
+            '${shop.routeName} • ${shop.address.isNotEmpty ? shop.address : "Beat Outlet"}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              if (shop.mobileNumber.isNotEmpty)
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryBlue,
+                    backgroundColor: const Color(0xFF16A34A),
                     foregroundColor: Colors.white,
                     visualDensity: VisualDensity.compact,
                   ),
-                  icon: const Icon(Icons.edit_location_alt, size: 14),
-                  label: Text(shop.hasLocation ? 'Update Pin' : 'Set GPS Pin', style: const TextStyle(fontSize: 11.5)),
-                  onPressed: () => _openSetShopLocationDialog(shop),
+                  icon: const Icon(Icons.phone, size: 14),
+                  label: const Text('Call', style: TextStyle(fontSize: 11.5)),
+                  onPressed: () => _callPhone(shop.mobileNumber),
                 ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-                  icon: const Icon(Icons.directions, size: 14),
-                  label: const Text('Google Maps', style: TextStyle(fontSize: 11.5)),
-                  onPressed: () {
-                    final pos = _getShopLatLng(shop);
-                    _openExternalGoogleMaps(pos.latitude, pos.longitude);
-                  },
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primaryBlue,
+                  foregroundColor: Colors.white,
+                  visualDensity: VisualDensity.compact,
                 ),
-              ],
-            ),
-          ],
-        ),
+                icon: const Icon(Icons.edit_location_alt, size: 14),
+                label: Text(shop.hasLocation ? 'Update Pin' : 'Set GPS Pin', style: const TextStyle(fontSize: 11.5)),
+                onPressed: () => _openSetShopLocationDialog(shop),
+              ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+                icon: const Icon(Icons.directions, size: 14),
+                label: const Text('Google Maps', style: TextStyle(fontSize: 11.5)),
+                onPressed: () {
+                  final pos = _getShopLatLng(shop);
+                  _openExternalGoogleMaps(pos.latitude, pos.longitude);
+                },
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildSelectedStaffMapSheet(UserModel user) {
+  Widget _buildSelectedStaffMapCard(UserModel user) {
     final allShops = context.read<CollectionProvider>().shops;
     final addr = cleanLandmark(
       user.locationLandmark ?? '',
@@ -2265,129 +2324,128 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
       allShops: allShops,
     );
 
-    return Positioned(
-      left: 12,
-      right: 12,
-      bottom: 12,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 4))],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: user.isDriver ? _tealAccent : const Color(0xFF16A34A),
-                  foregroundColor: Colors.white,
-                  child: Icon(user.isDriver ? Icons.local_shipping_rounded : Icons.two_wheeler_rounded, size: 20),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 4))],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: user.isDriver ? _tealAccent : const Color(0xFF16A34A),
+                foregroundColor: Colors.white,
+                child: Icon(user.isDriver ? Icons.local_shipping_rounded : Icons.two_wheeler_rounded, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
                             user.plainName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
                           ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: user.isOnline ? const Color(0xFFDCFCE7) : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              user.isOnline ? 'LIVE' : user.locationTimeAgo,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: user.isOnline ? const Color(0xFF15803D) : AppTheme.textSecondary,
-                              ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: user.isOnline ? const Color(0xFFDCFCE7) : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            user.isOnline ? 'LIVE' : user.locationTimeAgo,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: user.isOnline ? const Color(0xFF15803D) : AppTheme.textSecondary,
                             ),
                           ),
-                        ],
-                      ),
-                      Text(
-                        '${user.roleDisplayName} • $addr',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '${user.roleDisplayName} • $addr',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() => _selectedStaffUser = null),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _selectedStaffUser = null),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryBlue,
+                    foregroundColor: Colors.white,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: const Icon(Icons.timeline_rounded, size: 14),
+                  label: const Text('Timeline', style: TextStyle(fontSize: 11.5)),
+                  onPressed: () {
+                    setState(() => _selectedStaffName = user.name);
+                    _tabController.animateTo(0);
+                    _loadTimeline();
+                  },
+                ),
+                const SizedBox(width: 6),
+                if (user.phone.isNotEmpty) ...[
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _tealAccent,
+                      foregroundColor: Colors.white,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.phone, size: 14),
+                    label: const Text('Call', style: TextStyle(fontSize: 11.5)),
+                    onPressed: () => _callPhone(user.phone),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF16A34A),
+                    foregroundColor: Colors.white,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: const Icon(Icons.share, size: 14),
+                  label: const Text('WhatsApp', style: TextStyle(fontSize: 11.5)),
+                  onPressed: () => _shareLocationViaWhatsApp(user),
+                ),
+                const SizedBox(width: 6),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+                  icon: const Icon(Icons.alt_route, size: 14),
+                  label: const Text('Routes', style: TextStyle(fontSize: 11.5)),
+                  onPressed: () => _showDriverRouteDialog(user),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryBlue,
-                      foregroundColor: Colors.white,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    icon: const Icon(Icons.timeline_rounded, size: 14),
-                    label: const Text('Timeline', style: TextStyle(fontSize: 11.5)),
-                    onPressed: () {
-                      setState(() => _selectedStaffFilter = user.name);
-                      _tabController.animateTo(0);
-                      _loadTimeline();
-                    },
-                  ),
-                  const SizedBox(width: 6),
-                  if (user.phone.isNotEmpty) ...[
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _tealAccent,
-                        foregroundColor: Colors.white,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      icon: const Icon(Icons.phone, size: 14),
-                      label: const Text('Call', style: TextStyle(fontSize: 11.5)),
-                      onPressed: () => _callPhone(user.phone),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF16A34A),
-                      foregroundColor: Colors.white,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    icon: const Icon(Icons.share, size: 14),
-                    label: const Text('WhatsApp', style: TextStyle(fontSize: 11.5)),
-                    onPressed: () => _shareLocationViaWhatsApp(user),
-                  ),
-                  const SizedBox(width: 6),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-                    icon: const Icon(Icons.alt_route, size: 14),
-                    label: const Text('Routes', style: TextStyle(fontSize: 11.5)),
-                    onPressed: () => _showDriverRouteDialog(user),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2519,7 +2577,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                           icon: const Icon(Icons.timeline_rounded, size: 14),
                           label: const Text('Timeline', style: TextStyle(fontSize: 11.5)),
                           onPressed: () {
-                            setState(() => _selectedStaffFilter = u.name);
+                            setState(() => _selectedStaffName = u.name);
                             _tabController.animateTo(0);
                             _loadTimeline();
                           },

@@ -15,6 +15,7 @@ import '../widgets/fullscreen_image_viewer.dart';
 import '../utils/image_compress_helper.dart';
 import '../models/shop_model.dart';
 import '../utils/marathi_search_helper.dart';
+import '../widgets/clean_ui.dart';
 
 class CollectionsListScreen extends StatefulWidget {
   final int initialTabIndex;
@@ -209,11 +210,14 @@ class _CollectionsListScreenState extends State<CollectionsListScreen> {
             ),
           ),
         ),
-        body: TabBarView(
-          children: [
-            _buildDailyLedgerTab(context, provider),
-            _buildInvoiceStatusTab(context, provider),
-          ],
+        body: ResponsiveContent(
+          maxWidth: 860,
+          child: TabBarView(
+            children: [
+              _buildDailyLedgerTab(context, provider),
+              _buildInvoiceStatusTab(context, provider),
+            ],
+          ),
         ),
       ),
     );

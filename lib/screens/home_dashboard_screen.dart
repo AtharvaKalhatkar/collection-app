@@ -362,10 +362,13 @@ class HomeDashboardScreen extends StatelessWidget {
             ? 'MANAS SALES COLLECTION'
             : 'TOTAL COLLECTION TODAY');
 
+    final isCompactPhone = MediaQuery.sizeOf(context).width < 430;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: AppTheme.primary,
+        titleSpacing: isCompactPhone ? 10 : 16,
         title: InkWell(
           onTap: () {
             if (onNavigateToProfile != null) {
@@ -383,18 +386,18 @@ class HomeDashboardScreen extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 34,
-                  height: 34,
+                  width: isCompactPhone ? 30 : 34,
+                  height: isCompactPhone ? 30 : 34,
                   decoration: BoxDecoration(
                     color: AppTheme.purvaLight,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppTheme.purvaBorder),
                   ),
-                  child: const Center(
-                    child: Icon(Icons.business_rounded, color: AppTheme.purvaPrimary, size: 18),
+                  child: Center(
+                    child: Icon(Icons.business_rounded, color: AppTheme.purvaPrimary, size: isCompactPhone ? 16 : 18),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: isCompactPhone ? 7 : 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -403,37 +406,44 @@ class HomeDashboardScreen extends StatelessWidget {
                       Row(
                         children: [
                           Flexible(
+                            flex: 3,
                             child: Text(
                               context.watch<AuthProvider>().currentUser?.plainName ?? provider.salesmanName,
-                              style: const TextStyle(
-                                fontSize: 15,
+                              style: TextStyle(
+                                fontSize: isCompactPhone ? 13.5 : 15,
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.primary,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: AppTheme.manasLight,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppTheme.manasBorder),
-                            ),
-                            child: Text(
-                              (currentUser?.isSuperAdmin == true)
-                                  ? 'SUPER ADMIN'
-                                  : (currentUser?.isOffice == true
-                                      ? 'OFFICE'
-                                      : (currentUser?.isCollection == true
-                                          ? 'COLLECTION'
-                                          : 'SALES & COLL')),
-                              style: const TextStyle(
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.manasText,
-                                letterSpacing: 0.4,
+                          const SizedBox(width: 5),
+                          Flexible(
+                            flex: 2,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.manasLight,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppTheme.manasBorder),
+                                ),
+                                child: Text(
+                                  (currentUser?.isSuperAdmin == true)
+                                      ? 'SUPER ADMIN'
+                                      : (currentUser?.isOffice == true
+                                          ? 'OFFICE'
+                                          : (currentUser?.isCollection == true
+                                              ? 'COLLECTION'
+                                              : 'SALES & COLL')),
+                                  style: const TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.manasText,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -460,21 +470,27 @@ class HomeDashboardScreen extends StatelessWidget {
           if (context.watch<AuthProvider>().currentUser?.isSuperAdmin == true ||
               context.watch<AuthProvider>().currentUser?.isOffice == true)
             _PaymentAlertBell(provider: provider),
-          IconButton(
-            icon: const Icon(Icons.send_rounded, size: 20),
-            tooltip: 'Send Bank Details',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => FirmDetailsHelper.showQuickShareModal(
-              context,
-              defaultFirm: provider.filterBusiness,
+          if (!isCompactPhone) ...[
+            IconButton(
+              icon: const Icon(Icons.send_rounded, size: 19),
+              tooltip: 'Send Bank Details',
+              padding: const EdgeInsets.all(8),
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 36),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => FirmDetailsHelper.showQuickShareModal(
+                context,
+                defaultFirm: provider.filterBusiness,
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.qr_code_2_rounded, size: 22),
-            tooltip: 'Payment QR',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
-          ),
+            IconButton(
+              icon: const Icon(Icons.qr_code_2_rounded, size: 21),
+              tooltip: 'Payment QR',
+              padding: const EdgeInsets.all(8),
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 36),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => PaymentQrDialog.show(context, initialFirm: provider.filterBusiness),
+            ),
+          ],
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 20),
             tooltip: 'More Options',
@@ -664,8 +680,10 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body: ResponsiveContent(
+        maxWidth: 860,
+        child: Column(
+          children: [
           // 1. Integrated Sub-Header Control Bar (Segmented Firm Switcher + Compact Date + Sync)
           Container(
             color: Colors.white,
@@ -1111,6 +1129,7 @@ class HomeDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -1232,13 +1251,17 @@ class HomeDashboardScreen extends StatelessWidget {
                     Expanded(
                       child: InkWell(
                         onTap: onNavigateToCollections,
-                        child: Text(
-                          CurrencyFormatter.format(total),
-                          style: AppTheme.tabularAmount(
-                            color: AppTheme.primary,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.7,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            CurrencyFormatter.format(total),
+                            style: AppTheme.tabularAmount(
+                              color: AppTheme.primary,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.7,
+                            ),
                           ),
                         ),
                       ),
@@ -1442,6 +1465,7 @@ class HomeDashboardScreen extends StatelessWidget {
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     width: 6,
@@ -1449,12 +1473,16 @@ class HomeDashboardScreen extends StatelessWidget {
                     decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textSecondary,
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary,
+                      ),
                     ),
                   ),
                 ],
@@ -1514,41 +1542,59 @@ class HomeDashboardScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          tag,
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
-                            color: accentColor,
+                        Expanded(
+                          child: Text(
+                            tag,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                              color: accentColor,
+                            ),
                           ),
                         ),
-                        Text(
-                          '$billsCount ${billsCount == 1 ? 'bill' : 'bills'}',
-                          style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary, fontWeight: FontWeight.w600),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              '$billsCount ${billsCount == 1 ? 'bill' : 'bills'}',
+                              style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary, fontWeight: FontWeight.w600),
+                            ),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 2,
                       children: [
-                        Flexible(
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
                           child: Text(
                             CurrencyFormatter.format(amount),
-                            overflow: TextOverflow.ellipsis,
                             style: AppTheme.tabularAmount(fontSize: 14, color: AppTheme.primary),
                           ),
                         ),
                         if (pendingAmount > 0)
-                          Text(
-                            'Due ${CurrencyFormatter.format(pendingAmount)}',
-                            style: const TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.balanceDueColor,
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              'Due ${CurrencyFormatter.format(pendingAmount)}',
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.balanceDueColor,
+                              ),
                             ),
                           ),
                       ],

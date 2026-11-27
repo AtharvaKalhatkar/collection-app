@@ -22,6 +22,7 @@ import 'add_shop_screen.dart';
 import 'admin_products_screen.dart';
 import 'all_orders_screen.dart';
 import 'outlet_order_booking_screen.dart';
+import '../widgets/clean_ui.dart';
 
 const Color _bizomBlue = Color(0xFF15429E);
 
@@ -490,48 +491,80 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                 });
               },
             ),
-          if (user?.canAssignRoutes == true)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.alt_route_rounded),
-              tooltip: 'Assign Routes',
-              onPressed: () => AssignRoutesDialog.show(context),
-            ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.list_alt_rounded),
-            tooltip: 'All Booked Orders',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
-              );
-            },
-          ),
           IconButton(
             visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.add_box_outlined),
             tooltip: 'Add Product to Catalog',
             onPressed: _openAddProduct,
           ),
-          if (user?.isSuperAdmin == true)
+          if (MediaQuery.sizeOf(context).width >= 520) ...[
+            if (user?.canAssignRoutes == true)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.alt_route_rounded),
+                tooltip: 'Assign Routes',
+                onPressed: () => AssignRoutesDialog.show(context),
+              ),
             IconButton(
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.inventory_2_outlined),
-              tooltip: 'Products, Stock & Schemes',
+              icon: const Icon(Icons.list_alt_rounded),
+              tooltip: 'All Booked Orders',
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const AdminProductsScreen()),
+                  MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
                 );
               },
             ),
-          if (!widget.isEmbedded)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.logout_rounded),
-              tooltip: 'Sign Out',
-              onPressed: () => auth.logout(),
+            if (user?.isSuperAdmin == true)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.inventory_2_outlined),
+                tooltip: 'Products, Stock & Schemes',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminProductsScreen()),
+                  );
+                },
+              ),
+            if (!widget.isEmbedded)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.logout_rounded),
+                tooltip: 'Sign Out',
+                onPressed: () => auth.logout(),
+              ),
+          ] else
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded),
+              tooltip: 'More Options',
+              onSelected: (val) {
+                if (val == 'assign_routes') {
+                  AssignRoutesDialog.show(context);
+                } else if (val == 'all_orders') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
+                  );
+                } else if (val == 'products_admin') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminProductsScreen()),
+                  );
+                } else if (val == 'logout') {
+                  auth.logout();
+                }
+              },
+              itemBuilder: (_) => [
+                if (user?.canAssignRoutes == true)
+                  const PopupMenuItem(value: 'assign_routes', child: Text('Assign Routes')),
+                const PopupMenuItem(value: 'all_orders', child: Text('All Booked Orders')),
+                if (user?.isSuperAdmin == true)
+                  const PopupMenuItem(value: 'products_admin', child: Text('Products, Stock & Schemes')),
+                if (!widget.isEmbedded)
+                  const PopupMenuItem(value: 'logout', child: Text('Sign Out')),
+              ],
             ),
         ],
         bottom: widget.isEmbedded
@@ -574,21 +607,27 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
       body: IndexedStack(
         index: _currentBottomNavIndex,
         children: [
-          _buildRetailersTab(
-            availableRoutes,
-            selectedRoute,
-            pendingShops,
-            completedShops,
-            allRouteShops,
-            allDateOrders,
-            provider,
+          ResponsiveContent(
+            maxWidth: 860,
+            child: _buildRetailersTab(
+              availableRoutes,
+              selectedRoute,
+              pendingShops,
+              completedShops,
+              allRouteShops,
+              allDateOrders,
+              provider,
+            ),
           ),
           _buildOrderMapTab(
             allRouteShops,
             completedShops,
             bookedShopIds,
           ),
-          _buildTransactionsTab(userDateOrders),
+          ResponsiveContent(
+            maxWidth: 860,
+            child: _buildTransactionsTab(userDateOrders),
+          ),
         ],
       ),
       bottomNavigationBar: widget.isEmbedded
@@ -1301,78 +1340,105 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
           ],
         ),
 
-        // Controls overlay
-        Positioned(
-          top: 12,
-          right: 12,
-          child: Column(
-            children: [
-              FloatingActionButton.small(
-                heroTag: 'map_sat_toggle',
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF0F172A),
-                tooltip: _isSatellite ? 'Road Map' : 'Satellite View',
-                onPressed: () => setState(() => _isSatellite = !_isSatellite),
-                child: Icon(_isSatellite ? Icons.map_rounded : Icons.layers_rounded),
+        // Non-overlapping SafeArea Controls & Bottom Summary Strip
+        Positioned.fill(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FloatingActionButton.small(
+                          heroTag: 'map_sat_toggle',
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF0F172A),
+                          tooltip: _isSatellite ? 'Road Map' : 'Satellite View',
+                          onPressed: () => setState(() => _isSatellite = !_isSatellite),
+                          child: Icon(_isSatellite ? Icons.map_rounded : Icons.layers_rounded),
+                        ),
+                        const SizedBox(height: 8),
+                        FloatingActionButton.small(
+                          heroTag: 'map_recenter',
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF0284C7),
+                          tooltip: 'My GPS Location',
+                          onPressed: () async {
+                            final fix = await LocationService.getCurrentLocationWithStatus();
+                            if (!mounted) return;
+                            if (fix.hasLocation) {
+                              _mapController.move(LatLng(fix.latitude!, fix.longitude!), 15.0);
+                            } else if (shopsWithLoc.isNotEmpty) {
+                              _mapController.move(LatLng(shopsWithLoc.first.latitude!, shopsWithLoc.first.longitude!), 13.5);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(fix.errorMessage ?? 'Could not fetch GPS.'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                          child: const Icon(Icons.my_location_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Flexible(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle)),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  'Completed (${completedShops.length})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(width: 10, height: 10, decoration: const BoxDecoration(color: _bizomBlue, shape: BoxShape.circle)),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  'Pending (${allRouteShops.length - completedShops.length})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              FloatingActionButton.small(
-                heroTag: 'map_recenter',
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF0284C7),
-                tooltip: 'My GPS Location',
-                onPressed: () async {
-                  final fix = await LocationService.getCurrentLocationWithStatus();
-                  if (!mounted) return;
-                  if (fix.hasLocation) {
-                    _mapController.move(LatLng(fix.latitude!, fix.longitude!), 15.0);
-                  } else if (shopsWithLoc.isNotEmpty) {
-                    _mapController.move(LatLng(shopsWithLoc.first.latitude!, shopsWithLoc.first.longitude!), 13.5);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(fix.errorMessage ?? 'Could not fetch GPS.'),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                },
-                child: const Icon(Icons.my_location_rounded),
-              ),
-            ],
-          ),
-        ),
-
-        // Bottom Map Summary Strip
-        Positioned(
-          bottom: 12,
-          left: 12,
-          right: 12,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                Row(
-                  children: [
-                    Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle)),
-                    const SizedBox(width: 6),
-                    Text('Completed (${completedShops.length})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Container(width: 10, height: 10, decoration: const BoxDecoration(color: _bizomBlue, shape: BoxShape.circle)),
-                    const SizedBox(width: 6),
-                    Text('Pending (${allRouteShops.length - completedShops.length})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ],
             ),
           ),
         ),

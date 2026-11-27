@@ -21,6 +21,16 @@ class ResolvedPlace {
     required this.address,
   });
 
+  bool get isTooBroad {
+    final t = title.trim().toLowerCase();
+    return t.isEmpty ||
+        t == 'maharashtra' ||
+        t == 'india' ||
+        t == 'pune' ||
+        t == 'rajgurunagar' ||
+        t == 'khed';
+  }
+
   String get displayLabel {
     if (address.isEmpty || address.toLowerCase() == title.toLowerCase()) {
       return title;
@@ -49,7 +59,8 @@ class LocationTrackingService {
   bool get isTracking => _isTracking;
   DateTime? get lastCapturedTime => _lastCapturedTime;
 
-  /// Starts periodic live location tracking for the active user (salesman/driver/order/collection)
+  /// Starts periodic live location tracking ONLY for field staff roles
+  /// (Sales & Collection, Sales / Order Booking, Collection, Delivery Driver).
   void startTracking({
     required AuthProvider auth,
     required CollectionProvider collectionProvider,
@@ -58,10 +69,11 @@ class LocationTrackingService {
     _activeCollectionProvider = collectionProvider;
 
     if (SupabaseService().isTestMode) return;
+    final user = auth.currentUser;
+    if (user == null || user.isSuperAdmin || user.isOffice) return;
     if (_isTracking) return;
     _isTracking = true;
 
-    // Initial capture with small delay so app initialization finishes smoothly
     _initialTimer?.cancel();
     _initialTimer = Timer(const Duration(seconds: 2), () {
       if (_activeAuth != null && _activeCollectionProvider != null) {
@@ -69,7 +81,6 @@ class LocationTrackingService {
       }
     });
 
-    // Periodic capture every 90 seconds while session is active so trips & live location stay fresh
     _periodicTimer?.cancel();
     _periodicTimer = Timer.periodic(const Duration(seconds: 90), (_) {
       if (_activeAuth != null && _activeCollectionProvider != null) {
@@ -99,12 +110,13 @@ class LocationTrackingService {
   Future<bool> _captureAndSync(AuthProvider auth, CollectionProvider collectionProvider) async {
     final user = auth.currentUser;
     if (user == null || !user.isActive) return false;
+    // Do NOT record Super Admin / Office desk locations into field timeline
+    if (user.isSuperAdmin || user.isOffice) return false;
 
     try {
       final loc = await LocationService.getCurrentLocation();
       if (loc == null) return false;
 
-      // Identify full road / locality / outlet address via Google/OSM reverse geocoding + outlets
       final place = await resolveDetailedPlace(
         loc.latitude,
         loc.longitude,
@@ -118,9 +130,7 @@ class LocationTrackingService {
         landmark: landmark,
       );
       _lastCapturedTime = DateTime.now();
-      debugPrint('Live GPS tracked for ${user.name}: (${loc.latitude}, ${loc.longitude}) - $landmark');
 
-      // Record chronological timeline breadcrumb
       try {
         final entry = LocationTimelineEntry(
           id: 'tl_${user.id}_${DateTime.now().millisecondsSinceEpoch}',
@@ -138,8 +148,8 @@ class LocationTrackingService {
         );
         await _persistAndUploadTimelineEntry(
           entry,
-          minDuplicateSeconds: 300, // 5 min stationary window before repeating
-          minMovedDegrees: 0.0005, // ~55 meters movement captures travel path cleanly
+          minDuplicateSeconds: 300,
+          minMovedDegrees: 0.0005,
         );
       } catch (err) {
         debugPrint('Timeline recording notice: $err');
@@ -152,7 +162,7 @@ class LocationTrackingService {
     }
   }
 
-  /// Records a dedicated event (e.g. collection, delivery checkpoint, order, login)
+  /// Records a dedicated event (collection, orderBooked, deliveryVisit, login)
   Future<void> recordCustomEvent({
     required UserModel user,
     required String eventType,
@@ -165,6 +175,7 @@ class LocationTrackingService {
     String? routeName,
     String? billNumber,
   }) async {
+    if (user.isSuperAdmin || user.isOffice) return;
     try {
       double? lat = latitude ?? user.latitude;
       double? lng = longitude ?? user.longitude;
@@ -255,7 +266,296 @@ class LocationTrackingService {
     }
   }
 
-  /// Resolves a rich Google-Maps-style place (title + full street/locality/city address).
+  /// Clean helper to normalize Khed -> Rajgurunagar and strip noisy suffixes/prefixes ("Near ", "At ", "IND")
+  static String _cleanPlaceToken(dynamic raw) {
+    if (raw == null) return '';
+    var s = raw.toString().trim();
+    if (s.isEmpty) return '';
+    s = s.replaceFirst(RegExp(r'^(At|Near)\s+', caseSensitive: false), '').trim();
+    if (s.toLowerCase() == 'khed' || s == 'खेड') {
+      return 'Rajgurunagar';
+    }
+    s = s.replaceAll(RegExp(r'\bKhed\b', caseSensitive: false), 'Rajgurunagar');
+    s = s.replaceAll('खेड', 'Rajgurunagar');
+    s = s.replaceAll(RegExp(r',\s*IND\s*$', caseSensitive: false), '');
+    s = s.replaceAll(RegExp(r',\s*India\s*$', caseSensitive: false), '');
+    return s.trim();
+  }
+
+  /// Parses ArcGIS reverseGeocode JSON into POI / Road + Locality + Town + Pincode
+  static ResolvedPlace? parseArcGisPlace(Map<String, dynamic> address) {
+    final placeName = _cleanPlaceToken(address['PlaceName']);
+    final shortLabel = _cleanPlaceToken(address['ShortLabel']);
+    final street = _cleanPlaceToken(address['Address']);
+    final block = _cleanPlaceToken(address['Block']);
+    final neighborhood = _cleanPlaceToken(address['Neighborhood']);
+    final district = _cleanPlaceToken(address['District']);
+    final city = _cleanPlaceToken(address['City']);
+    final subregion = _cleanPlaceToken(address['Subregion']);
+    final region = _cleanPlaceToken(address['Region']);
+    final postal = _cleanPlaceToken(address['Postal']);
+
+    final parts = <String>[];
+    void addUnique(String val) {
+      if (val.isEmpty) return;
+      final lower = val.toLowerCase();
+      if (lower == 'india' || lower == 'ind') return;
+      if (!parts.any((p) => p.toLowerCase() == lower || p.toLowerCase().contains(lower))) {
+        parts.add(val);
+      }
+    }
+
+    final primaryCandidate = placeName.isNotEmpty
+        ? placeName
+        : (shortLabel.isNotEmpty
+            ? shortLabel
+            : (street.isNotEmpty
+                ? street
+                : (neighborhood.isNotEmpty
+                    ? neighborhood
+                    : (district.isNotEmpty ? district : city))));
+
+    if (primaryCandidate.isEmpty) return null;
+
+    addUnique(placeName);
+    addUnique(street);
+    addUnique(block);
+    addUnique(neighborhood);
+    addUnique(district);
+    addUnique(city);
+    if (subregion.isNotEmpty && subregion.toLowerCase() != city.toLowerCase()) {
+      addUnique(subregion);
+    }
+    if (parts.length <= 1) {
+      addUnique(region);
+    }
+    if (postal.isNotEmpty && parts.isNotEmpty) {
+      addUnique(postal);
+    }
+
+    return ResolvedPlace(
+      title: primaryCandidate,
+      address: parts.join(', '),
+    );
+  }
+
+  /// Parses Photon (Komoot) GeoJSON properties into nearest POI/Landmark + street + locality
+  static ResolvedPlace? parsePhotonPlace(Map<String, dynamic> props) {
+    final name = _cleanPlaceToken(props['name']);
+    final street = _cleanPlaceToken(props['street']);
+    final district = _cleanPlaceToken(props['district']);
+    final locality = _cleanPlaceToken(props['locality']);
+    final city = _cleanPlaceToken(props['city']);
+    final postcode = _cleanPlaceToken(props['postcode']);
+
+    final parts = <String>[];
+    void addUnique(String val) {
+      if (val.isEmpty) return;
+      final lower = val.toLowerCase();
+      if (!parts.any((p) => p.toLowerCase() == lower || p.toLowerCase().contains(lower))) {
+        parts.add(val);
+      }
+    }
+
+    addUnique(name);
+    addUnique(street);
+    addUnique(district);
+    addUnique(locality);
+    addUnique(city);
+    addUnique(postcode);
+
+    if (parts.isEmpty) return null;
+
+    final title = name.isNotEmpty
+        ? name
+        : (street.isNotEmpty
+            ? street
+            : (district.isNotEmpty ? district : (city.isNotEmpty ? city : parts.first)));
+
+    return ResolvedPlace(title: title, address: parts.join(', '));
+  }
+
+  /// Parses Nominatim JSON payload into primary place + street/area address (no state-only bare labels)
+  static ResolvedPlace? parseNominatimPlace(Map<String, dynamic> data) {
+    final address = data['address'] as Map<String, dynamic>?;
+    if (address == null) return null;
+
+    String pick(dynamic raw) => _cleanPlaceToken(raw);
+
+    final poiName = [
+      pick(data['name']),
+      pick(address['amenity']),
+      pick(address['shop']),
+      pick(address['building']),
+      pick(address['commercial']),
+      pick(address['industrial']),
+    ].firstWhere((s) => s.isNotEmpty, orElse: () => '');
+
+    final houseNumber = pick(address['house_number']);
+    final road = [
+      pick(address['road']),
+      pick(address['pedestrian']),
+      pick(address['street']),
+    ].firstWhere((s) => s.isNotEmpty, orElse: () => '');
+
+    final locality = [
+      pick(address['neighbourhood']),
+      pick(address['suburb']),
+      pick(address['residential']),
+      pick(address['quarter']),
+      pick(address['hamlet']),
+    ].firstWhere((s) => s.isNotEmpty, orElse: () => '');
+
+    final town = [
+      pick(address['village']),
+      pick(address['town']),
+      pick(address['city']),
+      pick(address['city_district']),
+    ].firstWhere((s) => s.isNotEmpty, orElse: () => '');
+
+    final postcode = pick(address['postcode']);
+
+    final roadLine = [
+      if (houseNumber.isNotEmpty) houseNumber,
+      if (road.isNotEmpty) road,
+    ].join(' ');
+
+    final parts = <String>[];
+    void addUnique(String val) {
+      if (val.isEmpty) return;
+      final lower = val.toLowerCase();
+      if (!parts.any((existing) =>
+          existing.toLowerCase() == lower ||
+          existing.toLowerCase().contains(lower))) {
+        parts.add(val);
+      }
+    }
+
+    addUnique(poiName);
+    addUnique(roadLine);
+    addUnique(locality);
+    addUnique(town);
+    if (postcode.isNotEmpty && parts.isNotEmpty) {
+      addUnique(postcode);
+    }
+
+    // Reject bare state-only results (e.g. just "Maharashtra")
+    if (parts.isEmpty) return null;
+
+    final title = poiName.isNotEmpty
+        ? poiName
+        : (roadLine.isNotEmpty
+            ? roadLine
+            : (locality.isNotEmpty ? locality : town));
+
+    if (title.isEmpty) return null;
+    return ResolvedPlace(title: title, address: parts.join(', '));
+  }
+
+  /// Cached multi-provider reverse-geocoder:
+  /// 1) ArcGIS World GeocodeServer (strongest India rural/town roads + POIs like Banks, ST Stands, shops)
+  /// 2) Photon (OSM POIs & streets nearby)
+  /// 3) Nominatim fallback
+  static Future<ResolvedPlace?> reverseGeocodePlace(double lat, double lng) async {
+    if (lat == 0.0 && lng == 0.0) return null;
+    final key = '${(lat * 2000).round()}_${(lng * 2000).round()}';
+    if (_geocodeCache.containsKey(key)) {
+      return _geocodeCache[key];
+    }
+
+    if (SupabaseService().isTestMode) return null;
+
+    ResolvedPlace? best;
+
+    // 1. ArcGIS Reverse Geocode (POI + StreetName + District)
+    try {
+      final poiUri = Uri.parse(
+        'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=json&location=$lng,$lat&featureTypes=POI,StreetName,PointAddress,StreetAddress',
+      );
+      final poiResp = await http.get(poiUri).timeout(const Duration(seconds: 4));
+      if (poiResp.statusCode == 200) {
+        final decoded = jsonDecode(poiResp.body) as Map<String, dynamic>;
+        final addr = decoded['address'] as Map<String, dynamic>?;
+        if (addr != null) {
+          best = parseArcGisPlace(addr);
+        }
+      }
+
+      // If no POI/Street hit in ArcGIS, fetch general locality/street from ArcGIS without featureTypes filter
+      if (best == null || best.isTooBroad) {
+        final genUri = Uri.parse(
+          'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/reverseGeocode?f=json&location=$lng,$lat',
+        );
+        final genResp = await http.get(genUri).timeout(const Duration(seconds: 4));
+        if (genResp.statusCode == 200) {
+          final decoded = jsonDecode(genResp.body) as Map<String, dynamic>;
+          final addr = decoded['address'] as Map<String, dynamic>?;
+          if (addr != null) {
+            final candidate = parseArcGisPlace(addr);
+            if (candidate != null && (best == null || !candidate.isTooBroad)) {
+              best = candidate;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Photon nearby POI lookup if still broad or missing street/POI
+    if (best == null || best.isTooBroad) {
+      try {
+        final photonUri = Uri.parse(
+          'https://photon.komoot.io/reverse?lon=$lng&lat=$lat&limit=2',
+        );
+        final photonResp = await http.get(
+          photonUri,
+          headers: {if (!kIsWeb) 'User-Agent': 'DailyCollectionApp/1.0'},
+        ).timeout(const Duration(seconds: 4));
+        if (photonResp.statusCode == 200) {
+          final decoded = jsonDecode(photonResp.body) as Map<String, dynamic>;
+          final features = decoded['features'] as List<dynamic>? ?? [];
+          for (final f in features) {
+            final props = (f as Map<String, dynamic>)['properties'] as Map<String, dynamic>?;
+            if (props == null) continue;
+            final candidate = parsePhotonPlace(props);
+            if (candidate != null && !candidate.isTooBroad) {
+              best = candidate;
+              break;
+            }
+            best ??= candidate;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Nominatim fallback only if still empty
+    if (best == null) {
+      try {
+        final nomUri = Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1',
+        );
+        final nomResp = await http.get(
+          nomUri,
+          headers: {if (!kIsWeb) 'User-Agent': 'DailyCollectionApp/1.0'},
+        ).timeout(const Duration(seconds: 4));
+        if (nomResp.statusCode == 200) {
+          final data = jsonDecode(nomResp.body) as Map<String, dynamic>;
+          best = parseNominatimPlace(data);
+        }
+      } catch (_) {}
+    }
+
+    if (best != null) {
+      _geocodeCache[key] = best;
+    }
+    return best;
+  }
+
+  static ResolvedPlace? getCachedPlace(double lat, double lng) {
+    final key = '${(lat * 2000).round()}_${(lng * 2000).round()}';
+    return _geocodeCache[key];
+  }
+
+  /// Resolves a rich Google-Maps-style place (never prints "Near ...").
   static Future<ResolvedPlace> resolveDetailedPlace(
     double lat,
     double lng,
@@ -280,22 +580,39 @@ class LocationTrackingService {
       }
     }
 
-    // Always try reverse-geocoding the real street + locality + city (cached by ~110m grid)
     final onlinePlace = await reverseGeocodePlace(lat, lng);
 
-    // Only count as inside/at a registered store if physically within 120m
+    // If right at a registered outlet (<= 120m), show outlet name + full street/locality address
     if (nearestShop != null && minDistanceKm <= 0.12) {
       final cleanArea = (nearestShop.address.isNotEmpty
               ? nearestShop.address
               : nearestShop.routeName)
           .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
           .trim();
-      final address = (onlinePlace != null && onlinePlace.address.isNotEmpty)
+      final addr = (onlinePlace != null && onlinePlace.address.isNotEmpty)
           ? onlinePlace.address
           : cleanArea;
       return ResolvedPlace(
-        title: nearestShop.name.trim(),
-        address: address,
+        title: _cleanPlaceToken(nearestShop.name),
+        address: addr,
+      );
+    }
+
+    if (onlinePlace != null && !onlinePlace.isTooBroad) {
+      return onlinePlace;
+    }
+
+    // If offline/broad, prefer registered outlet within 500m cleanly (WITHOUT "Near " word!)
+    if (nearestShop != null && minDistanceKm <= 0.5) {
+      final area = nearestShop.routeName.isNotEmpty
+          ? nearestShop.routeName
+          : nearestShop.address;
+      final cleanArea = area.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+      return ResolvedPlace(
+        title: _cleanPlaceToken(nearestShop.name),
+        address: cleanArea.isNotEmpty
+            ? cleanArea
+            : (onlinePlace?.address ?? getKnownRegion(lat, lng) ?? ''),
       );
     }
 
@@ -305,7 +622,7 @@ class LocationTrackingService {
 
     final region = getKnownRegion(lat, lng);
     if (region != null) {
-      return ResolvedPlace(title: region, address: 'Pune District, Maharashtra');
+      return ResolvedPlace(title: region, address: 'Pune District');
     }
 
     if (nearestShop != null && minDistanceKm <= 3.5) {
@@ -314,142 +631,28 @@ class LocationTrackingService {
           : nearestShop.address;
       final cleanArea = area.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
       if (cleanArea.isNotEmpty) {
-        return ResolvedPlace(title: cleanArea, address: 'Field Beat Area');
+        return ResolvedPlace(title: cleanArea, address: 'Field Beat Route');
       }
     }
 
     return ResolvedPlace(
       title: 'Location (${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})',
-      address: 'Rajgurunagar / Khed Region',
+      address: 'Pune Region',
     );
   }
 
-  /// Backward-compatible single string resolver using rich street/area details
+  /// Backward-compatible single string resolver
   static Future<String> resolveLandmark(double lat, double lng, List<ShopModel> shops) async {
     final detailed = await resolveDetailedPlace(lat, lng, shops);
     return detailed.displayLabel;
   }
 
-  /// Parses Nominatim JSON payload into a Google-Maps-style primary title + full address line
-  static ResolvedPlace? parseNominatimPlace(Map<String, dynamic> data) {
-    final address = data['address'] as Map<String, dynamic>?;
-    if (address == null) return null;
-
-    String? cleanPart(dynamic raw) {
-      if (raw == null) return null;
-      var s = raw.toString().trim();
-      if (s.isEmpty) return null;
-      if (s.toLowerCase() == 'khed' || s == 'खेड') {
-        s = 'Rajgurunagar';
-      }
-      s = s.replaceAll(RegExp(r',\s*(Khed|खेड)', caseSensitive: false), '').trim();
-      return s.isEmpty ? null : s;
-    }
-
-    final poiName = cleanPart(data['name']) ??
-        cleanPart(address['amenity']) ??
-        cleanPart(address['shop']) ??
-        cleanPart(address['building']) ??
-        cleanPart(address['commercial']) ??
-        cleanPart(address['industrial']);
-    final houseNumber = cleanPart(address['house_number']);
-    final road = cleanPart(address['road']) ??
-        cleanPart(address['pedestrian']) ??
-        cleanPart(address['street']);
-    final locality = cleanPart(address['neighbourhood']) ??
-        cleanPart(address['suburb']) ??
-        cleanPart(address['residential']) ??
-        cleanPart(address['quarter']) ??
-        cleanPart(address['hamlet']);
-    final town = cleanPart(address['village']) ??
-        cleanPart(address['town']) ??
-        cleanPart(address['city']) ??
-        cleanPart(address['city_district']);
-    final state = cleanPart(address['state']);
-    final postcode = cleanPart(address['postcode']);
-
-    final roadLine = [
-      ?houseNumber,
-      ?road,
-    ].join(' ');
-
-    final parts = <String>[];
-    void addUnique(String? val) {
-      if (val == null || val.isEmpty) return;
-      final lower = val.toLowerCase();
-      if (!parts.any((existing) =>
-          existing.toLowerCase() == lower ||
-          existing.toLowerCase().contains(lower))) {
-        parts.add(val);
-      }
-    }
-
-    addUnique(poiName);
-    addUnique(roadLine.isNotEmpty ? roadLine : null);
-    addUnique(locality);
-    addUnique(town);
-    if (parts.length <= 1) {
-      addUnique(state);
-    }
-    if (postcode != null && parts.isNotEmpty) {
-      addUnique(postcode);
-    }
-
-    if (parts.isEmpty) return null;
-
-    final title = poiName ??
-        (roadLine.isNotEmpty ? roadLine : null) ??
-        locality ??
-        town ??
-        parts.first;
-
-    final fullAddress = parts.join(', ');
-    return ResolvedPlace(title: title, address: fullAddress);
-  }
-
-  /// Cached reverse-geocoder returning Google-Maps-style primary place + street/area address
-  static Future<ResolvedPlace?> reverseGeocodePlace(double lat, double lng) async {
-    if (lat == 0.0 && lng == 0.0) return null;
-    final key = '${(lat * 1000).round()}_${(lng * 1000).round()}';
-    if (_geocodeCache.containsKey(key)) {
-      return _geocodeCache[key];
-    }
-
-    if (SupabaseService().isTestMode) return null;
-
-    try {
-      final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1',
-      );
-      final response = await http.get(
-        uri,
-        headers: {if (!kIsWeb) 'User-Agent': 'DailyCollectionApp/1.0'},
-      ).timeout(const Duration(seconds: 4));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final parsed = parseNominatimPlace(data);
-        if (parsed != null) {
-          _geocodeCache[key] = parsed;
-          return parsed;
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  static ResolvedPlace? getCachedPlace(double lat, double lng) {
-    final key = '${(lat * 1000).round()}_${(lng * 1000).round()}';
-    return _geocodeCache[key];
-  }
-
-  /// Reverse geocodes coordinates to a clean area string
   static Future<String?> reverseGeocodeArea(double lat, double lng) async {
     final place = await reverseGeocodePlace(lat, lng);
     return place?.displayLabel;
   }
 
-  /// Known regional bounds fallback for instant offline precision
+  /// Known regional bounds fallback
   static String? getKnownRegion(double lat, double lng) {
     if (lat >= 18.54 && lat <= 18.63 && lng >= 73.94 && lng <= 74.05) return 'Wagholi, Pune';
     if (lat >= 18.72 && lat <= 18.79 && lng >= 73.82 && lng <= 73.89) return 'Chakan';
@@ -464,7 +667,7 @@ class LocationTrackingService {
     return null;
   }
 
-  /// Synchronous fallback helper for immediate offline evaluation
+  /// Synchronous fallback helper (never returns "Near ")
   static String findNearestLandmark(double lat, double lng, List<ShopModel> shops) {
     final realShops = shops.where((s) {
       final name = s.name.toLowerCase();
@@ -486,11 +689,11 @@ class LocationTrackingService {
     }
 
     if (nearestShop != null && minDistanceKm <= 0.25) {
-      return nearestShop.name;
+      return _cleanPlaceToken(nearestShop.name);
     }
 
     final cached = getCachedPlace(lat, lng);
-    if (cached != null) return cached.displayLabel;
+    if (cached != null && !cached.isTooBroad) return cached.displayLabel;
 
     final region = getKnownRegion(lat, lng);
     if (region != null) {
@@ -500,7 +703,6 @@ class LocationTrackingService {
     return 'GPS: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}';
   }
 
-  /// Great-circle distance between two GPS coordinates in kilometers
   static double haversineDistanceKm(double lat1, double lon1, double lat2, double lon2) {
     const r = 6371.0;
     final dLat = _degToRad(lat2 - lat1);

@@ -17,6 +17,7 @@ import '../utils/firm_details.dart';
 import '../services/location_service.dart';
 import '../utils/marathi_search_helper.dart';
 import '../widgets/tally_sync_dialog.dart';
+import '../widgets/clean_ui.dart';
 import '../providers/auth_provider.dart';
 
 class RoutesShopsScreen extends StatefulWidget {
@@ -794,41 +795,6 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
             : null,
         actions: [
           IconButton(
-            icon: const Icon(Icons.low_priority_rounded, size: 20),
-            tooltip: 'Reorder Outlets',
-            onPressed: () => _openReorderDialog(context, provider),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_location_alt_outlined, size: 20),
-            tooltip: 'Add Route',
-            onPressed: () async {
-              final newRoute = await showDialog<RouteModel>(
-                context: context,
-                builder: (ctx) => const AddRouteDialog(),
-              );
-              if (newRoute != null) {
-                setState(() {
-                  _selectedRouteId = newRoute.id;
-                  _selectedShopId = null;
-                });
-              }
-            },
-          ),
-          if (context.watch<AuthProvider>().currentUser?.canAccessTally == true)
-            IconButton(
-              icon: const Icon(Icons.swap_horiz_rounded, size: 20),
-              tooltip: 'Tally Hub (Masters Sync)',
-              onPressed: () => TallySyncDialog.show(
-                context,
-                initialTabIndex: 0,
-              ),
-            ),
-          IconButton(
-            icon: const Icon(Icons.table_view_outlined, size: 20),
-            tooltip: 'Export Outlets to Excel',
-            onPressed: () => _exportOutletsToExcel(provider),
-          ),
-          IconButton(
             icon: const Icon(Icons.add_business_outlined, size: 20),
             tooltip: 'Add Outlet',
             onPressed: () {
@@ -842,9 +808,79 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
               );
             },
           ),
+          if (MediaQuery.sizeOf(context).width >= 520) ...[
+            IconButton(
+              icon: const Icon(Icons.low_priority_rounded, size: 20),
+              tooltip: 'Reorder Outlets',
+              onPressed: () => _openReorderDialog(context, provider),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_location_alt_outlined, size: 20),
+              tooltip: 'Add Route',
+              onPressed: () async {
+                final newRoute = await showDialog<RouteModel>(
+                  context: context,
+                  builder: (ctx) => const AddRouteDialog(),
+                );
+                if (newRoute != null) {
+                  setState(() {
+                    _selectedRouteId = newRoute.id;
+                    _selectedShopId = null;
+                  });
+                }
+              },
+            ),
+            if (context.watch<AuthProvider>().currentUser?.canAccessTally == true)
+              IconButton(
+                icon: const Icon(Icons.swap_horiz_rounded, size: 20),
+                tooltip: 'Tally Hub (Masters Sync)',
+                onPressed: () => TallySyncDialog.show(
+                  context,
+                  initialTabIndex: 0,
+                ),
+              ),
+            IconButton(
+              icon: const Icon(Icons.table_view_outlined, size: 20),
+              tooltip: 'Export Outlets to Excel',
+              onPressed: () => _exportOutletsToExcel(provider),
+            ),
+          ] else
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, size: 20),
+              tooltip: 'Route Options',
+              onSelected: (val) async {
+                if (val == 'reorder') {
+                  _openReorderDialog(context, provider);
+                } else if (val == 'add_route') {
+                  final newRoute = await showDialog<RouteModel>(
+                    context: context,
+                    builder: (ctx) => const AddRouteDialog(),
+                  );
+                  if (newRoute != null && mounted) {
+                    setState(() {
+                      _selectedRouteId = newRoute.id;
+                      _selectedShopId = null;
+                    });
+                  }
+                } else if (val == 'tally') {
+                  TallySyncDialog.show(context, initialTabIndex: 0);
+                } else if (val == 'export') {
+                  _exportOutletsToExcel(provider);
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'add_route', child: Text('Add Route')),
+                const PopupMenuItem(value: 'reorder', child: Text('Reorder Outlets')),
+                if (context.read<AuthProvider>().currentUser?.canAccessTally == true)
+                  const PopupMenuItem(value: 'tally', child: Text('Tally Hub (Masters Sync)')),
+                const PopupMenuItem(value: 'export', child: Text('Export Outlets to Excel')),
+              ],
+            ),
         ],
       ),
-      body: Column(
+      body: ResponsiveContent(
+        maxWidth: 860,
+        child: Column(
         children: [
           // Route Dropdown Selector Bar
           Container(
@@ -987,12 +1023,16 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                           children: [
                             Row(
                               children: [
-                                Text(
-                                  selectedRoute.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Color(0xFF0F172A),
+                                Flexible(
+                                  child: Text(
+                                    selectedRoute.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: Color(0xFF0F172A),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -1285,7 +1325,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: EdgeInsets.fromLTRB(12, 4, 12, responsiveListBottomPadding(context)),
                     itemCount: shopsInRoute.length,
                     itemBuilder: (context, index) {
                       final shop = shopsInRoute[index];
@@ -1339,11 +1379,15 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                                           children: [
                                             const Icon(Icons.phone_outlined, size: 13, color: Colors.blueGrey),
                                             const SizedBox(width: 4),
-                                            Text(
-                                              shop.mobileNumber,
-                                              style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade800),
+                                            Expanded(
+                                              child: Text(
+                                                shop.mobileNumber,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade800),
+                                              ),
                                             ),
-                                            const Spacer(),
+                                            const SizedBox(width: 6),
                                             // Call button
                                             InkWell(
                                               onTap: () => launchUrl(Uri.parse('tel:${shop.mobileNumber}')),
@@ -1593,6 +1637,7 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                   ),
           ),
         ],
+      ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'routes_fab_add_store',

@@ -590,6 +590,7 @@ class _StatementScreenState extends State<StatementScreen> {
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: Column(
@@ -607,30 +608,36 @@ class _StatementScreenState extends State<StatementScreen> {
                             ],
                           ),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text('Date: $dateStr', style: const TextStyle(fontSize: 11)),
-                            Text('Mode: $modeTitle', style: const TextStyle(fontSize: 11)),
-                            if (routeName != null)
-                              Text('Route: $routeName', style: const TextStyle(fontSize: 10)),
-                            if (shopName != null)
-                              Text('Outlet: $shopName', style: const TextStyle(fontSize: 10)),
-                            Text('Officer: ${provider.salesmanName}', style: const TextStyle(fontSize: 11)),
-                          ],
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text('Date: $dateStr', style: const TextStyle(fontSize: 11), textAlign: TextAlign.end),
+                              Text('Mode: $modeTitle', style: const TextStyle(fontSize: 11), textAlign: TextAlign.end),
+                              if (routeName != null)
+                                Text('Route: $routeName', style: const TextStyle(fontSize: 10), textAlign: TextAlign.end),
+                              if (shopName != null)
+                                Text('Outlet: $shopName', style: const TextStyle(fontSize: 10), textAlign: TextAlign.end),
+                              Text('Officer: ${provider.salesmanName}', style: const TextStyle(fontSize: 11), textAlign: TextAlign.end),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                     const Divider(thickness: 1.5, color: Colors.indigo),
                     const SizedBox(height: 8),
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceAround,
+                        spacing: 12,
+                        runSpacing: 8,
                         children: [
                           Column(
                             children: [

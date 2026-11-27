@@ -230,17 +230,52 @@ class CleanStatusBadge extends StatelessWidget {
             Icon(icon, size: 11, color: color),
             const SizedBox(width: 4),
           ],
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: color,
-              letterSpacing: 0.3,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: color,
+                letterSpacing: 0.3,
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+/// Centers content on wide tablets/desktops up to [maxWidth] while using
+/// 100% of phone screen width on mobile devices.
+class ResponsiveContent extends StatelessWidget {
+  final Widget child;
+  final double maxWidth;
+
+  const ResponsiveContent({
+    super.key,
+    required this.child,
+    this.maxWidth = 920,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    if (screenWidth <= maxWidth) return child;
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Bottom clearance helper so scrollable lists remain clear of FABs and bottom bars.
+double responsiveListBottomPadding(BuildContext context, {double extra = 88}) {
+  return MediaQuery.paddingOf(context).bottom + extra;
 }

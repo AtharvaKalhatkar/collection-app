@@ -243,27 +243,24 @@ class _PaymentQrDialogState extends State<PaymentQrDialog> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: (_isPurva || _manasQrIndex == 2)
-                            ? Image.memory(
-                                _isPurva ? QrData.purvaBytes : QrData.manasBytes,
-                                width: 250,
-                                height: 300,
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Image.asset(
-                                    assetPath,
-                                    width: 250,
-                                    height: 300,
-                                    fit: BoxFit.contain,
-                                  );
-                                },
-                              )
-                            : Image.asset(
-                                assetPath,
-                                width: 250,
-                                height: 300,
-                                fit: BoxFit.contain,
-                              ),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 250, maxHeight: 300),
+                          child: (_isPurva || _manasQrIndex == 2)
+                              ? Image.memory(
+                                  _isPurva ? QrData.purvaBytes : QrData.manasBytes,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Image.asset(
+                                      assetPath,
+                                      fit: BoxFit.contain,
+                                    );
+                                  },
+                                )
+                              : Image.asset(
+                                  assetPath,
+                                  fit: BoxFit.contain,
+                                ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),

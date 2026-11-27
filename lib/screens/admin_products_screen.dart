@@ -12,6 +12,7 @@ import '../utils/image_compress_helper.dart';
 import '../utils/quick_alert.dart';
 import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
+import '../widgets/clean_ui.dart';
 
 class AdminProductsScreen extends StatefulWidget {
   const AdminProductsScreen({super.key});
@@ -108,9 +109,11 @@ class AdminProductsScreen extends StatefulWidget {
               ),
             ],
           ),
-          content: SizedBox(
-            width: 480,
-            child: SingleChildScrollView(
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -224,6 +227,7 @@ class AdminProductsScreen extends StatefulWidget {
                   ),
                 ],
               ),
+            ),
             ),
           ),
           actions: [
@@ -537,206 +541,218 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
         label: const Text('Add Product', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
         onPressed: () => _openAddOrEditDialog(),
       ),
-      body: Column(
-        children: [
-          // Top Controls & Tally Stock Import Strip
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Firm Toggle + Company Dropdown
-                Row(
+      body: ResponsiveContent(
+        maxWidth: 860,
+        child: CustomScrollView(
+          slivers: [
+            // Top Controls & Tally Stock Import Strip (Scrollable on tiny screens!)
+            SliverToBoxAdapter(
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _firmPill('All'),
-                    const SizedBox(width: 6),
-                    _firmPill(OrderCatalogService.purva, shortLabel: 'Purva'),
-                    const SizedBox(width: 6),
-                    _firmPill(OrderCatalogService.manas, shortLabel: 'Manas'),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Container(
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.border),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _companyFilter,
-                            isExpanded: true,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
-                            items: companies
-                                .map((c) => DropdownMenuItem(
-                                      value: c,
-                                      child: Text(c, overflow: TextOverflow.ellipsis),
-                                    ))
-                                .toList(),
-                            onChanged: (v) {
-                              if (v != null) setState(() => _companyFilter = v);
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                // Search Box
-                TextField(
-                  controller: _searchCtrl,
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                  decoration: InputDecoration(
-                    hintText: 'Search product, company, or scheme...',
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                        : null,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Filter Chips + Tally Import Bar
-                Row(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final f in ['All', 'Has Scheme', 'In Stock', 'No Stock'])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: ChoiceChip(
-                                  label: Text(f, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
-                                  selected: _quickFilter == f,
-                                  selectedColor: _adminBlue.withValues(alpha: 0.12),
-                                  labelStyle: TextStyle(
-                                    color: _quickFilter == f ? _adminBlue : AppTheme.textSecondary,
-                                  ),
-                                  onSelected: (_) => setState(() => _quickFilter = f),
-                                ),
+                    // Firm Toggle + Company Dropdown
+                    Row(
+                      children: [
+                        _firmPill('All'),
+                        const SizedBox(width: 6),
+                        _firmPill(OrderCatalogService.purva, shortLabel: 'Purva'),
+                        const SizedBox(width: 6),
+                        _firmPill(OrderCatalogService.manas, shortLabel: 'Manas'),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppTheme.border),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _companyFilter,
+                                isExpanded: true,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                                items: companies
+                                    .map((c) => DropdownMenuItem(
+                                          value: c,
+                                          child: Text(c, overflow: TextOverflow.ellipsis),
+                                        ))
+                                    .toList(),
+                                onChanged: (v) {
+                                  if (v != null) setState(() => _companyFilter = v);
+                                },
                               ),
-                          ],
+                            ),
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Search Box
+                    TextField(
+                      controller: _searchCtrl,
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      decoration: InputDecoration(
+                        hintText: 'Search product, company, or scheme...',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
+                    const SizedBox(height: 8),
 
-                // Tally Stock Import Bar
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F9FF),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFBAE6FD)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.upload_file_rounded, color: Color(0xFF0369A1), size: 20),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Tally Closing Stock',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0C4A6E)),
+                    // Filter Chips
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                for (final f in ['All', 'Has Scheme', 'In Stock', 'No Stock'])
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ChoiceChip(
+                                      label: Text(f, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+                                      selected: _quickFilter == f,
+                                      selectedColor: _adminBlue.withValues(alpha: 0.12),
+                                      labelStyle: TextStyle(
+                                        color: _quickFilter == f ? _adminBlue : AppTheme.textSecondary,
+                                      ),
+                                      onSelected: (_) => setState(() => _quickFilter = f),
+                                    ),
+                                  ),
+                              ],
                             ),
-                            Text(
-                              'Import XML or Excel stock summary to update quantities',
-                              style: TextStyle(fontSize: 10.5, color: Color(0xFF0369A1)),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          await TallyIntegrationService.downloadSampleStockExcel();
-                          if (context.mounted) {
-                            QuickAlert.success(context, 'Sample Stock Excel downloaded!');
-                          }
-                        },
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: const Text('Sample', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                      ),
-                      const SizedBox(width: 4),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0369A1),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.file_upload_outlined, size: 15),
-                        label: const Text('Import Stock', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                        onPressed: () => AdminProductsScreen.pickAndImportTallyStock(
-                          context,
-                          provider,
-                          defaultFirm: _firmFilter == 'All' ? OrderCatalogService.purva : _firmFilter,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-
-          // Product Catalog List
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey.shade400),
-                          const SizedBox(height: 10),
-                          Text(
-                            allProducts.isEmpty
-                                ? 'No products in catalog yet'
-                                : 'No products match current filters',
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
                           ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Tap "Add Product" or import Tally Stock XML/Excel above.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Tally Stock Import Bar (Wraps cleanly on narrow phones)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F9FF),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFBAE6FD)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.upload_file_rounded, color: Color(0xFF0369A1), size: 20),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Tally Closing Stock',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0C4A6E)),
+                                ),
+                                Text(
+                                  'Import XML or Excel stock summary to update quantities',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 10.5, color: Color(0xFF0369A1)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              await TallyIntegrationService.downloadSampleStockExcel();
+                              if (context.mounted) {
+                                QuickAlert.success(context, 'Sample Stock Excel downloaded!');
+                              }
+                            },
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Sample', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                          ),
+                          const SizedBox(width: 4),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0369A1),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.file_upload_outlined, size: 15),
+                            label: const Text('Import Stock', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                            onPressed: () => AdminProductsScreen.pickAndImportTallyStock(
+                              context,
+                              provider,
+                              defaultFirm: _firmFilter == 'All' ? OrderCatalogService.purva : _firmFilter,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (_, idx) {
+                  ],
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: Divider(height: 1)),
+
+            // Product Catalog List
+            if (filtered.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 10),
+                        Text(
+                          allProducts.isEmpty
+                              ? 'No products in catalog yet'
+                              : 'No products match current filters',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Tap "Add Product" or import Tally Stock XML/Excel above.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(12, 12, 12, responsiveListBottomPadding(context)),
+                sliver: SliverList.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (_, idx) {
                       final product = filtered[idx];
                       final isManas = product.firm.toLowerCase().contains('manas');
                       final hasScheme = product.scheme.trim().isNotEmpty;
@@ -870,14 +886,18 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                                                         : const Color(0xFF64748B),
                                                   ),
                                                   const SizedBox(width: 4),
-                                                  Text(
-                                                    hasScheme ? 'Scheme: ${product.scheme}' : 'No Scheme',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: hasScheme
-                                                          ? const Color(0xFFB45309)
-                                                          : const Color(0xFF64748B),
+                                                  Flexible(
+                                                    child: Text(
+                                                      hasScheme ? 'Scheme: ${product.scheme}' : 'No Scheme',
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w700,
+                                                        color: hasScheme
+                                                            ? const Color(0xFFB45309)
+                                                            : const Color(0xFF64748B),
+                                                      ),
                                                     ),
                                                   ),
                                                 ],
@@ -941,9 +961,10 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                         ),
                       );
                     },
-                  ),
-          ),
-        ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1020,9 +1041,11 @@ class _QuickSchemeDialogState extends State<_QuickSchemeDialog> {
           ),
         ],
       ),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1070,6 +1093,7 @@ class _QuickSchemeDialogState extends State<_QuickSchemeDialog> {
               ),
             ],
           ),
+        ),
         ),
       ),
       actions: [

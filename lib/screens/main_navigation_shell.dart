@@ -140,6 +140,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     ];
 
     final clampedIndex = _currentIndex.clamp(0, screens.length - 1);
+    final mediaSize = MediaQuery.sizeOf(context);
+    final useNavRail = mediaSize.width >= 960;
+    final isShortViewport = mediaSize.height < 520;
 
     return PopScope(
       canPop: false,
@@ -169,21 +172,74 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         SystemNavigator.pop();
       },
       child: Scaffold(
-        body: IndexedStack(
-          index: clampedIndex,
-          children: screens,
-        ),
-        bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: AppTheme.border, width: 1)),
-          ),
-          child: NavigationBar(
-            selectedIndex: clampedIndex,
-            onDestinationSelected: _navigateToTab,
-            destinations: destinations,
-          ),
-        ),
+        body: useNavRail
+            ? Row(
+                children: [
+                  SafeArea(
+                    right: false,
+                    child: NavigationRail(
+                      selectedIndex: clampedIndex,
+                      onDestinationSelected: _navigateToTab,
+                      labelType: NavigationRailLabelType.all,
+                      backgroundColor: Colors.white,
+                      indicatorColor: AppTheme.primary.withValues(alpha: 0.12),
+                      destinations: const [
+                        NavigationRailDestination(
+                          icon: Icon(Icons.analytics_outlined),
+                          selectedIcon: Icon(Icons.analytics, color: AppTheme.primary),
+                          label: Text('Overview'),
+                        ),
+                        NavigationRailDestination(
+                          icon: Icon(Icons.receipt_long_outlined),
+                          selectedIcon: Icon(Icons.receipt_long, color: AppTheme.primary),
+                          label: Text('Ledger'),
+                        ),
+                        NavigationRailDestination(
+                          icon: Icon(Icons.storefront_outlined),
+                          selectedIcon: Icon(Icons.storefront, color: AppTheme.primary),
+                          label: Text('Outlets'),
+                        ),
+                        NavigationRailDestination(
+                          icon: Icon(Icons.person_outline),
+                          selectedIcon: Icon(Icons.person, color: AppTheme.primary),
+                          label: Text('Profile'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const VerticalDivider(width: 1),
+                  Expanded(
+                    child: IndexedStack(
+                      index: clampedIndex,
+                      children: screens,
+                    ),
+                  ),
+                ],
+              )
+            : IndexedStack(
+                index: clampedIndex,
+                children: screens,
+              ),
+        bottomNavigationBar: useNavRail
+            ? null
+            : Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: AppTheme.border, width: 1)),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: NavigationBar(
+                    height: isShortViewport ? 56 : 66,
+                    selectedIndex: clampedIndex,
+                    onDestinationSelected: _navigateToTab,
+                    labelBehavior: isShortViewport
+                        ? NavigationDestinationLabelBehavior.onlyShowSelected
+                        : NavigationDestinationLabelBehavior.alwaysShow,
+                    destinations: destinations,
+                  ),
+                ),
+              ),
       ),
     );
   }

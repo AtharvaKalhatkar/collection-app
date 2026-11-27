@@ -266,9 +266,11 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
             ),
           ],
         ),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -385,6 +387,7 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
                 ),
               ],
             ),
+          ),
           ),
         ),
         actions: [

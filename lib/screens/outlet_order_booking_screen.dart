@@ -15,6 +15,7 @@ import '../utils/currency_formatter.dart';
 import '../utils/image_compress_helper.dart';
 import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
+import '../widgets/clean_ui.dart';
 
 const Color _bookingBlue = Color(0xFF15429E);
 
@@ -767,113 +768,113 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildOrderTab(),
-          _buildOutletInfoTab(),
-          _buildSubmitOrderTab(),
-        ],
+      body: ResponsiveContent(
+        maxWidth: 860,
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildOrderTab(),
+            _buildOutletInfoTab(),
+            _buildSubmitOrderTab(),
+          ],
+        ),
       ),
-      // Green Floating Cart Button matching Bizom Reference Images 4, 6, 7
-      floatingActionButton: _tabController.index == 0
-          ? Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  FloatingActionButton(
-                    backgroundColor: const Color(0xFF16A34A),
-                    foregroundColor: Colors.white,
-                    elevation: 4,
-                    tooltip: 'Review & Submit Order',
-                    onPressed: () => _tabController.animateTo(2),
-                    child: const Icon(
-                      Icons.shopping_cart_outlined,
-                      color: Colors.white,
-                      size: 26,
-                    ),
+      bottomNavigationBar: _tabController.index == 0
+          ? Container(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, -2),
                   ),
-                  if (_cart.isNotEmpty)
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFDC2626),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          '${_cart.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
-            )
-          : null,
-      bottomNavigationBar: _tabController.index == 0
-          ? InkWell(
-              onTap: () => _tabController.animateTo(2),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-                ),
-                child: SafeArea(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      RichText(
-                        text: TextSpan(
-                          style: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
-                          children: [
-                            const TextSpan(text: 'CS: '),
-                            TextSpan(
-                              text: '$_totalCases',
-                              style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              child: SafeArea(
+                top: false,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => _tabController.animateTo(2),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                RichText(
+                                  text: TextSpan(
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                                    children: [
+                                      const TextSpan(text: 'CS: '),
+                                      TextSpan(
+                                        text: '$_totalCases',
+                                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                RichText(
+                                  text: TextSpan(
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                                    children: [
+                                      const TextSpan(text: 'UT: '),
+                                      TextSpan(
+                                        text: '$_totalUnits',
+                                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                RichText(
+                                  text: TextSpan(
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                                    children: [
+                                      TextSpan(text: _totalAmount > 0 ? 'Total: ' : 'Lines: '),
+                                      TextSpan(
+                                        text: _totalAmount > 0
+                                            ? _totalAmount.toStringAsFixed(0)
+                                            : '${_cart.length}',
+                                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                      RichText(
-                        text: TextSpan(
-                          style: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
-                          children: [
-                            const TextSpan(text: 'UT: '),
-                            TextSpan(
-                              text: '$_totalUnits',
-                              style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(right: 54), // Keep clear of Green Cart FAB
-                        child: RichText(
-                          text: TextSpan(
-                            style: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
-                            children: [
-                              TextSpan(text: _totalAmount > 0 ? 'Total: ' : 'Lines: '),
-                              TextSpan(
-                                text: _totalAmount > 0
-                                    ? _totalAmount.toStringAsFixed(0)
-                                    : '${_cart.length}',
-                                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                              ),
-                            ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 10),
+                    Tooltip(
+                      message: 'Review & Submit Order',
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16A34A),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => _tabController.animateTo(2),
+                        icon: const Icon(Icons.shopping_cart_outlined, size: 18, color: Colors.white),
+                        label: Text(
+                          _cart.isEmpty ? 'Cart' : 'Review (${_cart.length})',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )
@@ -1174,7 +1175,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 80),
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 20),
                   itemCount: products.length,
                   separatorBuilder: (context, index) => const SizedBox(height: 8),
                   itemBuilder: (ctx, index) {
@@ -1268,9 +1269,12 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                                     ),
                                     const SizedBox(height: 5),
 
-                                    Row(
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      crossAxisAlignment: WrapCrossAlignment.center,
                                       children: [
-                                        if (product.rate > 0) ...[
+                                        if (product.rate > 0)
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                             decoration: BoxDecoration(
@@ -1287,15 +1291,9 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                                               ),
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
-                                        ],
-                                        Expanded(
-                                          child: Text(
-                                            '${product.category} (${product.subcategory}) • 1 CS = ${product.unitsPerCase} ${product.defaultUnit}',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                                          ),
+                                        Text(
+                                          '${product.category} (${product.subcategory}) • 1 CS = ${product.unitsPerCase} ${product.defaultUnit}',
+                                          style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
                                         ),
                                       ],
                                     ),
@@ -1318,12 +1316,16 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                                                 children: [
                                                   const Icon(Icons.local_offer_rounded, size: 10.5, color: Color(0xFFB45309)),
                                                   const SizedBox(width: 4),
-                                                  Text(
-                                                    'Scheme: ${product.scheme}',
-                                                    style: const TextStyle(
-                                                      fontSize: 10,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: Color(0xFFB45309),
+                                                  Flexible(
+                                                    child: Text(
+                                                      'Scheme: ${product.scheme}',
+                                                      maxLines: 2,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w700,
+                                                        color: Color(0xFFB45309),
+                                                      ),
                                                     ),
                                                   ),
                                                 ],
@@ -1694,12 +1696,15 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
 
     return Column(
       children: [
-        // Top Cream/Yellow Summary Strip (Exact match to Image 5)
+        // Top Cream/Yellow Summary Strip
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           color: const Color(0xFFFEFCE8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 14,
+            runSpacing: 8,
             children: [
               if (hasAmount) _buildSummaryPill('Amount', _totalAmount.toStringAsFixed(2)),
               _buildSummaryPill('Lines', '${_cart.length}'),
@@ -1714,13 +1719,29 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
         ),
         const Divider(height: 1),
 
-        // Tabular Items Breakdown Cards
+        // Tabular Items Breakdown Cards + Scrollable Order Notes
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.all(10),
-            itemCount: _cart.values.length,
+            itemCount: _cart.values.length + 1,
             separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (ctx, index) {
+              if (index == _cart.values.length) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: TextField(
+                    controller: _notesController,
+                    decoration: InputDecoration(
+                      hintText: 'Order notes / remarks (Optional)...',
+                      hintStyle: const TextStyle(fontSize: 12),
+                      filled: true,
+                      fillColor: Colors.white,
+                      isDense: true,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                );
+              }
               final item = _cart.values.elementAt(index);
               final itemHasRate = item.rate > 0;
 
@@ -1832,9 +1853,9 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
           ),
         ),
 
-        // Bottom Notes & Submit Footer (Matching Image 5 Green Left Label + Blue Action Button)
+        // Compact Bottom Total & Submit Footer (Zero vertical overflow even on 320px/keyboard screens)
         Container(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
           decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [
@@ -1846,55 +1867,47 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
             ],
           ),
           child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            top: false,
+            child: Row(
               children: [
-                TextField(
-                  controller: _notesController,
-                  decoration: InputDecoration(
-                    hintText: 'Order notes / remarks (Optional)...',
-                    hintStyle: const TextStyle(fontSize: 12),
-                    isDense: true,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _totalAmount > 0 ? 'TOTAL AMOUNT:' : 'TOTAL ORDER:',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
+                      ),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _totalAmount > 0
+                              ? CurrencyFormatter.format(_totalAmount)
+                              : '$_totalCases CS, $_totalUnits UT',
+                          style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _totalAmount > 0 ? 'TOTAL AMOUNT:' : 'TOTAL ORDER:',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
-                          ),
-                          Text(
-                            _totalAmount > 0
-                                ? CurrencyFormatter.format(_totalAmount)
-                                : '$_totalCases CS, $_totalUnits UT',
-                            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _bookingBlue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: _isSubmitting ? null : _submitOrder,
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Text('Submit Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    ),
-                  ],
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _bookingBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: _isSubmitting ? null : _submitOrder,
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Submit Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
                 ),
               ],
             ),
@@ -1913,15 +1926,20 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
       children: [
         Text(
           header,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 3),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: isBoldVal ? FontWeight.w800 : FontWeight.w600,
-            color: const Color(0xFF0F172A),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: isBoldVal ? FontWeight.w800 : FontWeight.w600,
+              color: const Color(0xFF0F172A),
+            ),
           ),
         ),
       ],

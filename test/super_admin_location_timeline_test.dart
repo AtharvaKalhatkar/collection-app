@@ -207,6 +207,42 @@ void main() {
       expect(khedPlace!.address, contains('Pune - Nashik Hwy'));
       expect(khedPlace.address, contains('Rajgurunagar'));
       expect(khedPlace.address.toLowerCase(), isNot(contains('khed')));
+
+      // Rejects state-only Nominatim responses like bare {"state": "Maharashtra"}
+      expect(
+        LocationTrackingService.parseNominatimPlace({
+          'address': {'state': 'Maharashtra', 'country': 'India'},
+        }),
+        isNull,
+      );
+
+      // ArcGIS parses POIs, Banks, ST Stands & roads cleanly (normalizing Khed -> Rajgurunagar)
+      final arcgisPoi = LocationTrackingService.parseArcGisPlace({
+        'PlaceName': 'Shivraj Krushi Seva Kendra',
+        'ShortLabel': 'Shivraj Krushi Seva Kendra',
+        'Address': 'Wandra Road',
+        'District': 'Koye',
+        'City': 'Khed',
+        'Subregion': 'Pune',
+        'Postal': '410505',
+      });
+      expect(arcgisPoi, isNotNull);
+      expect(arcgisPoi!.title, 'Shivraj Krushi Seva Kendra');
+      expect(arcgisPoi.address, contains('Wandra Road'));
+      expect(arcgisPoi.address, contains('Koye'));
+      expect(arcgisPoi.address, contains('Rajgurunagar'));
+      expect(arcgisPoi.displayLabel.toLowerCase(), isNot(contains('near ')));
+
+      // Photon parses nearby POIs & roads cleanly
+      final photonPoi = LocationTrackingService.parsePhotonPlace({
+        'name': 'Reliance Smart Point',
+        'street': 'Bakori Road',
+        'city': 'Wagholi, Pune',
+        'postcode': '412207',
+      });
+      expect(photonPoi, isNotNull);
+      expect(photonPoi!.title, 'Reliance Smart Point');
+      expect(photonPoi.address, contains('Bakori Road'));
     });
 
     test('TimelineSegmentBuilder groups stops cleanly and computes same-staff trips without mixing staff', () {
@@ -359,6 +395,18 @@ void main() {
         routeName: 'Rajgurunagar',
       );
 
+      final tlAdmin = LocationTimelineEntry(
+        id: 'tl_admin_ignored',
+        userId: admin.id,
+        staffName: admin.name,
+        staffRole: 'superAdmin',
+        timestamp: t2,
+        latitude: 18.5900,
+        longitude: 74.0000,
+        landmark: 'Wagholi',
+        eventType: 'gpsPing',
+      );
+
       SharedPreferences.setMockInitialValues({
         'app_sample_data_initialized_v1': true,
         'app_users_cache_v1': jsonEncode([
@@ -372,6 +420,7 @@ void main() {
         'app_location_timeline_v1': [
           jsonEncode(tl1.toJson()),
           jsonEncode(tl2.toJson()),
+          jsonEncode(tlAdmin.toJson()),
         ],
       });
 
@@ -391,10 +440,16 @@ void main() {
             ChangeNotifierProvider.value(value: auth),
             ChangeNotifierProvider.value(value: collection),
           ],
-          child: const MaterialApp(home: LiveStaffLocationsScreen()),
+          child: const MaterialApp(
+            home: LiveStaffLocationsScreen(initialStaffName: 'Sagar Order'),
+          ),
         ),
       );
       await tester.pumpAndSettle();
+
+      // No 'All Staff' option in Timeline and no Super Admin noise
+      expect(find.text('All Staff'), findsNothing);
+      expect(find.text('Super Admin'), findsNothing);
 
       // Includes Salesman, Order, and Collection roles (3 staff in Staff tab!)
       expect(find.text('Staff (3)'), findsOneWidget);

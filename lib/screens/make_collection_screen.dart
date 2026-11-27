@@ -669,10 +669,15 @@ class _MakeCollectionScreenState extends State<MakeCollectionScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              r.name,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                            Expanded(
+                              child: Text(
+                                r.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                              ),
                             ),
+                            const SizedBox(width: 8),
                             Text(
                               '$billsCount pending bills',
                               style: TextStyle(

@@ -113,7 +113,27 @@ class TimelineDaySummary {
 }
 
 class TimelineSegmentBuilder {
-  /// Splits & groups a day's raw timeline entries into Google-Maps-style Stops and Travel Trips.
+  static String _stripNearPrefix(String s) => s
+      .replaceAll(';', ',')
+      .replaceFirst(RegExp(r'^(At|Near)\s+', caseSensitive: false), '')
+      .trim();
+
+  static bool _isBroadPlaceName(String title) {
+    final t = title.trim().toLowerCase();
+    return t.isEmpty ||
+        t == 'maharashtra' ||
+        t == 'india' ||
+        t == 'pune' ||
+        t == 'rajgurunagar' ||
+        t == 'khed' ||
+        t == 'खेड' ||
+        t.startsWith('gps:') ||
+        t == 'active in beat' ||
+        t == 'active on sales route' ||
+        t == 'transit on delivery beat';
+  }
+
+  /// Splits & groups a day's timeline entries into Stops and Travel Trips.
   static TimelineDaySummary build(
     List<LocationTimelineEntry> rawEntries, {
     List<ShopModel> shops = const [],
@@ -129,7 +149,6 @@ class TimelineSegmentBuilder {
       );
     }
 
-    // Group entries by staff member so trips/distances are never computed across two different staff
     final Map<String, List<LocationTimelineEntry>> byStaff = {};
     for (final e in rawEntries) {
       final plain = UserModel.cleanPlainName(e.staffName).toLowerCase();
@@ -143,7 +162,6 @@ class TimelineSegmentBuilder {
     double totalDist = 0.0;
     double totalCollected = 0.0;
 
-    // Preserve natural staff ordering by earliest activity
     final staffGroups = byStaff.entries.toList()
       ..sort((a, b) {
         final aFirst = a.value.map((e) => e.timestamp).reduce((x, y) => x.isBefore(y) ? x : y);
@@ -161,7 +179,10 @@ class TimelineSegmentBuilder {
       void flushCluster(List<LocationTimelineEntry> cluster) {
         final anchor = cluster.firstWhere(
           (e) => e.shopName != null && e.shopName!.trim().isNotEmpty,
-          orElse: () => cluster.first,
+          orElse: () => cluster.firstWhere(
+            (e) => !_isBroadPlaceName(_stripNearPrefix(e.landmark)),
+            orElse: () => cluster.first,
+          ),
         );
         final resolved = _resolveClusterLabel(anchor, cluster, shops);
         final double sumAmount = cluster.fold(
@@ -197,8 +218,8 @@ class TimelineSegmentBuilder {
         final curShop = (cur.shopName ?? '').trim().toLowerCase();
         final distinctShops = prevShop.isNotEmpty && curShop.isNotEmpty && prevShop != curShop;
 
-        // Merge consecutive events within 150m unless clearly visiting two different named outlets
-        if (distKm <= 0.15 && !distinctShops) {
+        // Merge nearby points within 200m (eliminates noisy indoor GPS jitter micro-hops)
+        if (distKm <= 0.20 && !distinctShops) {
           currentCluster.add(cur);
         } else {
           flushCluster(currentCluster);
@@ -220,7 +241,7 @@ class TimelineSegmentBuilder {
             nextStop.latitude,
             nextStop.longitude,
           );
-          if (distKm >= 0.05) {
+          if (distKm >= 0.25) {
             final mins = nextStop.startTime.difference(stop.endTime).inMinutes.clamp(1, 24 * 60);
             final hours = mins / 60.0;
             final speedKmh = hours > 0 ? distKm / hours : 0.0;
@@ -258,7 +279,6 @@ class TimelineSegmentBuilder {
       }
     }
 
-    // Build deduplicated Places summary
     final Map<String, TimelinePlaceSummary> placeMap = {};
     for (final stop in allStops) {
       final key = stop.placeTitle.trim().toLowerCase();
@@ -318,7 +338,7 @@ class TimelineSegmentBuilder {
 
     // 1. Named Outlet Visit (Collection, Order, Delivery)
     if (anchor.shopName != null && anchor.shopName!.trim().isNotEmpty) {
-      final shopName = anchor.shopName!.trim();
+      final shopName = _stripNearPrefix(anchor.shopName!);
       final matchedShop = shops
           .where((s) => s.name.trim().toLowerCase() == shopName.toLowerCase())
           .firstOrNull;
@@ -335,50 +355,33 @@ class TimelineSegmentBuilder {
       return (title: shopName, address: fullAddr);
     }
 
-    // 2. Cached real geocoded street + area + city
+    // Parse raw stored landmark cleanly without any "Near " prefix
+    var raw = _stripNearPrefix(anchor.landmark).replaceAll('·', ',').trim();
+    raw = raw.replaceAll(RegExp(r'\bKhed\b', caseSensitive: false), 'Rajgurunagar');
+    final rawTitle = raw.contains(',') ? raw.substring(0, raw.indexOf(',')).trim() : raw;
+    final hasSpecificStoredName = !_isBroadPlaceName(rawTitle);
+
+    // 2. Cached specific POI / Road from ArcGIS or Photon (NEVER override specific stored name with a generic city!)
     if (cachedGeo != null && cachedGeo.title.isNotEmpty) {
+      if (!cachedGeo.isTooBroad) {
+        // Specific street or POI resolved (e.g., "Bakori Road", "Shivraj Krushi Seva Kendra")
+        return (title: cachedGeo.title, address: cachedGeo.address);
+      }
+      if (hasSpecificStoredName) {
+        return (title: rawTitle, address: cachedGeo.address);
+      }
       return (title: cachedGeo.title, address: cachedGeo.address);
     }
 
-    // 3. Parse existing stored landmark string cleanly (avoid "Near <random store>" if address exists)
-    var raw = anchor.landmark.trim();
-    raw = raw.replaceAll(';', ',');
-    final isStaleNear = raw.toLowerCase().startsWith('near ') && raw.contains('·');
-    if (isStaleNear) {
-      final parts = raw.split('·');
-      final routePart = parts.length > 1 ? parts.last.trim() : '';
-      if (hasValidCoords) {
-        final reg = LocationTrackingService.getKnownRegion(anchor.latitude, anchor.longitude);
-        if (reg != null) {
-          return (
-            title: routePart.isNotEmpty ? routePart : reg,
-            address: '$reg, Maharashtra',
-          );
-        }
-      }
-    }
-
-    final isGeneric = raw.isEmpty ||
-        raw.startsWith('GPS:') ||
-        raw == 'Khed' ||
-        raw == 'Khed, खेड' ||
-        raw == 'खेड' ||
-        raw == 'Active in Beat' ||
-        raw == 'Active on sales route' ||
-        raw == 'Transit on delivery beat';
-
-    if (!isGeneric) {
-      final commaIdx = raw.indexOf(',');
-      if (commaIdx > 0 && commaIdx < raw.length - 1) {
-        return (
-          title: raw.substring(0, commaIdx).trim(),
-          address: raw.trim(),
-        );
-      }
+    // 3. Fallback using existing stored landmark (without "Near ")
+    if (hasSpecificStoredName) {
       final fallbackRegion = hasValidCoords
           ? (LocationTrackingService.getKnownRegion(anchor.latitude, anchor.longitude) ?? 'Pune Region')
           : 'Pune Region';
-      return (title: raw, address: fallbackRegion);
+      return (
+        title: rawTitle,
+        address: raw.contains(',') ? raw : fallbackRegion,
+      );
     }
 
     if (hasValidCoords) {
@@ -389,19 +392,16 @@ class TimelineSegmentBuilder {
       );
       final region = LocationTrackingService.getKnownRegion(anchor.latitude, anchor.longitude) ?? '';
       return (
-        title: fallback,
-        address: region.isNotEmpty && region != fallback ? region : 'Field Beat Route',
+        title: _stripNearPrefix(fallback),
+        address: region.isNotEmpty && region != fallback ? region : 'Pune Region',
       );
     }
 
-    return (title: 'Field Checkpoint', address: anchor.routeName ?? 'Sales Beat');
+    return (title: 'Field Checkpoint', address: anchor.routeName ?? 'Field Route');
   }
 
   static String _cleanRawAddress(String landmark, String skipTitle) {
-    final cleaned = landmark
-        .replaceAll(';', ',')
-        .replaceFirst(RegExp(r'^(At|Near)\s+', caseSensitive: false), '')
-        .trim();
+    final cleaned = _stripNearPrefix(landmark);
     if (cleaned.toLowerCase() == skipTitle.toLowerCase() || cleaned.isEmpty) {
       return '';
     }

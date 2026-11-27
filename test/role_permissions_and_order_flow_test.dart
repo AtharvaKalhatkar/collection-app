@@ -778,10 +778,11 @@ void main() {
       await tester.enterText(csField, '2');
       await tester.pumpAndSettle();
 
-      // Go to Submit Order via Floating Cart FAB
+      // Go to Submit Order via non-overlapping Cart/Review CTA in bottom bar
+      expect(find.byType(FloatingActionButton), findsNothing);
       expect(
         find.descendant(
-          of: find.byType(FloatingActionButton),
+          of: find.byTooltip('Review & Submit Order'),
           matching: find.byIcon(Icons.shopping_cart_outlined),
         ),
         findsOneWidget,

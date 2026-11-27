@@ -1762,177 +1762,188 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             ),
           ],
         ),
-        // Overlay Controls (Top: Count Badge, Satellite Toggle)
-        Positioned(
-          top: 12,
-          left: 12,
-          right: 12,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A).withValues(alpha: 0.9),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.local_shipping, size: 14, color: Color(0xFF38BDF8)),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Assigned Outlets (${displayShops.length})',
-                      style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  setState(() {
-                    _mapLayer = _mapLayer == 'streets' ? 'satellite' : 'streets';
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.border),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+        // Non-overlapping Responsive Overlay Column
+        Positioned.fill(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(_mapLayer == 'satellite' ? Icons.map : Icons.satellite_alt, size: 14, color: AppTheme.primary),
-                      const SizedBox(width: 4),
-                      Text(
-                        _mapLayer == 'satellite' ? 'Map' : 'Satellite',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A).withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.local_shipping, size: 14, color: Color(0xFF38BDF8)),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  'Assigned Outlets (${displayShops.length})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _mapLayer = _mapLayer == 'streets' ? 'satellite' : 'streets';
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppTheme.border),
+                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(_mapLayer == 'satellite' ? Icons.map : Icons.satellite_alt, size: 14, color: AppTheme.primary),
+                              const SizedBox(width: 4),
+                              Text(
+                                _mapLayer == 'satellite' ? 'Map' : 'Satellite',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Floating Action Buttons (My Location, Recenter)
-        Positioned(
-          right: 12,
-          bottom: _selectedMapShop != null ? 150 : 20,
-          child: Column(
-            children: [
-              if (user.latitude != null && user.longitude != null)
-                FloatingActionButton.small(
-                  heroTag: 'driver_my_loc',
-                  backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xFF0284C7),
-                  onPressed: () {
-                    _mapController.move(ll.LatLng(user.latitude!, user.longitude!), 15.0);
-                  },
-                  child: const Icon(Icons.my_location, size: 18),
-                ),
-              const SizedBox(height: 8),
-              if (displayShops.isNotEmpty)
-                FloatingActionButton.small(
-                  heroTag: 'driver_center_route',
-                  backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xFF0F172A),
-                  onPressed: () {
-                    final pos = _getShopLatLng(displayShops.first);
-                    _mapController.move(pos, 13.5);
-                  },
-                  child: const Icon(Icons.route, size: 18),
-                ),
-            ],
-          ),
-        ),
-        // Selected Shop Detail Bottom Card
-        if (_selectedMapShop != null)
-          Positioned(
-            left: 12,
-            right: 12,
-            bottom: 12,
-            child: Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 8,
-              child: Padding(
-                padding: const EdgeInsets.all(14.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  const Spacer(),
+                  Align(
+                    alignment: Alignment.bottomRight,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: Text(
-                            _selectedMapShop!.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        if (user.latitude != null && user.longitude != null)
+                          FloatingActionButton.small(
+                            heroTag: 'driver_my_loc',
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF0284C7),
+                            onPressed: () {
+                              _mapController.move(ll.LatLng(user.latitude!, user.longitude!), 15.0);
+                            },
+                            child: const Icon(Icons.my_location, size: 18),
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 18, color: Colors.blueGrey),
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => setState(() => _selectedMapShop = null),
-                        ),
+                        const SizedBox(height: 8),
+                        if (displayShops.isNotEmpty)
+                          FloatingActionButton.small(
+                            heroTag: 'driver_center_route',
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF0F172A),
+                            onPressed: () {
+                              final pos = _getShopLatLng(displayShops.first);
+                              _mapController.move(pos, 13.5);
+                            },
+                            child: const Icon(Icons.route, size: 18),
+                          ),
                       ],
                     ),
-                    if (_selectedMapShop!.address.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _selectedMapShop!.address,
-                        style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                  ),
+                  if (_selectedMapShop != null) ...[
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0284C7),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    Card(
+                      margin: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 8,
+                      child: Padding(
+                        padding: const EdgeInsets.all(14.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _selectedMapShop!.name,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 18, color: Colors.blueGrey),
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () => setState(() => _selectedMapShop = null),
+                                ),
+                              ],
                             ),
-                            icon: const Icon(Icons.directions, size: 16),
-                            label: const Text('Navigate (Maps)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            onPressed: () => _openGoogleMaps(_selectedMapShop!),
-                          ),
+                            if (_selectedMapShop!.address.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                _selectedMapShop!.address,
+                                style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF0284C7),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    icon: const Icon(Icons.directions, size: 16),
+                                    label: const Text('Navigate (Maps)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                    onPressed: () => _openGoogleMaps(_selectedMapShop!),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF10B981),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  icon: const Icon(Icons.payments, size: 16),
+                                  label: const Text('Bills', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  onPressed: () {
+                                    setState(() {
+                                      _searchCtrl.text = _selectedMapShop!.name;
+                                      _searchQuery = _selectedMapShop!.name;
+                                      _currentTab = 0; // Switch to delivery bills
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF10B981),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          icon: const Icon(Icons.payments, size: 16),
-                          label: const Text('Bills', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          onPressed: () {
-                            setState(() {
-                              _searchCtrl.text = _selectedMapShop!.name;
-                              _searchQuery = _selectedMapShop!.name;
-                              _currentTab = 0; // Switch to delivery bills
-                            });
-                          },
-                        ),
-                      ],
+                      ),
                     ),
                   ],
-                ),
+                ],
               ),
             ),
           ),
+        ),
       ],
     );
   }

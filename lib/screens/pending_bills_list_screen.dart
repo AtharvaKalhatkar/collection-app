@@ -12,6 +12,7 @@ import 'make_collection_screen.dart';
 import '../utils/marathi_search_helper.dart';
 import '../utils/quick_alert.dart';
 import '../widgets/tally_sync_dialog.dart';
+import '../widgets/clean_ui.dart';
 import '../providers/auth_provider.dart';
 
 class PendingBillsListScreen extends StatefulWidget {
@@ -198,8 +199,10 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body: ResponsiveContent(
+        maxWidth: 860,
+        child: Column(
+          children: [
           // Filter Bar
           Container(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
@@ -568,7 +571,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                     )
                   : ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: EdgeInsets.fromLTRB(12, 8, 12, responsiveListBottomPadding(context)),
                       itemCount: filteredBills.length,
                     itemBuilder: (context, index) {
                       final bill = filteredBills[index];
@@ -619,15 +622,19 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                   const SizedBox(width: 8),
 
                                   // Bill Number
-                                  Text(
-                                    'Bill No: ${bill.billNumber}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F172A),
+                                  Expanded(
+                                    child: Text(
+                                      'Bill No: ${bill.billNumber}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF0F172A),
+                                      ),
                                     ),
                                   ),
-                                  const Spacer(),
+                                  const SizedBox(width: 6),
 
                                   // Status Badge
                                   Container(
@@ -701,9 +708,13 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                 children: [
                                   const Icon(Icons.place_outlined, size: 13, color: Colors.blueGrey),
                                   const SizedBox(width: 4),
-                                  Text(
-                                    bill.routeName,
-                                    style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                                  Expanded(
+                                    child: Text(
+                                      bill.routeName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -723,9 +734,13 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                         children: [
                                           const Icon(Icons.event_note, size: 13, color: Colors.blueGrey),
                                           const SizedBox(width: 4),
-                                          Text(
-                                            'Inv: ${DateFormat('dd MMM yyyy').format(bill.invoiceDate)}',
-                                            style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade800, fontWeight: FontWeight.w600),
+                                          Expanded(
+                                            child: Text(
+                                              'Inv: ${DateFormat('dd MMM yyyy').format(bill.invoiceDate)}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade800, fontWeight: FontWeight.w600),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -737,9 +752,13 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
                                         children: [
                                           const Icon(Icons.local_shipping_outlined, size: 13, color: Colors.blueGrey),
                                           const SizedBox(width: 4),
-                                          Text(
-                                            'Del: ${DateFormat('dd MMM yyyy').format(bill.deliveryDate)}',
-                                            style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade800, fontWeight: FontWeight.w600),
+                                          Expanded(
+                                            child: Text(
+                                              'Del: ${DateFormat('dd MMM yyyy').format(bill.deliveryDate)}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(fontSize: 11, color: Colors.blueGrey.shade800, fontWeight: FontWeight.w600),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -914,6 +933,7 @@ class _PendingBillsListScreenState extends State<PendingBillsListScreen> {
             ),
           ),
         ],
+      ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'pending_bills_list_fab',

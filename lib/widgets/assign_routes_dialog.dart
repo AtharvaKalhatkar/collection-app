@@ -195,9 +195,11 @@ class _AssignRoutesDialogState extends State<AssignRoutesDialog> {
           ),
         ],
       ),
-      content: SizedBox(
-        width: 440,
-        child: SingleChildScrollView(
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -406,6 +408,7 @@ class _AssignRoutesDialogState extends State<AssignRoutesDialog> {
               ),
             ],
           ),
+        ),
         ),
       ),
       actions: [
