@@ -16,6 +16,8 @@ class AddProductDialog extends StatefulWidget {
   final String? initialCompany;
   final String? initialCategory;
   final String? initialSubcategory;
+  final CatalogProduct? existingProduct;
+  final bool enableSchemeAndStock;
 
   const AddProductDialog({
     super.key,
@@ -23,6 +25,8 @@ class AddProductDialog extends StatefulWidget {
     this.initialCompany,
     this.initialCategory,
     this.initialSubcategory,
+    this.existingProduct,
+    this.enableSchemeAndStock = false,
   });
 
   @override
@@ -44,6 +48,8 @@ class _AddProductDialogState extends State<AddProductDialog> {
   final _productNameController = TextEditingController();
   final _unitsPerCaseController = TextEditingController(text: '24');
   final _photoUrlController = TextEditingController();
+  final _schemeController = TextEditingController();
+  final _stockController = TextEditingController(text: '0');
 
   bool _isNewCompany = false;
   bool _isNewCategory = false;
@@ -53,11 +59,70 @@ class _AddProductDialogState extends State<AddProductDialog> {
   String? _photoBase64;
   late final String _draftId = 'cust-${DateTime.now().millisecondsSinceEpoch}';
 
+  bool get _isEditing => widget.existingProduct != null;
+  bool get _showSchemeAndStock => _isEditing || widget.enableSchemeAndStock;
+
   @override
   void initState() {
     super.initState();
-    _firm = widget.initialFirm ?? OrderCatalogService.purva;
-    _initCompanyAndCategory();
+    final existing = widget.existingProduct;
+    if (existing != null) {
+      _firm = existing.firm;
+      _productNameController.text = existing.name;
+      _unitsPerCaseController.text = '${existing.unitsPerCase}';
+      _selectedUnit = OrderCatalogService.availableUnits.contains(existing.defaultUnit)
+          ? existing.defaultUnit
+          : 'Pcs';
+      _photoBase64 = existing.photoBase64;
+      if (existing.photoUrl != null && existing.photoUrl!.isNotEmpty) {
+        _photoUrlController.text = existing.photoUrl!;
+        _showUrlField = true;
+      }
+      _schemeController.text = existing.scheme;
+      _stockController.text = existing.stock > 0 ? existing.formattedStock : '0';
+      _initFromExisting(existing);
+    } else {
+      _firm = widget.initialFirm ?? OrderCatalogService.purva;
+      _initCompanyAndCategory();
+    }
+  }
+
+  void _initFromExisting(CatalogProduct existing) {
+    final companies = OrderCatalogService.getCompanies(_firm);
+    final compMatch = companies.where((c) => c.toLowerCase() == existing.company.trim().toLowerCase()).firstOrNull;
+    if (compMatch != null) {
+      _selectedCompany = compMatch;
+      _isNewCompany = false;
+    } else {
+      _isNewCompany = true;
+      _newCompanyController.text = existing.company;
+    }
+
+    final categories = (!_isNewCompany && _selectedCompany != null)
+        ? OrderCatalogService.getCategories(_firm, _selectedCompany!)
+        : OrderCatalogService.defaultCategories;
+    final catMatch = categories.where((c) => c.toLowerCase() == existing.category.trim().toLowerCase()).firstOrNull;
+    if (catMatch != null) {
+      _selectedCategory = catMatch;
+      _isNewCategory = false;
+    } else {
+      _isNewCategory = true;
+      _newCategoryController.text = existing.category;
+    }
+
+    final subs = OrderCatalogService.getSubcategories(
+      _firm,
+      _isNewCompany ? null : _selectedCompany,
+      _isNewCategory ? null : _selectedCategory,
+    );
+    final subMatch = subs.where((s) => s.toLowerCase() == existing.subcategory.trim().toLowerCase()).firstOrNull;
+    if (subMatch != null) {
+      _selectedSubcategory = subMatch;
+      _isNewSubcategory = false;
+    } else {
+      _isNewSubcategory = true;
+      _newSubcategoryController.text = existing.subcategory;
+    }
   }
 
   void _initCompanyAndCategory() {
@@ -112,6 +177,8 @@ class _AddProductDialogState extends State<AddProductDialog> {
     _productNameController.dispose();
     _unitsPerCaseController.dispose();
     _photoUrlController.dispose();
+    _schemeController.dispose();
+    _stockController.dispose();
     super.dispose();
   }
 
@@ -201,22 +268,32 @@ class _AddProductDialogState extends State<AddProductDialog> {
       final parsedUpc = int.tryParse(_unitsPerCaseController.text.trim()) ?? 24;
       final unitsPerCase = parsedUpc > 0 ? parsedUpc : 24;
       final photoUrl = _photoUrlController.text.trim().isNotEmpty ? _photoUrlController.text.trim() : null;
+      final existing = widget.existingProduct;
+      final parsedStock = double.tryParse(_stockController.text.trim()) ?? (existing?.stock ?? 0.0);
+      final stock = parsedStock < 0 ? 0.0 : parsedStock;
+      final scheme = _showSchemeAndStock
+          ? _schemeController.text.trim()
+          : (existing?.scheme ?? '');
 
       final newProduct = CatalogProduct(
-        id: _draftId,
+        id: existing?.id ?? _draftId,
         name: name,
         category: category,
         subcategory: subcategory,
         company: company,
         firm: _firm,
         packing: _selectedUnit,
-        rate: 0.0,
-        mrp: 0.0,
+        rate: existing?.rate ?? 0.0,
+        mrp: existing?.mrp ?? 0.0,
         defaultUnit: _selectedUnit,
+        code: existing?.code,
         unitsPerCase: unitsPerCase,
-        weightKg: 0.0,
+        weightKg: existing?.weightKg ?? 0.0,
         photoUrl: photoUrl,
         photoBase64: _photoBase64,
+        availability: existing?.availability ?? 'In Stock',
+        stock: _showSchemeAndStock ? stock : (existing?.stock ?? 0.0),
+        scheme: scheme,
       );
 
       final provider = Provider.of<CollectionProvider>(context, listen: false);
@@ -231,7 +308,13 @@ class _AddProductDialogState extends State<AddProductDialog> {
               children: [
                 const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
-                Expanded(child: Text('Product "$name" added to catalog!')),
+                Expanded(
+                  child: Text(
+                    _isEditing
+                        ? 'Product "$name" updated!'
+                        : 'Product "$name" added to catalog!',
+                  ),
+                ),
               ],
             ),
             backgroundColor: AppTheme.success,
@@ -288,10 +371,10 @@ class _AddProductDialogState extends State<AddProductDialog> {
                         child: const Icon(Icons.add_shopping_cart_rounded, color: AppTheme.primary, size: 22),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Add New Product / SKU',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                          _isEditing ? 'Edit Product / SKU' : 'Add New Product / SKU',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                         ),
                       ),
                       IconButton(
@@ -761,6 +844,36 @@ class _AddProductDialogState extends State<AddProductDialog> {
                       ),
                     ),
                   ],
+                  if (_showSchemeAndStock) ...[
+                    const SizedBox(height: 14),
+                    const Text(
+                      '8. Scheme & Stock (Admin)',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary),
+                    ),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      controller: _schemeController,
+                      decoration: InputDecoration(
+                        labelText: 'Active Scheme / Offer',
+                        hintText: 'e.g. 10+1 Free, 2% Cash Disc, Rs.5 Off',
+                        prefixIcon: const Icon(Icons.local_offer_outlined, size: 18),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: _stockController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Stock Quantity ($_selectedUnit)',
+                        hintText: '0 (or import via Tally Stock)',
+                        prefixIcon: const Icon(Icons.inventory_2_outlined, size: 18),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
 
                   // Action Buttons
@@ -792,7 +905,9 @@ class _AddProductDialogState extends State<AddProductDialog> {
                                 )
                               : const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
                           label: Text(
-                            _isSaving ? 'Saving...' : 'Save Product',
+                            _isSaving
+                                ? 'Saving...'
+                                : (_isEditing ? 'Update Product' : 'Save Product'),
                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                           style: ElevatedButton.styleFrom(

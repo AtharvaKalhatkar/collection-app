@@ -324,7 +324,7 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                     ),
                     const SizedBox(height: 12),
 
-                    // Unit Price Pill (if > 0) + Pack Specs
+                    // Unit Price Pill (if > 0), Stock & Active Scheme + Pack Specs
                     Row(
                       children: [
                         if (prod.rate > 0) ...[
@@ -350,6 +350,47 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                         ),
                       ],
                     ),
+                    if (prod.scheme.trim().isNotEmpty || prod.stock > 0) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          if (prod.scheme.trim().isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF3C7),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFFCD34D)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.local_offer_rounded, size: 13, color: Color(0xFFB45309)),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Scheme: ${prod.scheme}',
+                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFB45309)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (prod.stock > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Stock: ${prod.formattedStock} ${prod.defaultUnit}',
+                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF15803D)),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 14),
 
                     // Side-by-side Live CS & UT Inputs (Matching Image 2)
@@ -1318,6 +1359,55 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                                         ),
                                       ],
                                     ),
+                                    if (product.scheme.trim().isNotEmpty || product.stock > 0) ...[
+                                      const SizedBox(height: 5),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        children: [
+                                          if (product.scheme.trim().isNotEmpty)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFEF3C7),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: const Color(0xFFFCD34D)),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(Icons.local_offer_rounded, size: 10.5, color: Color(0xFFB45309)),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Scheme: ${product.scheme}',
+                                                    style: const TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: Color(0xFFB45309),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          if (product.stock > 0)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFDCFCE7),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'Stock: ${product.formattedStock}',
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF15803D),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
                                     const SizedBox(height: 8),
 
                                     // Direct Numeric Input Boxes (Matching Reference Images 4, 6, 7)

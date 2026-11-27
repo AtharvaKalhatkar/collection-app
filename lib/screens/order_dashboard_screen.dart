@@ -17,6 +17,7 @@ import '../utils/theme.dart';
 import '../widgets/add_product_dialog.dart';
 import '../widgets/assign_routes_dialog.dart';
 import 'add_shop_screen.dart';
+import 'admin_products_screen.dart';
 import 'all_orders_screen.dart';
 import 'outlet_order_booking_screen.dart';
 
@@ -499,6 +500,18 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             tooltip: 'Add Product to Catalog',
             onPressed: _openAddProduct,
           ),
+          if (user?.isSuperAdmin == true)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.inventory_2_outlined),
+              tooltip: 'Products, Stock & Schemes',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AdminProductsScreen()),
+                );
+              },
+            ),
           if (!widget.isEmbedded)
             IconButton(
               visualDensity: VisualDensity.compact,

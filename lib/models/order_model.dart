@@ -15,6 +15,8 @@ class CatalogProduct {
   final String? photoUrl;
   final String? photoBase64;
   final String availability;
+  final double stock;
+  final String scheme;
 
   const CatalogProduct({
     required this.id,
@@ -33,9 +35,59 @@ class CatalogProduct {
     this.photoUrl,
     this.photoBase64,
     this.availability = 'In Stock',
+    this.stock = 0.0,
+    this.scheme = '',
   });
 
   double get unitPrice => rate;
+
+  String get formattedStock {
+    if (stock == stock.roundToDouble()) {
+      return '${stock.toInt()}';
+    }
+    return stock.toStringAsFixed(2);
+  }
+
+  CatalogProduct copyWith({
+    String? id,
+    String? name,
+    String? category,
+    String? subcategory,
+    String? company,
+    String? firm,
+    String? packing,
+    double? mrp,
+    double? rate,
+    String? defaultUnit,
+    String? code,
+    int? unitsPerCase,
+    double? weightKg,
+    String? photoUrl,
+    String? photoBase64,
+    String? availability,
+    double? stock,
+    String? scheme,
+  }) =>
+      CatalogProduct(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        category: category ?? this.category,
+        subcategory: subcategory ?? this.subcategory,
+        company: company ?? this.company,
+        firm: firm ?? this.firm,
+        packing: packing ?? this.packing,
+        mrp: mrp ?? this.mrp,
+        rate: rate ?? this.rate,
+        defaultUnit: defaultUnit ?? this.defaultUnit,
+        code: code ?? this.code,
+        unitsPerCase: unitsPerCase ?? this.unitsPerCase,
+        weightKg: weightKg ?? this.weightKg,
+        photoUrl: photoUrl ?? this.photoUrl,
+        photoBase64: photoBase64 ?? this.photoBase64,
+        availability: availability ?? this.availability,
+        stock: stock ?? this.stock,
+        scheme: scheme ?? this.scheme,
+      );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -54,6 +106,8 @@ class CatalogProduct {
     'photoUrl': photoUrl,
     'photoBase64': photoBase64,
     'availability': availability,
+    'stock': stock,
+    'scheme': scheme,
   };
 
   factory CatalogProduct.fromJson(Map<String, dynamic> json) => CatalogProduct(
@@ -73,6 +127,8 @@ class CatalogProduct {
     photoUrl: json['photoUrl'] as String?,
     photoBase64: json['photoBase64'] as String?,
     availability: json['availability'] as String? ?? 'In Stock',
+    stock: (json['stock'] as num?)?.toDouble() ?? 0.0,
+    scheme: json['scheme'] as String? ?? '',
   );
 }
 

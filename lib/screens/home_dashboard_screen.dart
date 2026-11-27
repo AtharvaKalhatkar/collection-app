@@ -18,6 +18,7 @@ import 'add_shop_screen.dart';
 import '../widgets/payment_qr_dialog.dart';
 import 'profile_screen.dart';
 import 'live_staff_locations_screen.dart';
+import 'admin_products_screen.dart';
 import 'order_dashboard_screen.dart';
 import 'all_orders_screen.dart';
 import '../widgets/tally_sync_dialog.dart';
@@ -1042,6 +1043,19 @@ class HomeDashboardScreen extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          _buildToolRow(
+                            title: 'Products & Schemes',
+                            icon: Icons.inventory_2_outlined,
+                            color: const Color(0xFFD97706),
+                            trailingValue: '${provider.customProducts.length}',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const AdminProductsScreen()),
                               );
                             },
                           ),

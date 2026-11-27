@@ -9,6 +9,7 @@ import '../models/collection_model.dart';
 import '../models/order_model.dart';
 import '../models/route_model.dart';
 import '../services/tally_integration_service.dart';
+import '../screens/admin_products_screen.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/quick_alert.dart';
 
@@ -785,6 +786,78 @@ class _TallySyncDialogState extends State<TallySyncDialog> with SingleTickerProv
                 icon: const Icon(Icons.folder_open_rounded, size: 18),
                 label: const Text('Browse & Import File', style: TextStyle(fontWeight: FontWeight.w800)),
                 onPressed: () => _pickAndImportTallyFile(provider),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Product Stock Import Card (XML / Excel)
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F9FF),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFBAE6FD)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.inventory_rounded, color: Color(0xFF0369A1), size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Import Product Closing Stock (XML / Excel)',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0C4A6E)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              const Text(
+                'Update catalog stock from Tally Stock Summary XML or Excel sheet.',
+                style: TextStyle(fontSize: 11.5, color: Color(0xFF0369A1)),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0369A1),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.file_upload_outlined, size: 17),
+                      label: const Text('Import Stock', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                      onPressed: () => AdminProductsScreen.pickAndImportTallyStock(
+                        context,
+                        provider,
+                        defaultFirm: _selectedFirm == 'All' ? 'Purva Enterprises' : _selectedFirm,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF0369A1),
+                      side: const BorderSide(color: Color(0xFF7DD3FC)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.download_rounded, size: 16),
+                    label: const Text('Sample', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    onPressed: () async {
+                      await TallyIntegrationService.downloadSampleStockExcel();
+                      if (mounted) {
+                        QuickAlert.success(context, 'Sample Stock Excel downloaded!');
+                      }
+                    },
+                  ),
+                ],
               ),
             ],
           ),

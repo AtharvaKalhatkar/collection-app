@@ -30,6 +30,46 @@ class TallyImportResult {
   });
 }
 
+/// Parsed stock row from Tally XML / Excel Stock Summary
+class TallyStockItemRow {
+  final String name;
+  final double closingQty;
+  final String unit;
+  final String company;
+  final String category;
+  final String subcategory;
+  final String scheme;
+  final String firm;
+  final int unitsPerCase;
+
+  const TallyStockItemRow({
+    required this.name,
+    required this.closingQty,
+    this.unit = 'Pcs',
+    this.company = '',
+    this.category = '',
+    this.subcategory = '',
+    this.scheme = '',
+    this.firm = '',
+    this.unitsPerCase = 24,
+  });
+}
+
+/// Result summary for Tally Stock Summary import
+class TallyStockImportResult {
+  final List<TallyStockItemRow> items;
+  final List<String> warnings;
+  final bool success;
+  final String message;
+
+  const TallyStockImportResult({
+    required this.items,
+    this.warnings = const [],
+    required this.success,
+    required this.message,
+  });
+}
+
 /// Service implementing standard Tally XML (Tally Prime / ERP 9) and Tally Prime Excel
 /// specifications for seamless two-way integration.
 class TallyIntegrationService {
@@ -953,5 +993,338 @@ class TallyIntegrationService {
       fileName: 'Tally_Sample_Sales_Bills.xml',
       mimeType: 'application/xml',
     );
+  }
+
+  // ===========================================================================
+  // 8. IMPORT: Product Stock Summary from Tally XML & Excel
+  // ===========================================================================
+
+  static ({double qty, String unit}) _parseTallyQtyAndUnit(String raw, {String fallbackUnit = 'Pcs'}) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return (qty: 0.0, unit: fallbackUnit);
+
+    // Tally often formats closing qty as "120.00 Pcs", "(-)12 Box", or "45"
+    final match = RegExp(r'(-?\d+(?:[.,]\d+)?)\s*([A-Za-z]+)?').firstMatch(trimmed.replaceAll(',', ''));
+    if (match == null) return (qty: 0.0, unit: fallbackUnit);
+    final qty = double.tryParse(match.group(1) ?? '0') ?? 0.0;
+    final parsedUnit = (match.group(2) ?? '').trim();
+    final unit = _normalizeUnitName(parsedUnit.isNotEmpty ? parsedUnit : fallbackUnit);
+    return (qty: qty < 0 ? 0.0 : qty, unit: unit);
+  }
+
+  static String _normalizeUnitName(String raw) {
+    final u = raw.trim().toLowerCase();
+    if (u.startsWith('box') || u.startsWith('bx')) return 'Box';
+    if (u.startsWith('out')) return 'Outer';
+    if (u.startsWith('nod')) return 'Nodes';
+    return 'Pcs';
+  }
+
+  /// Parses Tally XML (`<STOCKITEM>` masters or Stock Summary `<DSPACCNAME>/<DSPSTKINFO>` display export)
+  static TallyStockImportResult parseStockSummaryFromTallyXml({
+    required String xmlContent,
+    String defaultFirm = 'Purva Enterprises',
+  }) {
+    final rows = <TallyStockItemRow>[];
+    final warnings = <String>[];
+    final seenNames = <String>{};
+
+    try {
+      final document = xml.XmlDocument.parse(xmlContent);
+
+      // 1. Master <STOCKITEM NAME="..."> format
+      final stockItems = document.findAllElements('STOCKITEM');
+      for (final item in stockItems) {
+        var name = item.getAttribute('NAME')?.trim() ?? '';
+        if (name.isEmpty) {
+          name = item.findElements('NAME').firstOrNull?.innerText.trim() ?? '';
+        }
+        if (name.isEmpty) {
+          name = item.findAllElements('NAME').firstOrNull?.innerText.trim() ?? '';
+        }
+        if (name.isEmpty) continue;
+
+        final baseUnitRaw = item.findElements('BASEUNITS').firstOrNull?.innerText.trim() ?? '';
+        final closingRaw = item.findElements('CLOSINGBALANCE').firstOrNull?.innerText ??
+            item.findElements('CLOSINGSTOCK').firstOrNull?.innerText ??
+            item.findElements('OPENINGBALANCE').firstOrNull?.innerText ??
+            '0';
+        final parsed = _parseTallyQtyAndUnit(closingRaw, fallbackUnit: baseUnitRaw.isNotEmpty ? baseUnitRaw : 'Pcs');
+
+        final category = item.findElements('CATEGORY').firstOrNull?.innerText.trim() ??
+            item.findElements('PARENT').firstOrNull?.innerText.trim() ??
+            '';
+        final parent = item.findElements('PARENT').firstOrNull?.innerText.trim() ?? '';
+
+        final norm = name.toLowerCase();
+        if (seenNames.add(norm)) {
+          rows.add(
+            TallyStockItemRow(
+              name: name,
+              closingQty: parsed.qty,
+              unit: parsed.unit,
+              company: parent.isNotEmpty && parent.toLowerCase() != 'primary' ? parent : '',
+              category: category.isNotEmpty && category.toLowerCase() != 'primary' ? category : '',
+              firm: defaultFirm,
+            ),
+          );
+        }
+      }
+
+      // 2. Tally Stock Summary Report XML (<DSPACCNAME> followed by <DSPSTKINFO>)
+      if (rows.isEmpty) {
+        final accNames = document.findAllElements('DSPACCNAME').toList();
+        for (final acc in accNames) {
+          final name = acc.findAllElements('DSPDISPNAME').firstOrNull?.innerText.trim() ?? '';
+          if (name.isEmpty || name.toLowerCase().contains('grand total')) continue;
+
+          xml.XmlElement? stkInfo;
+          var sibling = acc.nextElementSibling;
+          while (sibling != null) {
+            if (sibling.name.local == 'DSPSTKINFO') {
+              stkInfo = sibling;
+              break;
+            }
+            if (sibling.name.local == 'DSPACCNAME') break;
+            sibling = sibling.nextElementSibling;
+          }
+          stkInfo ??= acc.parent?.findElements('DSPSTKINFO').firstOrNull;
+          if (stkInfo == null) continue;
+
+          final qtyText = stkInfo.findAllElements('DSPCLQTY').firstOrNull?.innerText ?? '0';
+          final parsed = _parseTallyQtyAndUnit(qtyText);
+
+          final norm = name.toLowerCase();
+          if (seenNames.add(norm)) {
+            rows.add(
+              TallyStockItemRow(
+                name: name,
+                closingQty: parsed.qty,
+                unit: parsed.unit,
+                firm: defaultFirm,
+              ),
+            );
+          }
+        }
+      }
+
+      return TallyStockImportResult(
+        items: rows,
+        warnings: warnings,
+        success: rows.isNotEmpty,
+        message: rows.isNotEmpty
+            ? 'Parsed ${rows.length} stock items from Tally XML.'
+            : 'No Stock Items found in the XML file. Export Stock Summary or Stock Items Master XML from Tally.',
+      );
+    } catch (e) {
+      return TallyStockImportResult(
+        items: const [],
+        warnings: [e.toString()],
+        success: false,
+        message: 'Failed to parse Tally Stock XML: $e',
+      );
+    }
+  }
+
+  /// Parses Tally Stock Summary Excel (.xlsx / .xls) or tabular Stock sheet
+  static TallyStockImportResult parseStockSummaryFromExcel({
+    required List<int> bytes,
+    String defaultFirm = 'Purva Enterprises',
+  }) {
+    final rows = <TallyStockItemRow>[];
+    final warnings = <String>[];
+    final seenNames = <String>{};
+
+    try {
+      final excel = xl.Excel.decodeBytes(bytes);
+      if (excel.tables.isEmpty) {
+        return const TallyStockImportResult(
+          items: [],
+          success: false,
+          message: 'No sheets found in the Excel file.',
+        );
+      }
+
+      xl.Sheet? targetSheet;
+      for (final key in excel.tables.keys) {
+        final s = excel.tables[key];
+        if (s != null && s.rows.isNotEmpty) {
+          targetSheet = s;
+          break;
+        }
+      }
+      if (targetSheet == null || targetSheet.rows.isEmpty) {
+        return const TallyStockImportResult(
+          items: [],
+          success: false,
+          message: 'The selected Excel file is empty.',
+        );
+      }
+
+      int headerRowIdx = -1;
+      int colItem = -1;
+      int colQty = -1;
+      int colUnit = -1;
+      int colCompany = -1;
+      int colCategory = -1;
+      int colSubcategory = -1;
+      int colScheme = -1;
+      int colFirm = -1;
+      int colUpc = -1;
+
+      for (int r = 0; r < targetSheet.rows.length && r < 20; r++) {
+        final row = targetSheet.rows[r];
+        for (int c = 0; c < row.length; c++) {
+          final val = row[c]?.value?.toString().toLowerCase().trim() ?? '';
+          if (val.isEmpty) continue;
+          if ((val.contains('particular') || val.contains('item') || val.contains('product') || val.contains('sku') || val == 'name') && colItem == -1) {
+            colItem = c;
+          } else if ((val.contains('closing') || val.contains('stock') || val.contains('qty') || val.contains('quantity') || val.contains('balance')) && !val.contains('value') && !val.contains('amount') && colQty == -1) {
+            colQty = c;
+          } else if ((val == 'unit' || val.contains('uom') || val.contains('packaging')) && colUnit == -1) {
+            colUnit = c;
+          } else if ((val.contains('company') || val.contains('brand')) && colCompany == -1) {
+            colCompany = c;
+          } else if (val.contains('sub') && val.contains('cat') && colSubcategory == -1) {
+            colSubcategory = c;
+          } else if ((val.contains('category') || val == 'group') && colCategory == -1) {
+            colCategory = c;
+          } else if ((val.contains('scheme') || val.contains('offer') || val.contains('promo')) && colScheme == -1) {
+            colScheme = c;
+          } else if (val.contains('firm') && colFirm == -1) {
+            colFirm = c;
+          } else if ((val.contains('case') || val.contains('upc')) && colUpc == -1) {
+            colUpc = c;
+          }
+        }
+        if (colItem != -1 && colQty != -1) {
+          headerRowIdx = r;
+          break;
+        }
+      }
+
+      if (headerRowIdx == -1) {
+        headerRowIdx = 0;
+        colItem = 0;
+        colQty = 1;
+      }
+
+      for (int r = headerRowIdx + 1; r < targetSheet.rows.length; r++) {
+        final row = targetSheet.rows[r];
+        if (row.isEmpty) continue;
+        final itemName = colItem < row.length ? row[colItem]?.value?.toString().trim() ?? '' : '';
+        if (itemName.isEmpty ||
+            itemName.toLowerCase().contains('grand total') ||
+            itemName.toLowerCase() == 'total') {
+          continue;
+        }
+
+        final rawQty = colQty < row.length ? row[colQty]?.value?.toString().trim() ?? '0' : '0';
+        final rawUnit = colUnit != -1 && colUnit < row.length ? row[colUnit]?.value?.toString().trim() ?? 'Pcs' : 'Pcs';
+        final parsed = _parseTallyQtyAndUnit(rawQty, fallbackUnit: rawUnit.isNotEmpty ? rawUnit : 'Pcs');
+
+        final company = colCompany != -1 && colCompany < row.length ? row[colCompany]?.value?.toString().trim() ?? '' : '';
+        final category = colCategory != -1 && colCategory < row.length ? row[colCategory]?.value?.toString().trim() ?? '' : '';
+        final subcategory = colSubcategory != -1 && colSubcategory < row.length ? row[colSubcategory]?.value?.toString().trim() ?? '' : '';
+        final scheme = colScheme != -1 && colScheme < row.length ? row[colScheme]?.value?.toString().trim() ?? '' : '';
+        final rowFirm = colFirm != -1 && colFirm < row.length ? row[colFirm]?.value?.toString().trim() ?? '' : '';
+        final rawUpc = colUpc != -1 && colUpc < row.length ? row[colUpc]?.value?.toString().trim() ?? '' : '';
+        final upc = (int.tryParse(rawUpc) ?? 24) > 0 ? (int.tryParse(rawUpc) ?? 24) : 24;
+
+        final norm = itemName.toLowerCase();
+        if (seenNames.add(norm)) {
+          rows.add(
+            TallyStockItemRow(
+              name: itemName,
+              closingQty: parsed.qty,
+              unit: parsed.unit,
+              company: company,
+              category: category,
+              subcategory: subcategory,
+              scheme: scheme,
+              firm: rowFirm.isNotEmpty ? rowFirm : defaultFirm,
+              unitsPerCase: upc,
+            ),
+          );
+        }
+      }
+
+      return TallyStockImportResult(
+        items: rows,
+        warnings: warnings,
+        success: rows.isNotEmpty,
+        message: rows.isNotEmpty
+            ? 'Parsed ${rows.length} stock items from Tally Excel.'
+            : 'No stock items found in Excel. Ensure "Particulars / Item Name" and "Closing Qty / Stock" columns are present.',
+      );
+    } catch (e) {
+      return TallyStockImportResult(
+        items: const [],
+        warnings: [e.toString()],
+        success: false,
+        message: 'Failed to read Tally Stock Excel: $e',
+      );
+    }
+  }
+
+  /// Download sample Tally Stock Summary Excel template
+  static Future<void> downloadSampleStockExcel() async {
+    final excel = xl.Excel.createExcel();
+    final sheet = excel['Stock_Summary'];
+    excel.setDefaultSheet('Stock_Summary');
+
+    final headerStyle = xl.CellStyle(
+      bold: true,
+      fontColorHex: xl.ExcelColor.fromHexString('#FFFFFF'),
+      backgroundColorHex: xl.ExcelColor.fromHexString('#1E3A8A'),
+      horizontalAlign: xl.HorizontalAlign.Center,
+    );
+
+    final headers = [
+      'Particulars (Product Name)',
+      'Closing Stock Qty',
+      'Unit',
+      'Company',
+      'Category',
+      'Subcategory',
+      'Units Per Case',
+      'Scheme (Optional)',
+      'Firm',
+    ];
+
+    for (int col = 0; col < headers.length; col++) {
+      final cell = sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 0));
+      cell.value = xl.TextCellValue(headers[col]);
+      cell.cellStyle = headerStyle;
+    }
+
+    final samples = [
+      ['Santoor Soap 100g', 240, 'Pcs', 'Wipro', 'HC', 'General', 24, '10+1 Free', 'Purva Enterprises'],
+      ['Fena Detergent 1kg', 85, 'Pcs', 'Fena', 'HC', 'NSB', 20, '2% Cash Disc', 'Purva Enterprises'],
+      ['Dettol Original 75g', 120, 'Pcs', 'Racket', 'PC', 'NSP', 36, '1 CS + 2 Pcs Free', 'Manas Sales'],
+    ];
+
+    for (int r = 0; r < samples.length; r++) {
+      final row = samples[r];
+      final idx = r + 1;
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: idx)).value = xl.TextCellValue(row[0] as String);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: idx)).value = xl.IntCellValue(row[1] as int);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: idx)).value = xl.TextCellValue(row[2] as String);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: idx)).value = xl.TextCellValue(row[3] as String);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: idx)).value = xl.TextCellValue(row[4] as String);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: idx)).value = xl.TextCellValue(row[5] as String);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: idx)).value = xl.IntCellValue(row[6] as int);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: idx)).value = xl.TextCellValue(row[7] as String);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: idx)).value = xl.TextCellValue(row[8] as String);
+    }
+
+    final bytes = excel.save();
+    if (bytes != null) {
+      await downloadFile(
+        bytes: bytes,
+        fileName: 'Tally_Stock_Summary_Template.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+    }
   }
 }

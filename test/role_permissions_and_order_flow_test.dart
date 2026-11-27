@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:excel/excel.dart' as xl;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -12,11 +13,13 @@ import 'package:daily_collection_app/models/shop_model.dart';
 import 'package:daily_collection_app/models/user_model.dart';
 import 'package:daily_collection_app/providers/auth_provider.dart';
 import 'package:daily_collection_app/providers/collection_provider.dart';
+import 'package:daily_collection_app/screens/admin_products_screen.dart';
 import 'package:daily_collection_app/screens/all_orders_screen.dart';
 import 'package:daily_collection_app/screens/driver_dashboard_screen.dart';
 import 'package:daily_collection_app/screens/order_dashboard_screen.dart';
 import 'package:daily_collection_app/screens/outlet_order_booking_screen.dart';
 import 'package:daily_collection_app/services/order_catalog_service.dart';
+import 'package:daily_collection_app/services/tally_integration_service.dart';
 import 'package:daily_collection_app/widgets/add_product_dialog.dart';
 import 'package:daily_collection_app/widgets/assign_routes_dialog.dart';
 import 'package:daily_collection_app/widgets/payment_qr_dialog.dart';
@@ -858,6 +861,198 @@ void main() {
         collection.customProducts.where((p) => p.name.toLowerCase().contains('santoor soap 100g')).length,
         1,
       );
+    });
+
+    test('Tally Stock XML & Excel import updates existing SKU stock and optionally adds unmatched SKUs', () async {
+      const existing = CatalogProduct(
+        id: 'cust-santoor',
+        name: 'Santoor Soap 100g',
+        category: 'HC',
+        subcategory: 'General',
+        company: 'Wipro',
+        firm: 'Purva Enterprises',
+        defaultUnit: 'Pcs',
+        unitsPerCase: 24,
+        rate: 0.0,
+        stock: 10.0,
+        scheme: '5% Off',
+      );
+      SharedPreferences.setMockInitialValues({
+        'app_sample_data_initialized_v1': true,
+        'app_custom_products_v1': [jsonEncode(existing.toJson())],
+      });
+      final collection = CollectionProvider();
+      await collection.initialize();
+
+      const tallyXml = '''
+<ENVELOPE>
+  <BODY>
+    <DATA>
+      <TALLYMESSAGE>
+        <STOCKITEM NAME="Santoor Soap 100g">
+          <BASEUNITS>Pcs</BASEUNITS>
+          <CLOSINGBALANCE>144.00 Pcs</CLOSINGBALANCE>
+          <PARENT>Wipro</PARENT>
+        </STOCKITEM>
+        <STOCKITEM NAME="Fena Powder 1kg">
+          <BASEUNITS>Pcs</BASEUNITS>
+          <CLOSINGBALANCE>60 Pcs</CLOSINGBALANCE>
+          <PARENT>Fena</PARENT>
+        </STOCKITEM>
+      </TALLYMESSAGE>
+    </DATA>
+  </BODY>
+</ENVELOPE>''';
+
+      final xmlRes = TallyIntegrationService.parseStockSummaryFromTallyXml(
+        xmlContent: tallyXml,
+        defaultFirm: 'Purva Enterprises',
+      );
+      expect(xmlRes.success, isTrue);
+      expect(xmlRes.items.length, 2);
+      expect(xmlRes.items.first.closingQty, 144.0);
+
+      final applyRes = await collection.importTallyStock(
+        xmlRes.items,
+        defaultFirm: 'Purva Enterprises',
+        createUnmatched: true,
+      );
+      expect(applyRes.updatedCount, 1);
+      expect(applyRes.addedCount, 1);
+
+      final updatedSantoor = collection.customProducts.firstWhere((p) => p.id == 'cust-santoor');
+      expect(updatedSantoor.stock, 144.0);
+      expect(updatedSantoor.scheme, '5% Off');
+
+      // Excel parsing overrides Fena Powder closing qty & sets scheme
+      final wb = xl.Excel.createExcel();
+      final sheet = wb['Sheet1'];
+      sheet.appendRow([
+        xl.TextCellValue('Particulars'),
+        xl.TextCellValue('Closing Stock'),
+        xl.TextCellValue('Unit'),
+        xl.TextCellValue('Scheme'),
+      ]);
+      sheet.appendRow([
+        xl.TextCellValue('Fena Powder 1kg'),
+        xl.IntCellValue(96),
+        xl.TextCellValue('Pcs'),
+        xl.TextCellValue('10+1 Free'),
+      ]);
+      final excelBytes = wb.save()!;
+      final xlRes = TallyIntegrationService.parseStockSummaryFromExcel(
+        bytes: excelBytes,
+        defaultFirm: 'Purva Enterprises',
+      );
+      expect(xlRes.success, isTrue);
+      expect(xlRes.items.first.closingQty, 96.0);
+      expect(xlRes.items.first.scheme, '10+1 Free');
+
+      await collection.importTallyStock(xlRes.items, defaultFirm: 'Purva Enterprises');
+      final fena = collection.customProducts.firstWhere((p) => p.name == 'Fena Powder 1kg');
+      expect(fena.stock, 96.0);
+      expect(fena.scheme, '10+1 Free');
+    });
+
+    testWidgets('Super Admin Products, Stock & Schemes screen manages schemes, edits, deletes, and blocks non-admin',
+        (tester) async {
+      final admin = UserModel(
+        id: 'u_admin',
+        phone: '9921977636',
+        name: 'Super Admin',
+        role: UserRole.superAdmin,
+        password: 'p',
+      );
+      final office = UserModel(
+        id: 'u_off',
+        phone: '9922001122',
+        name: 'Office Staff',
+        role: UserRole.office,
+        password: 'p',
+      );
+      const prod = CatalogProduct(
+        id: 'prod-1',
+        name: 'Santoor White 100g',
+        category: 'HC',
+        subcategory: 'General',
+        company: 'Wipro',
+        firm: 'Purva Enterprises',
+        defaultUnit: 'Pcs',
+        unitsPerCase: 24,
+        rate: 0.0,
+        stock: 80.0,
+        scheme: '',
+      );
+
+      SharedPreferences.setMockInitialValues({
+        'app_sample_data_initialized_v1': true,
+        'app_users_cache_v1': jsonEncode([office.toJson(), admin.toJson()]),
+        'current_logged_in_user_id_v1': office.id,
+        'app_custom_products_v1': [jsonEncode(prod.toJson())],
+      });
+
+      final auth = AuthProvider();
+      final collection = CollectionProvider();
+      await auth.initialize();
+      await collection.initialize();
+
+      tester.view.physicalSize = const Size(480, 960);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      // Non-Super Admin is blocked from AdminProductsScreen
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider.value(value: collection),
+          ],
+          child: const MaterialApp(home: AdminProductsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Super Admin Access Only'), findsOneWidget);
+
+      // Switch to Super Admin login
+      await auth.login('9921977636', 'p');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Products, Stock & Schemes'), findsOneWidget);
+      expect(find.text('Santoor White 100g'), findsOneWidget);
+      expect(find.text('Stock: 80 Pcs'), findsOneWidget);
+
+      // Quick-change scheme via preset chip
+      await tester.tap(find.text('Add Scheme'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('10+1 Free'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save Scheme'));
+      await tester.pumpAndSettle();
+      expect(collection.customProducts.first.scheme, '10+1 Free');
+      expect(find.text('Scheme: 10+1 Free'), findsOneWidget);
+
+      // Edit product via Edit button
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit Product / SKU'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'e.g. Santoor White 100g (MRP 40)'),
+        'Santoor White 100g Updated',
+      );
+      await tester.ensureVisible(find.text('Update Product'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Update Product'));
+      await tester.pumpAndSettle();
+      expect(collection.customProducts.first.name, 'Santoor White 100g Updated');
+      expect(find.text('Santoor White 100g Updated'), findsOneWidget);
+
+      // Delete product via Delete icon
+      await tester.tap(find.byTooltip('Delete Product'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Delete'));
+      await tester.pumpAndSettle();
+      expect(collection.customProducts, isEmpty);
     });
   });
 }

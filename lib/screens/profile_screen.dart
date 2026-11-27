@@ -11,6 +11,7 @@ import 'statement_screen.dart';
 import 'cash_handover_screen.dart';
 import 'user_management_screen.dart';
 import 'live_staff_locations_screen.dart';
+import 'admin_products_screen.dart';
 import 'order_dashboard_screen.dart';
 import 'all_orders_screen.dart';
 import '../widgets/assign_routes_dialog.dart';
@@ -928,6 +929,35 @@ class ProfileScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const LiveStaffLocationsScreen()),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+
+          if (currentUser?.isSuperAdmin == true) ...[
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.inventory_2_outlined, color: Color(0xFFD97706), size: 20),
+                ),
+                title: Text(
+                  'Products, Stock & Schemes (${provider.customProducts.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
+                trailing: const Icon(Icons.chevron_right, size: 20, color: AppTheme.textSecondary),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminProductsScreen()),
                   );
                 },
               ),

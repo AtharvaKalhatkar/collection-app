@@ -18,6 +18,7 @@ import '../models/attendance_record.dart';
 import '../services/order_catalog_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
+import '../services/tally_integration_service.dart';
 import '../services/backup_service.dart';
 import '../services/auth_service.dart';
 import '../services/location_tracking_service.dart';
@@ -3164,6 +3165,91 @@ _Daily Collection Pro Cash Verification_
       _locallyDeletedProductIds.remove(productId);
       await _storage.saveIdSet(_keyDeletedProducts, _locallyDeletedProductIds);
     }
+  }
+
+  String _normProductToken(String input) =>
+      input.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  Future<({int updatedCount, int addedCount})> importTallyStock(
+    List<TallyStockItemRow> rows, {
+    required String defaultFirm,
+    bool createUnmatched = true,
+  }) async {
+    final touched = <CatalogProduct>[];
+    int updatedCount = 0;
+    int addedCount = 0;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+
+    for (int i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      final normName = _normProductToken(row.name);
+      if (normName.isEmpty) continue;
+
+      final targetFirm = row.firm.trim().isNotEmpty ? row.firm.trim() : defaultFirm;
+      final normTargetFirm = _normProductToken(targetFirm);
+
+      // Prefer same-firm match, then fallback to any firm with exact name
+      int idx = _customProducts.indexWhere(
+        (p) => _normProductToken(p.name) == normName && _normProductToken(p.firm) == normTargetFirm,
+      );
+      if (idx == -1) {
+        idx = _customProducts.indexWhere((p) => _normProductToken(p.name) == normName);
+      }
+
+      if (idx != -1) {
+        final existing = _customProducts[idx];
+        final updated = existing.copyWith(
+          stock: row.closingQty,
+          scheme: row.scheme.trim().isNotEmpty ? row.scheme.trim() : existing.scheme,
+          availability: row.closingQty > 0 ? 'In Stock' : existing.availability,
+        );
+        _customProducts[idx] = updated;
+        OrderCatalogService.addCustomProduct(updated);
+        _locallyDeletedProductIds.remove(updated.id);
+        _dirtyProductIds.add(updated.id);
+        touched.add(updated);
+        updatedCount++;
+      } else if (createUnmatched) {
+        final created = CatalogProduct(
+          id: 'cust-tally-$stamp-$i',
+          name: row.name.trim(),
+          category: row.category.trim().isNotEmpty ? row.category.trim() : 'General',
+          subcategory: row.subcategory.trim().isNotEmpty ? row.subcategory.trim() : 'General',
+          company: row.company.trim().isNotEmpty ? row.company.trim() : 'General',
+          firm: targetFirm,
+          packing: row.unit,
+          rate: 0.0,
+          mrp: 0.0,
+          defaultUnit: row.unit,
+          unitsPerCase: row.unitsPerCase,
+          stock: row.closingQty,
+          scheme: row.scheme.trim(),
+          availability: row.closingQty > 0 ? 'In Stock' : 'Out of Stock',
+        );
+        _customProducts.add(created);
+        OrderCatalogService.addCustomProduct(created);
+        _locallyDeletedProductIds.remove(created.id);
+        _dirtyProductIds.add(created.id);
+        touched.add(created);
+        addedCount++;
+      }
+    }
+
+    if (touched.isNotEmpty) {
+      await _storage.saveCustomProducts(_customProducts);
+      await _storage.saveIdSet(_keyDeletedProducts, _locallyDeletedProductIds);
+      await _storage.saveIdSet(_keyDirtyProducts, _dirtyProductIds);
+      notifyListeners();
+
+      if (await _supabase.saveCustomProductsBulk(touched)) {
+        for (final p in touched) {
+          _dirtyProductIds.remove(p.id);
+        }
+        await _storage.saveIdSet(_keyDirtyProducts, _dirtyProductIds);
+      }
+    }
+
+    return (updatedCount: updatedCount, addedCount: addedCount);
   }
 
   // --- Salesman Profile Management ---
