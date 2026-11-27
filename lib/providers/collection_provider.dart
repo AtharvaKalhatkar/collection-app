@@ -3066,6 +3066,52 @@ _Daily Collection Pro Cash Verification_
       _dirtyOrderIds.remove(savedOrder.id);
       await _storage.saveIdSet(_keyDirtyOrders, _dirtyOrderIds);
     }
+
+    // Record new order booking visit onto staff chronological timeline
+    if (!isEdit) {
+      try {
+        final shop = getShopById(savedOrder.shopId);
+        final lat = shop?.latitude ?? _currentUser?.latitude;
+        final lng = shop?.longitude ?? _currentUser?.longitude;
+        if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+          final tlEntry = LocationTimelineEntry(
+            id: 'tl_${_currentUser?.id ?? "staff"}_ord_${DateTime.now().millisecondsSinceEpoch}',
+            userId: _currentUser?.id ?? 'staff',
+            staffName: savedOrder.salesmanName.isNotEmpty
+                ? savedOrder.salesmanName
+                : (_currentUser?.name ?? 'Sales'),
+            staffRole: _currentUser?.role.name ?? 'order',
+            timestamp: savedOrder.orderDate,
+            latitude: lat,
+            longitude: lng,
+            landmark: shop?.name ?? savedOrder.shopName,
+            eventType: 'orderBooked',
+            details:
+                'Order #${savedOrder.orderNumber} (${savedOrder.items.length} items, ${savedOrder.totalCases} CS ${savedOrder.totalLooseUnits} UT)',
+            amount: savedOrder.totalAmount > 0 ? savedOrder.totalAmount : null,
+            shopName: savedOrder.shopName,
+            routeName: savedOrder.routeName,
+            billNumber: savedOrder.orderNumber,
+          );
+          final inserted = await _storage.addLocationTimelineEntry(
+            tlEntry,
+            minDuplicateSeconds: 5,
+            minMovedDegrees: 0.00001,
+          );
+          if (inserted) {
+            final pendingTl = await _storage.loadIdSet(StorageService.keyPendingTimelineIds);
+            pendingTl.add(tlEntry.id);
+            await _storage.saveIdSet(StorageService.keyPendingTimelineIds, pendingTl);
+            if (await _supabase.saveLocationTimelineEntry(tlEntry)) {
+              pendingTl.remove(tlEntry.id);
+              await _storage.saveIdSet(StorageService.keyPendingTimelineIds, pendingTl);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Timeline order log notice: $e');
+      }
+    }
   }
 
   Future<void> updateSalesOrderStatus(String orderId, String status) async {

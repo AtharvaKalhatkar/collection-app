@@ -298,17 +298,17 @@ class _RoutesShopsScreenState extends State<RoutesShopsScreen> {
                         ? null
                         : () async {
                             setDialogState(() => isDetecting = true);
-                            final pos = await LocationService.getCurrentLocation();
+                            final fix = await LocationService.getCurrentLocationWithStatus();
                             setDialogState(() => isDetecting = false);
-                            if (pos != null) {
-                              tempLat = pos.latitude;
-                              tempLng = pos.longitude;
-                              locCtrl.text = LocationService.buildMapsUrl(pos.latitude, pos.longitude);
+                            if (fix.hasLocation) {
+                              tempLat = fix.latitude;
+                              tempLng = fix.longitude;
+                              locCtrl.text = LocationService.buildMapsUrl(fix.latitude!, fix.longitude!);
                             } else {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Could not fetch GPS. Please enter maps link manually.'),
+                                  SnackBar(
+                                    content: Text(fix.errorMessage ?? 'Could not fetch GPS. Please enter maps link manually.'),
                                     behavior: SnackBarBehavior.floating,
                                   ),
                                 );

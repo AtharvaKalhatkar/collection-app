@@ -12,37 +12,69 @@ import 'location_service.dart';
 import 'storage_service.dart';
 import 'supabase_service.dart';
 
+class ResolvedPlace {
+  final String title;
+  final String address;
+
+  const ResolvedPlace({
+    required this.title,
+    required this.address,
+  });
+
+  String get displayLabel {
+    if (address.isEmpty || address.toLowerCase() == title.toLowerCase()) {
+      return title;
+    }
+    if (address.toLowerCase().startsWith(title.toLowerCase())) {
+      return address;
+    }
+    return '$title, $address';
+  }
+}
+
 class LocationTrackingService {
   static final LocationTrackingService _instance = LocationTrackingService._internal();
   factory LocationTrackingService() => _instance;
   LocationTrackingService._internal();
 
+  static final Map<String, ResolvedPlace> _geocodeCache = {};
+
   Timer? _initialTimer;
   Timer? _periodicTimer;
+  AuthProvider? _activeAuth;
+  CollectionProvider? _activeCollectionProvider;
   bool _isTracking = false;
   DateTime? _lastCapturedTime;
 
   bool get isTracking => _isTracking;
   DateTime? get lastCapturedTime => _lastCapturedTime;
 
-  /// Starts periodic live location tracking for the active user (salesman/driver)
+  /// Starts periodic live location tracking for the active user (salesman/driver/order/collection)
   void startTracking({
     required AuthProvider auth,
     required CollectionProvider collectionProvider,
   }) {
-    if (_isTracking || SupabaseService().isTestMode) return;
+    _activeAuth = auth;
+    _activeCollectionProvider = collectionProvider;
+
+    if (SupabaseService().isTestMode) return;
+    if (_isTracking) return;
     _isTracking = true;
 
     // Initial capture with small delay so app initialization finishes smoothly
     _initialTimer?.cancel();
-    _initialTimer = Timer(const Duration(seconds: 3), () {
-      _captureAndSync(auth, collectionProvider);
+    _initialTimer = Timer(const Duration(seconds: 2), () {
+      if (_activeAuth != null && _activeCollectionProvider != null) {
+        _captureAndSync(_activeAuth!, _activeCollectionProvider!);
+      }
     });
 
-    // Periodic capture every 3 minutes while the app session is active
+    // Periodic capture every 90 seconds while session is active so trips & live location stay fresh
     _periodicTimer?.cancel();
-    _periodicTimer = Timer.periodic(const Duration(minutes: 3), (_) {
-      _captureAndSync(auth, collectionProvider);
+    _periodicTimer = Timer.periodic(const Duration(seconds: 90), (_) {
+      if (_activeAuth != null && _activeCollectionProvider != null) {
+        _captureAndSync(_activeAuth!, _activeCollectionProvider!);
+      }
     });
   }
 
@@ -59,6 +91,8 @@ class LocationTrackingService {
     required AuthProvider auth,
     required CollectionProvider collectionProvider,
   }) async {
+    _activeAuth = auth;
+    _activeCollectionProvider = collectionProvider;
     return await _captureAndSync(auth, collectionProvider);
   }
 
@@ -70,12 +104,13 @@ class LocationTrackingService {
       final loc = await LocationService.getCurrentLocation();
       if (loc == null) return false;
 
-      // Identify accurate landmark or real locality
-      final landmark = await resolveLandmark(
+      // Identify full road / locality / outlet address via Google/OSM reverse geocoding + outlets
+      final place = await resolveDetailedPlace(
         loc.latitude,
         loc.longitude,
         collectionProvider.shops,
       );
+      final landmark = place.displayLabel;
 
       await auth.updateCurrentLocation(
         loc.latitude,
@@ -85,7 +120,7 @@ class LocationTrackingService {
       _lastCapturedTime = DateTime.now();
       debugPrint('Live GPS tracked for ${user.name}: (${loc.latitude}, ${loc.longitude}) - $landmark');
 
-      // Record chronological timeline breadcrumb for staff (salesmen, drivers, etc.)
+      // Record chronological timeline breadcrumb
       try {
         final entry = LocationTimelineEntry(
           id: 'tl_${user.id}_${DateTime.now().millisecondsSinceEpoch}',
@@ -97,12 +132,14 @@ class LocationTrackingService {
           longitude: loc.longitude,
           landmark: landmark,
           eventType: 'gpsPing',
-          details: user.isDriver ? 'Transit on delivery beat' : 'Active on sales route',
+          details: user.isDriver
+              ? 'Delivery vehicle route'
+              : (user.isOrder ? 'Sales & Order beat' : 'Field route active'),
         );
         await _persistAndUploadTimelineEntry(
           entry,
-          minDuplicateSeconds: 900, // Deduplicate stationary pings within 15 min
-          minMovedDegrees: 0.00025, // ~25 meters movement threshold
+          minDuplicateSeconds: 300, // 5 min stationary window before repeating
+          minMovedDegrees: 0.0005, // ~55 meters movement captures travel path cleanly
         );
       } catch (err) {
         debugPrint('Timeline recording notice: $err');
@@ -115,7 +152,7 @@ class LocationTrackingService {
     }
   }
 
-  /// Records a dedicated event (e.g. collection, delivery checkpoint, login)
+  /// Records a dedicated event (e.g. collection, delivery checkpoint, order, login)
   Future<void> recordCustomEvent({
     required UserModel user,
     required String eventType,
@@ -129,8 +166,18 @@ class LocationTrackingService {
     String? billNumber,
   }) async {
     try {
-      final double lat = latitude ?? user.latitude ?? 18.5204;
-      final double lng = longitude ?? user.longitude ?? 73.8567;
+      double? lat = latitude ?? user.latitude;
+      double? lng = longitude ?? user.longitude;
+      if ((lat == null || lng == null || lat == 0.0 || lng == 0.0) &&
+          !SupabaseService().isTestMode) {
+        final live = await LocationService.getCurrentLocation();
+        if (live != null) {
+          lat = live.latitude;
+          lng = live.longitude;
+        }
+      }
+      final double finalLat = lat ?? 18.8550;
+      final double finalLng = lng ?? 73.8880;
       final String lm = landmark ?? user.locationLandmark ?? 'Active in Beat';
 
       final entry = LocationTimelineEntry(
@@ -139,8 +186,8 @@ class LocationTrackingService {
         staffName: user.name,
         staffRole: user.role.name,
         timestamp: DateTime.now(),
-        latitude: lat,
-        longitude: lng,
+        latitude: finalLat,
+        longitude: finalLng,
         landmark: lm,
         eventType: eventType,
         details: details,
@@ -208,9 +255,12 @@ class LocationTrackingService {
     }
   }
 
-  /// Asynchronously resolves the most accurate human-readable location
-  static Future<String> resolveLandmark(double lat, double lng, List<ShopModel> shops) async {
-    // 1. Check if physically close (< 300m) to a REAL shop (ignore test shops)
+  /// Resolves a rich Google-Maps-style place (title + full street/locality/city address).
+  static Future<ResolvedPlace> resolveDetailedPlace(
+    double lat,
+    double lng,
+    List<ShopModel> shops,
+  ) async {
     final realShops = shops.where((s) {
       final name = s.name.toLowerCase();
       final route = s.routeName.toLowerCase();
@@ -221,7 +271,7 @@ class LocationTrackingService {
     double minDistanceKm = double.infinity;
 
     for (final s in realShops) {
-      if (s.latitude != null && s.longitude != null) {
+      if (s.latitude != null && s.longitude != null && s.latitude != 0.0) {
         final d = haversineDistanceKm(lat, lng, s.latitude!, s.longitude!);
         if (d < minDistanceKm) {
           minDistanceKm = d;
@@ -230,82 +280,173 @@ class LocationTrackingService {
       }
     }
 
-    if (nearestShop != null && minDistanceKm <= 0.30) {
-      return nearestShop.name;
+    // Always try reverse-geocoding the real street + locality + city (cached by ~110m grid)
+    final onlinePlace = await reverseGeocodePlace(lat, lng);
+
+    // Only count as inside/at a registered store if physically within 120m
+    if (nearestShop != null && minDistanceKm <= 0.12) {
+      final cleanArea = (nearestShop.address.isNotEmpty
+              ? nearestShop.address
+              : nearestShop.routeName)
+          .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
+          .trim();
+      final address = (onlinePlace != null && onlinePlace.address.isNotEmpty)
+          ? onlinePlace.address
+          : cleanArea;
+      return ResolvedPlace(
+        title: nearestShop.name.trim(),
+        address: address,
+      );
     }
 
-    if (nearestShop != null && minDistanceKm <= 1.2) {
-      final area = nearestShop.routeName.isNotEmpty ? nearestShop.routeName : nearestShop.address;
-      final cleanArea = area.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
-      return 'Near ${nearestShop.name}${cleanArea.isNotEmpty ? " · $cleanArea" : ""}';
+    if (onlinePlace != null && onlinePlace.title.isNotEmpty) {
+      return onlinePlace;
     }
 
-    // 2. Beyond 1.2km, get real locality / suburb / town name via reverse geocoding (street/village level)
-    final onlineArea = await reverseGeocodeArea(lat, lng);
-    if (onlineArea != null &&
-        onlineArea.isNotEmpty &&
-        onlineArea != 'Khed, खेड' &&
-        onlineArea != 'Khed' &&
-        onlineArea != 'खेड') {
-      return onlineArea;
-    }
-
-    // 3. Known regional bounding box fallback
     final region = getKnownRegion(lat, lng);
     if (region != null) {
-      return region;
+      return ResolvedPlace(title: region, address: 'Pune District, Maharashtra');
     }
 
     if (nearestShop != null && minDistanceKm <= 3.5) {
-      final area = nearestShop.routeName.isNotEmpty ? nearestShop.routeName : nearestShop.address;
+      final area = nearestShop.routeName.isNotEmpty
+          ? nearestShop.routeName
+          : nearestShop.address;
       final cleanArea = area.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
-      if (cleanArea.isNotEmpty) return cleanArea;
+      if (cleanArea.isNotEmpty) {
+        return ResolvedPlace(title: cleanArea, address: 'Field Beat Area');
+      }
     }
 
-    return 'Rajgurunagar';
+    return ResolvedPlace(
+      title: 'Location (${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})',
+      address: 'Rajgurunagar / Khed Region',
+    );
   }
 
-  /// Reverse geocodes coordinates to a clean area name (suburb/town, street level)
-  static Future<String?> reverseGeocodeArea(double lat, double lng) async {
+  /// Backward-compatible single string resolver using rich street/area details
+  static Future<String> resolveLandmark(double lat, double lng, List<ShopModel> shops) async {
+    final detailed = await resolveDetailedPlace(lat, lng, shops);
+    return detailed.displayLabel;
+  }
+
+  /// Parses Nominatim JSON payload into a Google-Maps-style primary title + full address line
+  static ResolvedPlace? parseNominatimPlace(Map<String, dynamic> data) {
+    final address = data['address'] as Map<String, dynamic>?;
+    if (address == null) return null;
+
+    String? cleanPart(dynamic raw) {
+      if (raw == null) return null;
+      var s = raw.toString().trim();
+      if (s.isEmpty) return null;
+      if (s.toLowerCase() == 'khed' || s == 'खेड') {
+        s = 'Rajgurunagar';
+      }
+      s = s.replaceAll(RegExp(r',\s*(Khed|खेड)', caseSensitive: false), '').trim();
+      return s.isEmpty ? null : s;
+    }
+
+    final poiName = cleanPart(data['name']) ??
+        cleanPart(address['amenity']) ??
+        cleanPart(address['shop']) ??
+        cleanPart(address['building']) ??
+        cleanPart(address['commercial']) ??
+        cleanPart(address['industrial']);
+    final houseNumber = cleanPart(address['house_number']);
+    final road = cleanPart(address['road']) ??
+        cleanPart(address['pedestrian']) ??
+        cleanPart(address['street']);
+    final locality = cleanPart(address['neighbourhood']) ??
+        cleanPart(address['suburb']) ??
+        cleanPart(address['residential']) ??
+        cleanPart(address['quarter']) ??
+        cleanPart(address['hamlet']);
+    final town = cleanPart(address['village']) ??
+        cleanPart(address['town']) ??
+        cleanPart(address['city']) ??
+        cleanPart(address['city_district']);
+    final state = cleanPart(address['state']);
+    final postcode = cleanPart(address['postcode']);
+
+    final roadLine = [
+      ?houseNumber,
+      ?road,
+    ].join(' ');
+
+    final parts = <String>[];
+    void addUnique(String? val) {
+      if (val == null || val.isEmpty) return;
+      final lower = val.toLowerCase();
+      if (!parts.any((existing) =>
+          existing.toLowerCase() == lower ||
+          existing.toLowerCase().contains(lower))) {
+        parts.add(val);
+      }
+    }
+
+    addUnique(poiName);
+    addUnique(roadLine.isNotEmpty ? roadLine : null);
+    addUnique(locality);
+    addUnique(town);
+    if (parts.length <= 1) {
+      addUnique(state);
+    }
+    if (postcode != null && parts.isNotEmpty) {
+      addUnique(postcode);
+    }
+
+    if (parts.isEmpty) return null;
+
+    final title = poiName ??
+        (roadLine.isNotEmpty ? roadLine : null) ??
+        locality ??
+        town ??
+        parts.first;
+
+    final fullAddress = parts.join(', ');
+    return ResolvedPlace(title: title, address: fullAddress);
+  }
+
+  /// Cached reverse-geocoder returning Google-Maps-style primary place + street/area address
+  static Future<ResolvedPlace?> reverseGeocodePlace(double lat, double lng) async {
+    if (lat == 0.0 && lng == 0.0) return null;
+    final key = '${(lat * 1000).round()}_${(lng * 1000).round()}';
+    if (_geocodeCache.containsKey(key)) {
+      return _geocodeCache[key];
+    }
+
+    if (SupabaseService().isTestMode) return null;
+
     try {
       final uri = Uri.parse(
         'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1',
       );
       final response = await http.get(
         uri,
-        headers: {'User-Agent': 'DailyCollectionApp/1.0'},
-      ).timeout(const Duration(milliseconds: 2500));
+        headers: {if (!kIsWeb) 'User-Agent': 'DailyCollectionApp/1.0'},
+      ).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final address = data['address'] as Map<String, dynamic>?;
-        if (address != null) {
-          final road = address['road'];
-          final suburb = address['suburb'] ??
-              address['neighbourhood'] ??
-              address['residential'] ??
-              address['industrial'] ??
-              address['commercial'];
-          final village = address['village'] ?? address['hamlet'] ?? address['town'];
-          final city = address['city'] ?? address['city_district'];
-
-          final place = suburb ?? village ?? road ?? city;
-          if (place != null && place.toString().trim().isNotEmpty) {
-            var pStr = place.toString().trim();
-            // If it's generic "Khed" or "खेड", translate to actual local town "Rajgurunagar"
-            if (pStr.toLowerCase() == 'khed' || pStr == 'खेड') {
-              if (road != null && road.toString().trim().isNotEmpty) {
-                return '${road.toString().trim()}, Rajgurunagar';
-              }
-              return 'Rajgurunagar';
-            }
-            pStr = pStr.replaceAll(RegExp(r',\s*(Khed|खेड)', caseSensitive: false), '').trim();
-            return pStr;
-          }
+        final parsed = parseNominatimPlace(data);
+        if (parsed != null) {
+          _geocodeCache[key] = parsed;
+          return parsed;
         }
       }
     } catch (_) {}
     return null;
+  }
+
+  static ResolvedPlace? getCachedPlace(double lat, double lng) {
+    final key = '${(lat * 1000).round()}_${(lng * 1000).round()}';
+    return _geocodeCache[key];
+  }
+
+  /// Reverse geocodes coordinates to a clean area string
+  static Future<String?> reverseGeocodeArea(double lat, double lng) async {
+    final place = await reverseGeocodePlace(lat, lng);
+    return place?.displayLabel;
   }
 
   /// Known regional bounds fallback for instant offline precision
@@ -325,7 +466,6 @@ class LocationTrackingService {
 
   /// Synchronous fallback helper for immediate offline evaluation
   static String findNearestLandmark(double lat, double lng, List<ShopModel> shops) {
-    // 1. Exclude test shops
     final realShops = shops.where((s) {
       final name = s.name.toLowerCase();
       final route = s.routeName.toLowerCase();
@@ -349,7 +489,9 @@ class LocationTrackingService {
       return nearestShop.name;
     }
 
-    // 2. Known region fallback
+    final cached = getCachedPlace(lat, lng);
+    if (cached != null) return cached.displayLabel;
+
     final region = getKnownRegion(lat, lng);
     if (region != null) {
       return region;

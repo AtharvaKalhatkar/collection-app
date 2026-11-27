@@ -11,6 +11,8 @@ import '../models/shop_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/collection_provider.dart';
 import '../services/godown_billing_pdf_service.dart';
+import '../services/location_service.dart';
+import '../services/location_tracking_service.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/marathi_search_helper.dart';
 import '../utils/theme.dart';
@@ -59,12 +61,24 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
     super.initState();
     _retailerStatusTabController = TabController(length: 3, vsync: this);
     _selectedRouteId = widget.initialRouteId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      final provider = context.read<CollectionProvider>();
+      if (auth.currentUser != null) {
+        LocationTrackingService().startTracking(
+          auth: auth,
+          collectionProvider: provider,
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
     _retailerStatusTabController.dispose();
     _searchController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -1191,57 +1205,98 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
     List<ShopModel> completedShops,
     Set<String> bookedShopIds,
   ) {
+    final authUser = context.watch<AuthProvider>().currentUser;
     final shopsWithLoc = allRouteShops.where((s) => s.latitude != null && s.longitude != null).toList();
 
     LatLng initialCenter = const LatLng(18.8567, 73.8847); // Default Khed / Pune
-    if (shopsWithLoc.isNotEmpty) {
+    if (authUser != null && authUser.hasLocation) {
+      initialCenter = LatLng(authUser.latitude!, authUser.longitude!);
+    } else if (shopsWithLoc.isNotEmpty) {
       initialCenter = LatLng(shopsWithLoc.first.latitude!, shopsWithLoc.first.longitude!);
     }
 
     return Stack(
       children: [
         FlutterMap(
+          key: ValueKey('order_map_$_isSatellite'),
           mapController: _mapController,
           options: MapOptions(
             initialCenter: initialCenter,
-            initialZoom: 13.0,
+            initialZoom: 13.5,
             minZoom: 6.0,
-            maxZoom: 18.0,
+            maxZoom: 20.0,
+            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
           ),
           children: [
             TileLayer(
+              key: ValueKey(_isSatellite),
               urlTemplate: _isSatellite
-                  ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-                  : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.purva.collection.app',
+                  ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+                  : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+              userAgentPackageName: 'com.purva.dailycollection',
+              maxZoom: 20,
             ),
             MarkerLayer(
-              markers: shopsWithLoc.map((s) {
-                final hasOrder = bookedShopIds.contains(s.id);
-                return Marker(
-                  point: LatLng(s.latitude!, s.longitude!),
-                  width: 40,
-                  height: 40,
-                  child: GestureDetector(
-                    onTap: () => _showShopMapBottomSheet(s, hasOrder),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: hasOrder ? const Color(0xFF16A34A) : _bizomBlue,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+              markers: [
+                ...shopsWithLoc.map((s) {
+                  final hasOrder = bookedShopIds.contains(s.id);
+                  return Marker(
+                    point: LatLng(s.latitude!, s.longitude!),
+                    width: 105,
+                    height: 46,
+                    alignment: Alignment.bottomCenter,
+                    child: GestureDetector(
+                      onTap: () => _showShopMapBottomSheet(s, hasOrder),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: hasOrder ? const Color(0xFF16A34A) : _bizomBlue,
+                              ),
+                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 3)],
+                            ),
+                            child: Text(
+                              s.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            hasOrder ? Icons.check_circle_rounded : Icons.location_on_rounded,
+                            color: hasOrder ? const Color(0xFF16A34A) : _bizomBlue,
+                            size: 20,
+                          ),
                         ],
                       ),
-                      child: Icon(
-                        hasOrder ? Icons.check_circle_rounded : Icons.store_rounded,
-                        color: Colors.white,
-                        size: 20,
+                    ),
+                  );
+                }),
+                if (authUser != null && authUser.hasLocation)
+                  Marker(
+                    point: LatLng(authUser.latitude!, authUser.longitude!),
+                    width: 34,
+                    height: 34,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2.5),
+                        boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 5)],
                       ),
+                      child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 17),
                     ),
                   ),
-                );
-              }).toList(),
+              ],
             ),
           ],
         ),
@@ -1256,17 +1311,30 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                 heroTag: 'map_sat_toggle',
                 backgroundColor: Colors.white,
                 foregroundColor: const Color(0xFF0F172A),
+                tooltip: _isSatellite ? 'Road Map' : 'Satellite View',
                 onPressed: () => setState(() => _isSatellite = !_isSatellite),
-                child: Icon(_isSatellite ? Icons.map_rounded : Icons.satellite_alt_rounded),
+                child: Icon(_isSatellite ? Icons.map_rounded : Icons.layers_rounded),
               ),
               const SizedBox(height: 8),
               FloatingActionButton.small(
                 heroTag: 'map_recenter',
                 backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF0F172A),
-                onPressed: () {
-                  if (shopsWithLoc.isNotEmpty) {
-                    _mapController.move(LatLng(shopsWithLoc.first.latitude!, shopsWithLoc.first.longitude!), 13.0);
+                foregroundColor: const Color(0xFF0284C7),
+                tooltip: 'My GPS Location',
+                onPressed: () async {
+                  final fix = await LocationService.getCurrentLocationWithStatus();
+                  if (!mounted) return;
+                  if (fix.hasLocation) {
+                    _mapController.move(LatLng(fix.latitude!, fix.longitude!), 15.0);
+                  } else if (shopsWithLoc.isNotEmpty) {
+                    _mapController.move(LatLng(shopsWithLoc.first.latitude!, shopsWithLoc.first.longitude!), 13.5);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(fix.errorMessage ?? 'Could not fetch GPS.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
                   }
                 },
                 child: const Icon(Icons.my_location_rounded),

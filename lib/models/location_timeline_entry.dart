@@ -36,6 +36,7 @@ class LocationTimelineEntry {
   bool get isDriver => staffRole.toLowerCase() == 'driver';
   bool get isSalesman => staffRole.toLowerCase() == 'salesman';
   bool get isCollection => eventType == 'collection';
+  bool get isOrderBooked => eventType == 'orderBooked';
   bool get isDelivery => eventType == 'deliveryVisit';
   bool get isLogin => eventType == 'login';
   bool get isGpsPing => eventType == 'gpsPing';

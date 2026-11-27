@@ -63,13 +63,15 @@ class _AddShopScreenState extends State<AddShopScreen> {
 
   Future<void> _fetchCurrentLocation() async {
     setState(() => _isFetchingLocation = true);
-    final pos = await LocationService.getCurrentLocation();
+    final fix = await LocationService.getCurrentLocationWithStatus();
     setState(() => _isFetchingLocation = false);
 
-    if (pos != null) {
-      _detectedLatitude = pos.latitude;
-      _detectedLongitude = pos.longitude;
-      _locationUrlController.text = LocationService.buildMapsUrl(pos.latitude, pos.longitude);
+    if (fix.hasLocation) {
+      final lat = fix.latitude!;
+      final lng = fix.longitude!;
+      _detectedLatitude = lat;
+      _detectedLongitude = lng;
+      _locationUrlController.text = LocationService.buildMapsUrl(lat, lng);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -77,7 +79,7 @@ class _AddShopScreenState extends State<AddShopScreen> {
               children: [
                 const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
-                Text('GPS Location captured (${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})!'),
+                Text('GPS Location captured (${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)})!'),
               ],
             ),
             backgroundColor: const Color(0xFF10B981),
@@ -88,8 +90,11 @@ class _AddShopScreenState extends State<AddShopScreen> {
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not access current GPS location. You can paste a Google Maps link or add it later.'),
+          SnackBar(
+            content: Text(
+              fix.errorMessage ??
+                  'Could not access current GPS location. You can paste a Google Maps link or add it later.',
+            ),
             behavior: SnackBarBehavior.floating,
           ),
         );

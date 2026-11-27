@@ -1,8 +1,17 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:daily_collection_app/models/location_timeline_entry.dart';
+import 'package:daily_collection_app/models/shop_model.dart';
+import 'package:daily_collection_app/models/user_model.dart';
+import 'package:daily_collection_app/providers/auth_provider.dart';
+import 'package:daily_collection_app/providers/collection_provider.dart';
+import 'package:daily_collection_app/screens/live_staff_locations_screen.dart';
 import 'package:daily_collection_app/services/location_tracking_service.dart';
 import 'package:daily_collection_app/services/storage_service.dart';
+import 'package:daily_collection_app/utils/timeline_segment_builder.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -169,6 +178,252 @@ void main() {
       final list3 = await storage.loadLocationTimeline();
       expect(list3.length, 2);
       expect(list3.first.landmark, 'Rajgurunagar');
+    });
+
+    test('parseNominatimPlace builds full road + locality + city address and replaces generic Khed', () {
+      final wagholiPlace = LocationTrackingService.parseNominatimPlace({
+        'name': 'Oxy Valley PH-2',
+        'address': {
+          'road': 'Bakori Rd',
+          'suburb': 'Wagholi',
+          'city': 'Pune',
+          'postcode': '412207',
+        },
+      });
+      expect(wagholiPlace, isNotNull);
+      expect(wagholiPlace!.title, 'Oxy Valley PH-2');
+      expect(wagholiPlace.address, contains('Bakori Rd'));
+      expect(wagholiPlace.address, contains('Wagholi'));
+      expect(wagholiPlace.address, contains('Pune'));
+
+      final khedPlace = LocationTrackingService.parseNominatimPlace({
+        'address': {
+          'road': 'Pune - Nashik Hwy',
+          'town': 'Khed',
+          'state': 'Maharashtra',
+        },
+      });
+      expect(khedPlace, isNotNull);
+      expect(khedPlace!.address, contains('Pune - Nashik Hwy'));
+      expect(khedPlace.address, contains('Rajgurunagar'));
+      expect(khedPlace.address.toLowerCase(), isNot(contains('khed')));
+    });
+
+    test('TimelineSegmentBuilder groups stops cleanly and computes same-staff trips without mixing staff', () {
+      final base = DateTime(2026, 11, 27, 9, 30);
+      final entries = [
+        // Staff A stationary cluster (2 pings at same point) -> 1 Stop (15 min)
+        LocationTimelineEntry(
+          id: 'tl_a_1',
+          userId: 'u_a',
+          staffName: 'Akash',
+          staffRole: 'salesman',
+          timestamp: base,
+          latitude: 18.7560,
+          longitude: 73.8550,
+          landmark: 'Chakan Chowk, Chakan MIDC',
+          eventType: 'gpsPing',
+        ),
+        LocationTimelineEntry(
+          id: 'tl_a_2',
+          userId: 'u_a',
+          staffName: 'Akash',
+          staffRole: 'salesman',
+          timestamp: base.add(const Duration(minutes: 15)),
+          latitude: 18.7561,
+          longitude: 73.8551,
+          landmark: 'Chakan Chowk, Chakan MIDC',
+          eventType: 'collection',
+          details: 'Collected ₹5,000 (UPI)',
+          amount: 5000,
+          shopName: 'Ganesh Mart',
+          routeName: 'Chakan',
+        ),
+        // Staff A traveled ~11 km north to Rajgurunagar in 25 min -> 1 Trip + Stop 2
+        LocationTimelineEntry(
+          id: 'tl_a_3',
+          userId: 'u_a',
+          staffName: 'Akash',
+          staffRole: 'salesman',
+          timestamp: base.add(const Duration(minutes: 40)),
+          latitude: 18.8550,
+          longitude: 73.8880,
+          landmark: 'Wada Road, Rajgurunagar',
+          eventType: 'orderBooked',
+          details: 'Order #ORD-10 (2 CS)',
+          shopName: 'Shiv Krupa',
+          routeName: 'Rajgurunagar',
+        ),
+        // Staff B in Wagholi -> must NOT create a fake trip between Staff A and Staff B
+        LocationTimelineEntry(
+          id: 'tl_b_1',
+          userId: 'u_b',
+          staffName: 'Driver Raju',
+          staffRole: 'driver',
+          timestamp: base.add(const Duration(minutes: 45)),
+          latitude: 18.5800,
+          longitude: 73.9800,
+          landmark: 'Bakori Rd, Wagholi, Pune',
+          eventType: 'deliveryVisit',
+          shopName: 'Wagholi Mart',
+        ),
+      ];
+
+      final summary = TimelineSegmentBuilder.build(entries);
+      expect(summary.stops.length, 3);
+      expect(summary.trips.length, 1);
+      expect(summary.trips.first.fromTitle, 'Ganesh Mart');
+      expect(summary.trips.first.toTitle, 'Shiv Krupa');
+      expect(summary.trips.first.distanceKm, greaterThan(10.0));
+      expect(summary.trips.first.distanceKm, lessThan(14.0));
+      expect(summary.trips.first.durationMinutes, 25);
+      expect(summary.trips.first.travelMode, 'Motorcycling');
+      expect(summary.totalCollected, 5000.0);
+    });
+
+    testWidgets('LiveStaffLocationsScreen includes all field roles and renders Day/Trips/Places timeline + Live Map',
+        (tester) async {
+      final admin = UserModel(
+        id: 'u_admin',
+        phone: '9921977636',
+        name: 'Super Admin',
+        role: UserRole.superAdmin,
+        password: 'p',
+      );
+      final salesman = UserModel(
+        id: 'u_sal',
+        phone: '9000000001',
+        name: 'Akash',
+        role: UserRole.salesman,
+        password: 'p',
+        latitude: 18.7560,
+        longitude: 73.8550,
+        locationUpdatedAt: DateTime.now(),
+        locationLandmark: 'Pune - Nashik Hwy, Chakan',
+      );
+      final orderUser = UserModel(
+        id: 'u_ord',
+        phone: '9000000002',
+        name: 'Sagar Order',
+        role: UserRole.order,
+        password: 'p',
+        latitude: 18.8550,
+        longitude: 73.8880,
+        locationUpdatedAt: DateTime.now(),
+        locationLandmark: 'Wada Road, Rajgurunagar',
+      );
+      final collUser = UserModel(
+        id: 'u_col',
+        phone: '9000000003',
+        name: 'Rohan Coll',
+        role: UserRole.collection,
+        password: 'p',
+      );
+
+      final shop = ShopModel(
+        id: 'shop_chakan',
+        name: 'Mahalaxmi Super Market',
+        routeId: 'r1',
+        routeName: 'Chakan',
+        mobileNumber: '9822001122',
+        address: 'Manik Chowk, Chakan',
+        latitude: 18.7560,
+        longitude: 73.8550,
+      );
+
+      final t1 = DateTime.now().subtract(const Duration(minutes: 45));
+      final t2 = DateTime.now().subtract(const Duration(minutes: 15));
+      final tl1 = LocationTimelineEntry(
+        id: 'tl_sagar_1',
+        userId: orderUser.id,
+        staffName: orderUser.name,
+        staffRole: 'order',
+        timestamp: t1,
+        latitude: 18.7560,
+        longitude: 73.8550,
+        landmark: 'Manik Chowk, Chakan',
+        eventType: 'gpsPing',
+      );
+      final tl2 = LocationTimelineEntry(
+        id: 'tl_sagar_2',
+        userId: orderUser.id,
+        staffName: orderUser.name,
+        staffRole: 'order',
+        timestamp: t2,
+        latitude: 18.8550,
+        longitude: 73.8880,
+        landmark: 'Wada Road, Rajgurunagar',
+        eventType: 'orderBooked',
+        details: 'Order #ORD-55 (4 CS)',
+        shopName: 'New Store',
+        routeName: 'Rajgurunagar',
+      );
+
+      SharedPreferences.setMockInitialValues({
+        'app_sample_data_initialized_v1': true,
+        'app_users_cache_v1': jsonEncode([
+          admin.toJson(),
+          salesman.toJson(),
+          orderUser.toJson(),
+          collUser.toJson(),
+        ]),
+        'current_logged_in_user_id_v1': admin.id,
+        'app_shops_v1': [jsonEncode(shop.toJson())],
+        'app_location_timeline_v1': [
+          jsonEncode(tl1.toJson()),
+          jsonEncode(tl2.toJson()),
+        ],
+      });
+
+      final auth = AuthProvider();
+      final collection = CollectionProvider();
+      await auth.initialize();
+      await collection.initialize();
+
+      tester.view.physicalSize = const Size(412, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: auth),
+            ChangeNotifierProvider.value(value: collection),
+          ],
+          child: const MaterialApp(home: LiveStaffLocationsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Includes Salesman, Order, and Collection roles (3 staff in Staff tab!)
+      expect(find.text('Staff (3)'), findsOneWidget);
+      expect(find.text('Day'), findsOneWidget);
+      expect(find.text('Trips (1)'), findsOneWidget);
+      expect(find.text('Places (2)'), findsOneWidget);
+
+      // Google-Maps-style Day timeline renders stop titles, addresses & trip mode
+      expect(find.text('Manik Chowk'), findsOneWidget);
+      expect(find.text('Manik Chowk, Chakan'), findsOneWidget);
+      expect(find.text('Motorcycling'), findsOneWidget);
+      expect(find.text('New Store'), findsOneWidget);
+      expect(find.text('Order #ORD-55 (4 CS)'), findsOneWidget);
+
+      // Switch to Trips and Places sub-tabs cleanly
+      await tester.tap(find.text('Trips (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Manik Chowk → New Store'), findsOneWidget);
+
+      await tester.tap(find.text('Places (2)'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 visit'), findsNWidgets(2));
+
+      // Switch to Staff tab and verify Order & Collection users are listed
+      await tester.tap(find.text('Staff (3)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Akash'), findsOneWidget);
+      expect(find.text('Sagar Order'), findsOneWidget);
+      expect(find.text('Rohan Coll'), findsOneWidget);
     });
   });
 }
