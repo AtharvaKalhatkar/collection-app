@@ -22,13 +22,31 @@ class OrderCatalogService {
   // NO mock sample products - catalog starts empty as requested by user
   static const List<CatalogProduct> catalog = <CatalogProduct>[];
 
+  static String skuKey(CatalogProduct p) => [
+        p.firm.trim().toLowerCase(),
+        p.company.trim().toLowerCase(),
+        p.category.trim().toLowerCase(),
+        p.subcategory.trim().toLowerCase(),
+        p.name.trim().toLowerCase(),
+        p.defaultUnit.trim().toLowerCase(),
+        p.unitsPerCase.toString(),
+      ].join('|');
+
   static void setCustomProducts(List<CatalogProduct> products) {
     _customProducts.clear();
-    _customProducts.addAll(products);
+    final seenIds = <String>{};
+    final seenSkus = <String>{};
+    for (final p in products) {
+      final key = skuKey(p);
+      if (seenIds.add(p.id) && seenSkus.add(key)) {
+        _customProducts.add(p);
+      }
+    }
   }
 
   static void addCustomProduct(CatalogProduct product) {
-    _customProducts.removeWhere((p) => p.id == product.id);
+    final key = skuKey(product);
+    _customProducts.removeWhere((p) => p.id == product.id || skuKey(p) == key);
     _customProducts.add(product);
   }
 

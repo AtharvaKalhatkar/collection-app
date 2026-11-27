@@ -395,6 +395,14 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
       appBar: AppBar(
         backgroundColor: widget.isEmbedded ? Colors.white : _bizomBlue,
         foregroundColor: widget.isEmbedded ? AppTheme.primary : Colors.white,
+        iconTheme: IconThemeData(
+          color: widget.isEmbedded ? AppTheme.primary : Colors.white,
+          size: 22,
+        ),
+        actionsIconTheme: IconThemeData(
+          color: widget.isEmbedded ? AppTheme.primary : Colors.white,
+          size: 22,
+        ),
         elevation: 0,
         leading: canGoBack
             ? IconButton(
@@ -1786,8 +1794,10 @@ class _OutletInfoDetailScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: _bizomBlue,
         foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white, size: 22),
+        actionsIconTheme: const IconThemeData(color: Colors.white, size: 22),
         elevation: 0,
-        title: const Text('Outlet Info', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+        title: const Text('Outlet Info', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17, color: Colors.white)),
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),

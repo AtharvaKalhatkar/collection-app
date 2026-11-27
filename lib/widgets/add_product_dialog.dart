@@ -49,7 +49,9 @@ class _AddProductDialogState extends State<AddProductDialog> {
   bool _isNewCategory = false;
   bool _isNewSubcategory = false;
   bool _showUrlField = false;
+  bool _isSaving = false;
   String? _photoBase64;
+  late final String _draftId = 'cust-${DateTime.now().millisecondsSinceEpoch}';
 
   @override
   void initState() {
@@ -175,64 +177,72 @@ class _AddProductDialogState extends State<AddProductDialog> {
     }
   }
 
-  void _onSave() async {
+  Future<void> _onSave() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
-    final company = _isNewCompany
-        ? _newCompanyController.text.trim()
-        : (_selectedCompany ?? _newCompanyController.text.trim());
+    setState(() => _isSaving = true);
+    var popped = false;
+    try {
+      final company = _isNewCompany
+          ? _newCompanyController.text.trim()
+          : (_selectedCompany ?? _newCompanyController.text.trim());
 
-    final category = _isNewCategory
-        ? _newCategoryController.text.trim()
-        : (_selectedCategory ?? _newCategoryController.text.trim());
+      final category = _isNewCategory
+          ? _newCategoryController.text.trim()
+          : (_selectedCategory ?? _newCategoryController.text.trim());
 
-    final rawSub = _isNewSubcategory
-        ? _newSubcategoryController.text.trim()
-        : (_selectedSubcategory ?? _newSubcategoryController.text.trim());
-    final subcategory = rawSub.isNotEmpty ? rawSub : 'General';
+      final rawSub = _isNewSubcategory
+          ? _newSubcategoryController.text.trim()
+          : (_selectedSubcategory ?? _newSubcategoryController.text.trim());
+      final subcategory = rawSub.isNotEmpty ? rawSub : 'General';
 
-    final name = _productNameController.text.trim();
-    final parsedUpc = int.tryParse(_unitsPerCaseController.text.trim()) ?? 24;
-    final unitsPerCase = parsedUpc > 0 ? parsedUpc : 24;
-    final photoUrl = _photoUrlController.text.trim().isNotEmpty ? _photoUrlController.text.trim() : null;
+      final name = _productNameController.text.trim();
+      final parsedUpc = int.tryParse(_unitsPerCaseController.text.trim()) ?? 24;
+      final unitsPerCase = parsedUpc > 0 ? parsedUpc : 24;
+      final photoUrl = _photoUrlController.text.trim().isNotEmpty ? _photoUrlController.text.trim() : null;
 
-    final customId = 'cust-${DateTime.now().millisecondsSinceEpoch}';
-
-    final newProduct = CatalogProduct(
-      id: customId,
-      name: name,
-      category: category,
-      subcategory: subcategory,
-      company: company,
-      firm: _firm,
-      packing: _selectedUnit,
-      rate: 0.0,
-      mrp: 0.0,
-      defaultUnit: _selectedUnit,
-      unitsPerCase: unitsPerCase,
-      weightKg: 0.0,
-      photoUrl: photoUrl,
-      photoBase64: _photoBase64,
-    );
-
-    final provider = Provider.of<CollectionProvider>(context, listen: false);
-    await provider.addCustomProduct(newProduct);
-
-    if (mounted) {
-      Navigator.of(context).pop(newProduct);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Product "$name" added to catalog!')),
-            ],
-          ),
-          backgroundColor: AppTheme.success,
-          behavior: SnackBarBehavior.floating,
-        ),
+      final newProduct = CatalogProduct(
+        id: _draftId,
+        name: name,
+        category: category,
+        subcategory: subcategory,
+        company: company,
+        firm: _firm,
+        packing: _selectedUnit,
+        rate: 0.0,
+        mrp: 0.0,
+        defaultUnit: _selectedUnit,
+        unitsPerCase: unitsPerCase,
+        weightKg: 0.0,
+        photoUrl: photoUrl,
+        photoBase64: _photoBase64,
       );
+
+      final provider = Provider.of<CollectionProvider>(context, listen: false);
+      await provider.addCustomProduct(newProduct);
+
+      if (mounted) {
+        popped = true;
+        Navigator.of(context).pop(newProduct);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Product "$name" added to catalog!')),
+              ],
+            ),
+            backgroundColor: AppTheme.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted && !popped) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -286,7 +296,7 @@ class _AddProductDialogState extends State<AddProductDialog> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_rounded, color: AppTheme.textSecondary),
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
@@ -758,7 +768,7 @@ class _AddProductDialogState extends State<AddProductDialog> {
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -770,11 +780,24 @@ class _AddProductDialogState extends State<AddProductDialog> {
                       Expanded(
                         flex: 2,
                         child: ElevatedButton.icon(
-                          onPressed: _onSave,
-                          icon: const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-                          label: const Text('Save Product', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          onPressed: _isSaving ? null : _onSave,
+                          icon: _isSaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                          label: Text(
+                            _isSaving ? 'Saving...' : 'Save Product',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primary,
+                            disabledBackgroundColor: AppTheme.primary.withValues(alpha: 0.7),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),

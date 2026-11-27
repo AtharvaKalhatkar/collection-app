@@ -776,7 +776,14 @@ void main() {
       await tester.pumpAndSettle();
 
       // Go to Submit Order via Floating Cart FAB
-      await tester.tap(find.byIcon(Icons.shopping_cart_rounded));
+      expect(
+        find.descendant(
+          of: find.byType(FloatingActionButton),
+          matching: find.byIcon(Icons.shopping_cart_outlined),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byTooltip('Review & Submit Order'));
       await tester.pumpAndSettle();
 
       // Tabular Submit Order summary shows Lines, Case/Bags, Unit, and TOTAL ORDER
@@ -784,6 +791,73 @@ void main() {
       expect(find.text('Case/Bags'), findsOneWidget);
       expect(find.text('TOTAL ORDER:'), findsOneWidget);
       expect(find.text('2 CS, 0 UT'), findsOneWidget);
+
+      // Go back to Order tab and open product detail sheet -> Delete removes custom SKU
+      await tester.tap(find.text('Order').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('NIPMB-115GX4(11.04KG)Rs.30 -GREEN'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete'), findsOneWidget);
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete Product?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Delete'));
+      await tester.pumpAndSettle();
+      expect(collection.customProducts.where((p) => p.id == product.id), isEmpty);
+    });
+
+    testWidgets('Double-tapping Save Product and adding matching SKU do not create duplicate custom products',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'app_sample_data_initialized_v1': true});
+      OrderCatalogService.setCustomProducts([]);
+      final collection = CollectionProvider();
+      await collection.initialize();
+
+      tester.view.physicalSize = const Size(600, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: collection,
+          child: const MaterialApp(home: Scaffold(body: AddProductDialog())),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'e.g. Santoor White 100g (MRP 40)'),
+        'Santoor Soap 100g',
+      );
+      // Rapid multi-tap Save Product before frame settles
+      await tester.tap(find.text('Save Product'));
+      await tester.tap(find.text('Save Product'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      final firstMatches =
+          collection.customProducts.where((p) => p.name == 'Santoor Soap 100g').toList();
+      expect(firstMatches.length, 1);
+      final firstSaved = firstMatches.first;
+
+      // Re-adding an identical SKU with a different ID replaces instead of duplicating
+      await collection.addCustomProduct(
+        CatalogProduct(
+          id: 'cust-duplicate-test',
+          name: '  santoor soap 100g ',
+          category: firstSaved.category.toLowerCase(),
+          subcategory: firstSaved.subcategory.toLowerCase(),
+          company: ' ${firstSaved.company.toLowerCase()} ',
+          firm: firstSaved.firm,
+          defaultUnit: firstSaved.defaultUnit,
+          unitsPerCase: firstSaved.unitsPerCase,
+          rate: 0.0,
+        ),
+      );
+      expect(
+        collection.customProducts.where((p) => p.name.toLowerCase().contains('santoor soap 100g')).length,
+        1,
+      );
     });
   });
 }

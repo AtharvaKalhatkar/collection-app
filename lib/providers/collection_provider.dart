@@ -3113,15 +3113,36 @@ _Daily Collection Pro Cash Verification_
 
   // --- Custom Product Master Management ---
   Future<void> addCustomProduct(CatalogProduct product) async {
-    _customProducts.removeWhere((p) => p.id == product.id);
+    final key = OrderCatalogService.skuKey(product);
+    final duplicateIds = _customProducts
+        .where((p) => p.id != product.id && OrderCatalogService.skuKey(p) == key)
+        .map((p) => p.id)
+        .toList();
+
+    _customProducts.removeWhere(
+      (p) => p.id == product.id || OrderCatalogService.skuKey(p) == key,
+    );
     _customProducts.add(product);
     OrderCatalogService.addCustomProduct(product);
+
     _locallyDeletedProductIds.remove(product.id);
     _dirtyProductIds.add(product.id);
+    for (final dupId in duplicateIds) {
+      _dirtyProductIds.remove(dupId);
+      _locallyDeletedProductIds.add(dupId);
+    }
+
     await _storage.saveCustomProducts(_customProducts);
     await _storage.saveIdSet(_keyDeletedProducts, _locallyDeletedProductIds);
     await _storage.saveIdSet(_keyDirtyProducts, _dirtyProductIds);
     notifyListeners();
+
+    if (duplicateIds.isNotEmpty) {
+      if (await _supabase.deleteCustomProductsBulk(duplicateIds)) {
+        _locallyDeletedProductIds.removeAll(duplicateIds);
+        await _storage.saveIdSet(_keyDeletedProducts, _locallyDeletedProductIds);
+      }
+    }
 
     if (await _supabase.saveCustomProduct(product)) {
       _dirtyProductIds.remove(product.id);
