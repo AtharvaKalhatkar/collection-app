@@ -455,75 +455,15 @@ class _OutletOrderBookingScreenState extends State<OutletOrderBookingScreen>
                     ),
                     const SizedBox(height: 16),
 
-                    Row(
-                      children: [
-                        if (context.read<CollectionProvider>().customProducts.any((p) => p.id == prod.id)) ...[
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFDC2626),
-                              side: const BorderSide(color: Color(0xFFFCA5A5)),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                            icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFDC2626)),
-                            label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w700)),
-                            onPressed: () async {
-                              final confirm = await showDialog<bool>(
-                                context: dlgCtx,
-                                builder: (confirmCtx) => AlertDialog(
-                                  title: const Text('Delete Product?'),
-                                  content: Text('Remove "${prod.name}" from the product catalog?'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(confirmCtx, false),
-                                      child: const Text('Cancel'),
-                                    ),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFFDC2626),
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      onPressed: () => Navigator.pop(confirmCtx, true),
-                                      child: const Text('Delete'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                              if (confirm == true && mounted) {
-                                final provider = context.read<CollectionProvider>();
-                                setState(() {
-                                  _cart.remove(prod.id);
-                                  _csControllers.remove(prod.id)?.dispose();
-                                  _utControllers.remove(prod.id)?.dispose();
-                                });
-                                await provider.deleteCustomProduct(prod.id);
-                                if (ctx.mounted) Navigator.pop(ctx);
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('${prod.name} deleted from catalog'),
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                          ),
-                          const SizedBox(width: 10),
-                        ],
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _bookingBlue,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w700)),
-                          ),
-                        ),
-                      ],
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _bookingBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w700)),
                     ),
                   ],
                 ),

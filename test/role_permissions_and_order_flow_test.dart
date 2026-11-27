@@ -795,18 +795,13 @@ void main() {
       expect(find.text('TOTAL ORDER:'), findsOneWidget);
       expect(find.text('2 CS, 0 UT'), findsOneWidget);
 
-      // Go back to Order tab and open product detail sheet -> Delete removes custom SKU
+      // Go back to Order tab and open product detail sheet -> Delete is NOT shown during order booking
       await tester.tap(find.text('Order').first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('NIPMB-115GX4(11.04KG)Rs.30 -GREEN'));
       await tester.pumpAndSettle();
-      expect(find.text('Delete'), findsOneWidget);
-      await tester.tap(find.text('Delete'));
-      await tester.pumpAndSettle();
-      expect(find.text('Delete Product?'), findsOneWidget);
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Delete'));
-      await tester.pumpAndSettle();
-      expect(collection.customProducts.where((p) => p.id == product.id), isEmpty);
+      expect(find.text('Delete'), findsNothing);
+      expect(find.text('Done'), findsOneWidget);
     });
 
     testWidgets('Double-tapping Save Product and adding matching SKU do not create duplicate custom products',
