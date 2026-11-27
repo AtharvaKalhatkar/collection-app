@@ -23,6 +23,7 @@ import 'admin_products_screen.dart';
 import 'all_orders_screen.dart';
 import 'outlet_order_booking_screen.dart';
 import '../widgets/clean_ui.dart';
+import '../widgets/smooth_map_controls.dart';
 
 const Color _bizomBlue = Color(0xFF15429E);
 
@@ -43,7 +44,7 @@ class OrderDashboardScreen extends StatefulWidget {
 }
 
 class _OrderDashboardScreenState extends State<OrderDashboardScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   int _currentBottomNavIndex = 0; // 0: Retailers, 1: Route Map, 2: Transactions
   late TabController _retailerStatusTabController; // 0: Pending, 1: Completed, 2: All
 
@@ -79,6 +80,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
   void dispose() {
     _retailerStatusTabController.dispose();
     _searchController.dispose();
+    cancelSmoothMapAnimation(_mapController);
     _mapController.dispose();
     super.dispose();
   }
@@ -505,17 +507,18 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                 tooltip: 'Assign Routes',
                 onPressed: () => AssignRoutesDialog.show(context),
               ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.list_alt_rounded),
-              tooltip: 'All Booked Orders',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
-                );
-              },
-            ),
+            if (user?.isOrder != true)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.list_alt_rounded),
+                tooltip: 'All Booked Orders',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
+                  );
+                },
+              ),
             if (user?.isSuperAdmin == true)
               IconButton(
                 visualDensity: VisualDensity.compact,
@@ -528,6 +531,14 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                   );
                 },
               ),
+            if (!widget.isEmbedded)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.logout_rounded),
+                tooltip: 'Sign Out',
+                onPressed: () => auth.logout(),
+              ),
+          ] else if (user?.isOrder == true) ...[
             if (!widget.isEmbedded)
               IconButton(
                 visualDensity: VisualDensity.compact,
@@ -559,7 +570,8 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
               itemBuilder: (_) => [
                 if (user?.canAssignRoutes == true)
                   const PopupMenuItem(value: 'assign_routes', child: Text('Assign Routes')),
-                const PopupMenuItem(value: 'all_orders', child: Text('All Booked Orders')),
+                if (user?.isOrder != true)
+                  const PopupMenuItem(value: 'all_orders', child: Text('All Booked Orders')),
                 if (user?.isSuperAdmin == true)
                   const PopupMenuItem(value: 'products_admin', child: Text('Products, Stock & Schemes')),
                 if (!widget.isEmbedded)
@@ -1257,24 +1269,17 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
     return Stack(
       children: [
         FlutterMap(
-          key: ValueKey('order_map_$_isSatellite'),
           mapController: _mapController,
           options: MapOptions(
             initialCenter: initialCenter,
             initialZoom: 13.5,
             minZoom: 6.0,
             maxZoom: 20.0,
-            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+            backgroundColor: const Color(0xFFEFF3F8),
+            interactionOptions: kSmoothMapInteractionOptions,
           ),
           children: [
-            TileLayer(
-              key: ValueKey(_isSatellite),
-              urlTemplate: _isSatellite
-                  ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
-                  : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-              userAgentPackageName: 'com.purva.dailycollection',
-              maxZoom: 20,
-            ),
+            buildSmoothMapTileLayer(isSatellite: _isSatellite),
             MarkerLayer(
               markers: [
                 ...shopsWithLoc.map((s) {
@@ -1340,7 +1345,7 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
           ],
         ),
 
-        // Non-overlapping SafeArea Controls & Bottom Summary Strip
+        // Non-overlapping Responsive Overlay Column
         Positioned.fill(
           child: SafeArea(
             child: Padding(
@@ -1350,91 +1355,140 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
                 children: [
                   Align(
                     alignment: Alignment.topRight,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        FloatingActionButton.small(
-                          heroTag: 'map_sat_toggle',
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF0F172A),
-                          tooltip: _isSatellite ? 'Road Map' : 'Satellite View',
-                          onPressed: () => setState(() => _isSatellite = !_isSatellite),
-                          child: Icon(_isSatellite ? Icons.map_rounded : Icons.layers_rounded),
-                        ),
-                        const SizedBox(height: 8),
-                        FloatingActionButton.small(
-                          heroTag: 'map_recenter',
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF0284C7),
-                          tooltip: 'My GPS Location',
-                          onPressed: () async {
-                            final fix = await LocationService.getCurrentLocationWithStatus();
-                            if (!mounted) return;
-                            if (fix.hasLocation) {
-                              _mapController.move(LatLng(fix.latitude!, fix.longitude!), 15.0);
-                            } else if (shopsWithLoc.isNotEmpty) {
-                              _mapController.move(LatLng(shopsWithLoc.first.latitude!, shopsWithLoc.first.longitude!), 13.5);
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(fix.errorMessage ?? 'Could not fetch GPS.'),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                            }
-                          },
-                          child: const Icon(Icons.my_location_rounded),
-                        ),
-                      ],
+                    child: Builder(
+                      builder: (topCtx) {
+                        final isCompactHeight = MediaQuery.sizeOf(topCtx).height < 520;
+                        final buttons = <Widget>[
+                          FloatingActionButton.small(
+                            heroTag: 'map_sat_toggle',
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF0F172A),
+                            tooltip: _isSatellite ? 'Road Map' : 'Satellite View',
+                            onPressed: () => setState(() => _isSatellite = !_isSatellite),
+                            child: Icon(_isSatellite ? Icons.map_rounded : Icons.layers_rounded),
+                          ),
+                          SizedBox(width: isCompactHeight ? 8 : 0, height: isCompactHeight ? 0 : 8),
+                          FloatingActionButton.small(
+                            heroTag: 'map_recenter',
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF0284C7),
+                            tooltip: 'My GPS Location',
+                            onPressed: () async {
+                              final fix = await LocationService.getCurrentLocationWithStatus();
+                              if (!mounted) return;
+                              if (fix.hasLocation) {
+                                smoothAnimatedMapMove(
+                                  controller: _mapController,
+                                  vsync: this,
+                                  destLocation: LatLng(fix.latitude!, fix.longitude!),
+                                  destZoom: 15.0,
+                                  minZoom: 6.0,
+                                );
+                              } else if (shopsWithLoc.isNotEmpty) {
+                                smoothAnimatedMapMove(
+                                  controller: _mapController,
+                                  vsync: this,
+                                  destLocation: LatLng(shopsWithLoc.first.latitude!, shopsWithLoc.first.longitude!),
+                                  destZoom: 13.5,
+                                  minZoom: 6.0,
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(fix.errorMessage ?? 'Could not fetch GPS.'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Icon(Icons.my_location_rounded),
+                          ),
+                        ];
+                        return isCompactHeight
+                            ? Row(mainAxisSize: MainAxisSize.min, children: buttons)
+                            : Column(mainAxisSize: MainAxisSize.min, children: buttons);
+                      },
                     ),
                   ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Flexible(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle)),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  'Completed (${completedShops.length})',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: MapZoomControlPill(
+                                horizontal: MediaQuery.sizeOf(context).height < 520,
+                                onZoomIn: () => smoothStepMapZoom(
+                                  controller: _mapController,
+                                  vsync: this,
+                                  deltaZoom: 1.0,
+                                  minZoom: 6.0,
+                                ),
+                                onZoomOut: () => smoothStepMapZoom(
+                                  controller: _mapController,
+                                  vsync: this,
+                                  deltaZoom: -1.0,
+                                  minZoom: 6.0,
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(width: 10, height: 10, decoration: const BoxDecoration(color: _bizomBlue, shape: BoxShape.circle)),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  'Pending (${allRouteShops.length - completedShops.length})',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                ),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
                               ),
-                            ],
-                          ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                children: [
+                                  Flexible(
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle)),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            'Completed (${completedShops.length})',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(width: 10, height: 10, decoration: const BoxDecoration(color: _bizomBlue, shape: BoxShape.circle)),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            'Pending (${allRouteShops.length - completedShops.length})',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ],
@@ -1632,39 +1686,41 @@ class _OrderDashboardScreenState extends State<OrderDashboardScreen>
             ],
           ),
         ),
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-          child: InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
-              );
-            },
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFBFDBFE)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.filter_list_rounded, size: 16, color: _bizomBlue),
-                  SizedBox(width: 6),
-                  Text(
-                    'All Booked Orders Master (Staff & Tally)',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _bizomBlue),
-                  ),
-                ],
+        if (context.read<AuthProvider>().currentUser?.isOrder != true) ...[
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AllOrdersScreen(initialDate: _selectedDate)),
+                );
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.filter_list_rounded, size: 16, color: _bizomBlue),
+                    SizedBox(width: 6),
+                    Text(
+                      'All Booked Orders Master (Staff & Tally)',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _bizomBlue),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        const Divider(height: 1),
+          const Divider(height: 1),
+        ],
 
         Expanded(
           child: ListView.separated(

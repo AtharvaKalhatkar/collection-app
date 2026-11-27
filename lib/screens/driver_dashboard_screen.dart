@@ -18,6 +18,7 @@ import '../widgets/payment_qr_dialog.dart';
 import '../utils/firm_details.dart';
 import '../utils/qr_data.dart';
 import '../services/location_tracking_service.dart';
+import '../widgets/smooth_map_controls.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
   const DriverDashboardScreen({super.key});
@@ -26,7 +27,8 @@ class DriverDashboardScreen extends StatefulWidget {
   State<DriverDashboardScreen> createState() => _DriverDashboardScreenState();
 }
 
-class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
+class _DriverDashboardScreenState extends State<DriverDashboardScreen>
+    with TickerProviderStateMixin {
   int _currentTab = 0;
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
@@ -85,6 +87,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
 
   @override
   void dispose() {
+    cancelSmoothMapAnimation(_mapController);
     _mapController.dispose();
     _searchCtrl.dispose();
     super.dispose();
@@ -1646,16 +1649,16 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             initialZoom: 13.0,
             minZoom: 6.0,
             maxZoom: 20.0,
-            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+            backgroundColor: const Color(0xFFEFF3F8),
+            interactionOptions: kSmoothMapInteractionOptions,
+            onTap: (_, _) {
+              if (_selectedMapShop != null) {
+                setState(() => _selectedMapShop = null);
+              }
+            },
           ),
           children: [
-            TileLayer(
-              urlTemplate: _mapLayer == 'satellite'
-                  ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
-                  : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-              userAgentPackageName: 'com.purva.dailycollection',
-              maxZoom: 20,
-            ),
+            buildSmoothMapTileLayer(isSatellite: _mapLayer == 'satellite'),
             // Shop markers for assigned outlets only
             MarkerLayer(
               markers: [
@@ -1672,7 +1675,13 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                     child: GestureDetector(
                       onTap: () {
                         setState(() => _selectedMapShop = shop);
-                        _mapController.move(pos, 15.0);
+                        smoothAnimatedMapMove(
+                          controller: _mapController,
+                          vsync: this,
+                          destLocation: pos,
+                          destZoom: 15.0,
+                          minZoom: 6.0,
+                        );
                       },
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -1828,117 +1837,167 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                       ),
                     ],
                   ),
-                  const Spacer(),
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (user.latitude != null && user.longitude != null)
-                          FloatingActionButton.small(
-                            heroTag: 'driver_my_loc',
-                            backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFF0284C7),
-                            onPressed: () {
-                              _mapController.move(ll.LatLng(user.latitude!, user.longitude!), 15.0);
-                            },
-                            child: const Icon(Icons.my_location, size: 18),
-                          ),
-                        const SizedBox(height: 8),
-                        if (displayShops.isNotEmpty)
-                          FloatingActionButton.small(
-                            heroTag: 'driver_center_route',
-                            backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFF0F172A),
-                            onPressed: () {
-                              final pos = _getShopLatLng(displayShops.first);
-                              _mapController.move(pos, 13.5);
-                            },
-                            child: const Icon(Icons.route, size: 18),
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (_selectedMapShop != null) ...[
-                    const SizedBox(height: 10),
-                    Card(
-                      margin: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 8,
-                      child: Padding(
-                        padding: const EdgeInsets.all(14.0),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: SingleChildScrollView(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _selectedMapShop!.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: Builder(
+                                builder: (overlayCtx) {
+                                  final isCompactHeight = MediaQuery.sizeOf(overlayCtx).height < 520;
+                                  final controls = <Widget>[
+                                    MapZoomControlPill(
+                                      horizontal: isCompactHeight,
+                                      onZoomIn: () => smoothStepMapZoom(
+                                        controller: _mapController,
+                                        vsync: this,
+                                        deltaZoom: 1.0,
+                                        minZoom: 6.0,
+                                      ),
+                                      onZoomOut: () => smoothStepMapZoom(
+                                        controller: _mapController,
+                                        vsync: this,
+                                        deltaZoom: -1.0,
+                                        minZoom: 6.0,
+                                      ),
+                                    ),
+                                    if (user.latitude != null && user.longitude != null) ...[
+                                      SizedBox(width: isCompactHeight ? 8 : 0, height: isCompactHeight ? 0 : 8),
+                                      FloatingActionButton.small(
+                                        heroTag: 'driver_my_loc',
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: const Color(0xFF0284C7),
+                                        tooltip: 'My GPS Location',
+                                        onPressed: () {
+                                          smoothAnimatedMapMove(
+                                            controller: _mapController,
+                                            vsync: this,
+                                            destLocation: ll.LatLng(user.latitude!, user.longitude!),
+                                            destZoom: 15.0,
+                                            minZoom: 6.0,
+                                          );
+                                        },
+                                        child: const Icon(Icons.my_location, size: 18),
+                                      ),
+                                    ],
+                                    if (displayShops.isNotEmpty) ...[
+                                      SizedBox(width: isCompactHeight ? 8 : 0, height: isCompactHeight ? 0 : 8),
+                                      FloatingActionButton.small(
+                                        heroTag: 'driver_center_route',
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: const Color(0xFF0F172A),
+                                        tooltip: 'Focus Route Start',
+                                        onPressed: () {
+                                          final pos = _getShopLatLng(displayShops.first);
+                                          smoothAnimatedMapMove(
+                                            controller: _mapController,
+                                            vsync: this,
+                                            destLocation: pos,
+                                            destZoom: 13.5,
+                                            minZoom: 6.0,
+                                          );
+                                        },
+                                        child: const Icon(Icons.route, size: 18),
+                                      ),
+                                    ],
+                                  ];
+                                  return isCompactHeight
+                                      ? Row(mainAxisSize: MainAxisSize.min, children: controls)
+                                      : Column(mainAxisSize: MainAxisSize.min, children: controls);
+                                },
+                              ),
+                            ),
+                            if (_selectedMapShop != null) ...[
+                              const SizedBox(height: 10),
+                              Card(
+                                margin: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                elevation: 8,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14.0),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              _selectedMapShop!.name,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.close, size: 18, color: Colors.blueGrey),
+                                            visualDensity: VisualDensity.compact,
+                                            onPressed: () => setState(() => _selectedMapShop = null),
+                                          ),
+                                        ],
+                                      ),
+                                      if (_selectedMapShop!.address.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _selectedMapShop!.address,
+                                          style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF0284C7),
+                                                foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              ),
+                                              icon: const Icon(Icons.directions, size: 16),
+                                              label: const Text('Navigate (Maps)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                              onPressed: () => _openGoogleMaps(_selectedMapShop!),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFF10B981),
+                                              foregroundColor: Colors.white,
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            ),
+                                            icon: const Icon(Icons.payments, size: 16),
+                                            label: const Text('Bills', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                            onPressed: () {
+                                              setState(() {
+                                                _searchCtrl.text = _selectedMapShop!.name;
+                                                _searchQuery = _selectedMapShop!.name;
+                                                _currentTab = 0; // Switch to delivery bills
+                                              });
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.close, size: 18, color: Colors.blueGrey),
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: () => setState(() => _selectedMapShop = null),
-                                ),
-                              ],
-                            ),
-                            if (_selectedMapShop!.address.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                _selectedMapShop!.address,
-                                style: TextStyle(fontSize: 11.5, color: Colors.blueGrey.shade600),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF0284C7),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    icon: const Icon(Icons.directions, size: 16),
-                                    label: const Text('Navigate (Maps)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                    onPressed: () => _openGoogleMaps(_selectedMapShop!),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF10B981),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  icon: const Icon(Icons.payments, size: 16),
-                                  label: const Text('Bills', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  onPressed: () {
-                                    setState(() {
-                                      _searchCtrl.text = _selectedMapShop!.name;
-                                      _searchQuery = _selectedMapShop!.name;
-                                      _currentTab = 0; // Switch to delivery bills
-                                    });
-                                  },
-                                ),
-                              ],
-                            ),
                           ],
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),

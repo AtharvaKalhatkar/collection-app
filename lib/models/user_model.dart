@@ -70,10 +70,10 @@ class UserModel {
 
   String get plainName => cleanPlainName(name);
 
-  /// Super Admin, Collection, Sales & Collection, and Sales (Order) logins can assign routes.
-  /// Office Staff and Delivery Driver cannot assign routes.
+  /// Super Admin, Collection, and Sales & Collection logins can assign routes.
+  /// Dedicated Order, Office Staff, and Delivery Driver logins cannot assign routes.
   bool get canAssignRoutes =>
-      isSuperAdmin || isSalesman || isCollection || isOrder;
+      isSuperAdmin || isSalesman || isCollection;
 
   /// Order Booking & Booked Orders visibility:
   /// Enabled for Super Admin, Office Staff, Sales & Collection, and Sales (Order).

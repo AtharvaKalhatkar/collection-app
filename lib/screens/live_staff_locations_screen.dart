@@ -20,6 +20,7 @@ import '../utils/quick_alert.dart';
 import '../utils/theme.dart';
 import '../utils/timeline_segment_builder.dart';
 import '../widgets/clean_ui.dart';
+import '../widgets/smooth_map_controls.dart';
 
 class LiveStaffLocationsScreen extends StatefulWidget {
   final String? initialStaffName;
@@ -37,7 +38,7 @@ class LiveStaffLocationsScreen extends StatefulWidget {
 }
 
 class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const Color _primaryBlue = Color(0xFF15429E);
   static const Color _tealAccent = Color(0xFF0284C7);
 
@@ -111,13 +112,6 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     return s.isNotEmpty ? s : 'Active on Route';
   }
 
-  String _getMapUrlTemplate() {
-    if (_mapLayer == 'satellite') {
-      return 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-    }
-    return 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-  }
-
   List<UserModel> _fieldStaffUsers(AuthProvider auth) {
     return auth.users
         .where((u) =>
@@ -156,6 +150,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   @override
   void dispose() {
     _livePollTimer?.cancel();
+    cancelSmoothMapAnimation(_mapController);
     _mapController.dispose();
     _tabController.dispose();
     _mapSearchCtrl.dispose();
@@ -165,7 +160,14 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
   void _safeMoveMap(ll.LatLng target, double zoom) {
     if (_mapReady) {
       try {
-        _mapController.move(target, zoom);
+        smoothAnimatedMapMove(
+          controller: _mapController,
+          vsync: this,
+          destLocation: target,
+          destZoom: zoom,
+          minZoom: 5.0,
+          maxZoom: 20.0,
+        );
       } catch (_) {
         _pendingMapMove = (center: target, zoom: zoom);
       }
@@ -1605,14 +1607,14 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
     return Stack(
       children: [
         FlutterMap(
-          key: ValueKey('map_$_mapLayer'),
           mapController: _mapController,
           options: MapOptions(
             initialCenter: initialCenter,
             initialZoom: 12.5,
             minZoom: 5.0,
             maxZoom: 20.0,
-            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+            backgroundColor: const Color(0xFFEFF3F8),
+            interactionOptions: kSmoothMapInteractionOptions,
             onMapReady: () {
               _mapReady = true;
               if (_pendingMapMove != null) {
@@ -1631,12 +1633,7 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
             },
           ),
           children: [
-            TileLayer(
-              key: ValueKey(_mapLayer),
-              urlTemplate: _getMapUrlTemplate(),
-              userAgentPackageName: 'com.purva.dailycollection',
-              maxZoom: 20,
-            ),
+            buildSmoothMapTileLayer(isSatellite: _mapLayer == 'satellite'),
 
             // Selected Staff Day Trail Polyline
             if (trailPoints.length >= 2)
@@ -1813,7 +1810,8 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
           ],
         ),
 
-        // Non-overlapping Responsive Overlay Column (Respects notch, gesture bar, and landscape height)
+        // Non-overlapping Responsive Overlay Column (Respects notch, gesture bar, and landscape height
+        // while keeping the open map center completely transparent to pinch/pan gestures)
         Positioned.fill(
           child: SafeArea(
             child: Padding(
@@ -1943,6 +1941,20 @@ class _LiveStaffLocationsScreenState extends State<LiveStaffLocationsScreen>
                               builder: (overlayCtx) {
                                 final isCompactHeight = MediaQuery.sizeOf(overlayCtx).height < 520;
                                 final fabs = <Widget>[
+                                  MapZoomControlPill(
+                                    horizontal: isCompactHeight,
+                                    onZoomIn: () => smoothStepMapZoom(
+                                      controller: _mapController,
+                                      vsync: this,
+                                      deltaZoom: 1.0,
+                                    ),
+                                    onZoomOut: () => smoothStepMapZoom(
+                                      controller: _mapController,
+                                      vsync: this,
+                                      deltaZoom: -1.0,
+                                    ),
+                                  ),
+                                  SizedBox(width: isCompactHeight ? 8 : 0, height: isCompactHeight ? 0 : 8),
                                   FloatingActionButton.small(
                                     heroTag: 'map_layer_switch',
                                     backgroundColor: Colors.white,

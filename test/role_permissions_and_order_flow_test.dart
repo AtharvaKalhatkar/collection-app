@@ -81,11 +81,11 @@ void main() {
       expect(collectionOnly.canAccessOrders, isFalse);
       expect(driver.canAccessOrders, isFalse);
 
-      // Assign Routes: ONLY Super Admin, Collection, Sales & Collection, Sales
+      // Assign Routes: ONLY Super Admin, Collection, Sales & Collection
       expect(superAdmin.canAssignRoutes, isTrue);
       expect(salesAndColl.canAssignRoutes, isTrue);
       expect(collectionOnly.canAssignRoutes, isTrue);
-      expect(salesOrder.canAssignRoutes, isTrue);
+      expect(salesOrder.canAssignRoutes, isFalse);
       expect(office.canAssignRoutes, isFalse);
       expect(driver.canAssignRoutes, isFalse);
 
@@ -1050,5 +1050,78 @@ void main() {
       await tester.pumpAndSettle();
       expect(collection.customProducts, isEmpty);
     });
+
+    testWidgets(
+      'Order login hides Assign Routes and All Booked Orders and exposes smooth Route Map zoom controls',
+      (tester) async {
+        final route = RouteModel(id: 'r_chakan', name: 'Chakan');
+        final shop = ShopModel(
+          id: 's_omkar',
+          name: 'Omkar Provision',
+          address: 'Chakan MIDC',
+          mobileNumber: '9822001122',
+          routeId: route.id,
+          routeName: route.name,
+          latitude: 18.7565,
+          longitude: 73.8555,
+        );
+        final orderUser = UserModel(
+          id: 'u_order_2',
+          phone: 'order2',
+          name: 'order2',
+          role: UserRole.order,
+          password: 'p',
+          assignedRouteIds: [route.id],
+        );
+
+        SharedPreferences.setMockInitialValues({
+          'app_sample_data_initialized_v1': true,
+          'app_users_cache_v1': jsonEncode([orderUser.toJson()]),
+          'current_logged_in_user_id_v1': orderUser.id,
+          'app_routes_v1': [jsonEncode(route.toJson())],
+          'app_shops_v1': [jsonEncode(shop.toJson())],
+        });
+
+        final auth = AuthProvider();
+        final collection = CollectionProvider();
+        await auth.initialize();
+        await collection.initialize();
+
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              ChangeNotifierProvider.value(value: auth),
+              ChangeNotifierProvider.value(value: collection),
+            ],
+            child: const MaterialApp(home: OrderDashboardScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('RETAILER'), findsOneWidget);
+        expect(find.byTooltip('Assign Routes'), findsNothing);
+        expect(find.byTooltip('All Booked Orders'), findsNothing);
+        expect(find.byTooltip('More Options'), findsNothing);
+        expect(find.text('Assign Routes'), findsNothing);
+        expect(find.text('All Booked Orders'), findsNothing);
+        expect(find.byTooltip('Sign Out'), findsOneWidget);
+
+        // Open Transactions tab -> All Booked Orders Master is hidden for Order login
+        await tester.tap(find.textContaining('Transactions'));
+        await tester.pumpAndSettle();
+        expect(find.text('All Booked Orders Master (Staff & Tally)'), findsNothing);
+
+        // Open Route Map tab -> smooth Zoom In / Zoom Out buttons are present
+        await tester.tap(find.text('Route Map'));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(find.byTooltip('Zoom In'), findsOneWidget);
+        expect(find.byTooltip('Zoom Out'), findsOneWidget);
+      },
+    );
   });
 }

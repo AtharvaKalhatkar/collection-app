@@ -36,12 +36,14 @@
       overflow: hidden;
       background: #0F172A;
       -webkit-text-size-adjust: 100%;
-      touch-action: manipulation;
+      touch-action: none;
+      overscroll-behavior: none;
     }
 
     /* PWA Install Banner Styling */
     #pwa-install-banner {
       display: none;
+      touch-action: manipulation;
       position: fixed;
       bottom: calc(env(safe-area-inset-bottom, 0px) + 78px);
       left: 12px;
